@@ -166,7 +166,7 @@
     const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
-    const DIG_RADIUS = 2.2, DIG_RATE = 18;
+    const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.7;
     const FLAT_TOL = 0.4, WIN_AT = 0.9;
     const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
 
@@ -174,8 +174,9 @@
     const heights = new Float32Array(V * V);
     const baseHeights = new Float32Array(V * V);
     const vx = new Float32Array(V * V), vz = new Float32Array(V * V);
+    const passRef = new Float32Array(V * V), passTag = new Int32Array(V * V); // この押しで初接触した高さ / 押しID（1段ずつ削るため）
     const game = { blade: 0, totalDug: 0, initialFlat: 1, mx: 0, mz: 6, myaw: Math.PI, won: false };
-    let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0;
+    let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0;
 
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) {
       const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD;
@@ -331,18 +332,21 @@
     // ===================== 削る/盛る（体積保存）=====================
     let lastVib = 0, shake = 0;
     function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
-    // 押し均し：押し始めた高さ(cutHeight)へ整地。高い所を削ってブレードに溜め、低い所へ押し出して埋める。土は保存。
+    // 押し均し：押し始めた高さ(cutHeight)へ、1回の押し＝1段(LAYER)ずつ整地。高い所を削りブレードに溜め、低い所へ押し出す。土は保存。
     function gradePush(dt) {
       const fx = game.mx + Math.sin(game.myaw) * 1.2, fz = game.mz + Math.cos(game.myaw) * 1.2; // ブレード前方
       let blade = game.blade, cutVol = 0, changed = false;
       for (let idx = 0; idx < V * V; idx++) {
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
         if (dist >= DIG_RADIUS) continue;
-        const step = DIG_RATE * dt * Math.max(0.4, 1 - dist / DIG_RADIUS), h = heights[idx]; // 端も効くようフェードを底上げ
-        if (h > cutHeight + 0.01) {                 // 高い→削ってブレードに溜める
-          const cut = Math.min(h - cutHeight, step); if (cut > 0) { heights[idx] = h - cut; blade += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
-        } else if (h < cutHeight - 0.01 && blade > 0) { // 低い→ブレードの土で押し埋める
-          const fill = Math.min(cutHeight - h, step, blade / CELL_AREA); if (fill > 0) { heights[idx] = h + fill; blade -= fill * CELL_AREA; changed = true; }
+        if (passTag[idx] !== pushId) { passTag[idx] = pushId; passRef[idx] = heights[idx]; } // この押しで初めて触れた高さを記録
+        const step = DIG_RATE * dt * Math.max(0.4, 1 - dist / DIG_RADIUS), h = heights[idx];
+        const cutFloor = Math.max(cutHeight, passRef[idx] - LAYER);  // この押しでは1段(LAYER)までしか掘れない
+        const fillCeil = Math.min(cutHeight, passRef[idx] + LAYER);  // 埋めも1段まで
+        if (h > cutFloor + 0.01) {                 // 高い→1段だけ削ってブレードに溜める
+          const cut = Math.min(h - cutFloor, step); if (cut > 0) { heights[idx] = h - cut; blade += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
+        } else if (h < fillCeil - 0.01 && blade > 0) { // 低い→1段だけブレードの土で押し埋める
+          const fill = Math.min(fillCeil - h, step, blade / CELL_AREA); if (fill > 0) { heights[idx] = h + fill; blade -= fill * CELL_AREA; changed = true; }
         }
       }
       game.blade = Math.max(0, blade); game.totalDug += cutVol;
@@ -369,7 +373,7 @@
       const gy = sampleHeight(game.mx, game.mz);
       dozer.position.set(game.mx, gy, game.mz); dozer.rotation.y = game.myaw;
       // 押しながら移動した時だけ整地（止まると削れない）。押し始めた高さ(cutHeight)を基準にならす。
-      if (acting && moving && !game.won) { if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); } gradePush(dt); }
+      if (acting && moving && !game.won) { if (!pushing) { pushing = true; pushId++; cutHeight = sampleHeight(game.mx, game.mz); } gradePush(dt); }
       else pushing = false;
       // ブレードの掘る動き
       if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
