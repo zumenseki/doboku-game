@@ -161,7 +161,7 @@
   <button id="finish">この出来で完成</button>
 
   <div id="flash"></div>
-  <div id="hint">お手本(緑の面)の高さに地面を合わせよう<br>赤い所は削る・青い所は盛る・全部緑になったら高得点で完成</div>
+  <div id="hint">お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に</div>
   <div id="rotate">📱 横向きがおすすめ</div>
 
   <div id="win">
@@ -183,7 +183,7 @@
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
-    const FLAT_TOL = 0.4, PASS_SCORE = 70, STAR2 = 85, STAR3 = 95;
+    const FLAT_TOL = 0.3, PASS_SCORE = 70, STAR2 = 85, STAR3 = 95, FINISH_MAXDEV = 0.5;
     const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
 
     // ===================== ルール層 =====================
@@ -212,12 +212,12 @@
     }
     // お題（目標の高さ）＝この現場の平均高さに広く平らに（宅地造成）。押し均しの体積保存で達成可能。
     function setTarget() { let mean = 0; for (let idx = 0; idx < V * V; idx++) mean += baseHeights[idx]; game.targetLevel = mean / (V * V); for (let idx = 0; idx < V * V; idx++) targetH[idx] = game.targetLevel; }
-    // 目標とのズレの合計（許容±FLAT_TOLを超えた分だけ）。0に近いほど図面どおり。
-    function targetError() { let s = 0; for (let idx = 0; idx < V * V; idx++) { const d = Math.abs(heights[idx] - targetH[idx]); if (d > FLAT_TOL) s += (d - FLAT_TOL) * CELL_AREA; } return s; }
-    // 目標までの最大のズレ（cm表示用）
-    function maxTargetDev() { let m = 0; for (let idx = 0; idx < V * V; idx++) { const d = Math.abs(heights[idx] - targetH[idx]); if (d > m) m = d; } return m; }
-    // 出来形の点数（0〜100）
-    function score() { return Math.max(0, Math.min(100, Math.round(100 * (1 - targetError() / game.initErr)))); }
+    // 目標とのズレの合計（許容±FLAT_TOL超過分だけ）。0に近いほど図面どおり。最外周マスは除外（角の理不尽防止）。
+    function targetError(arr) { arr = arr || heights; let s = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = Math.abs(arr[idx] - targetH[idx]); if (d > FLAT_TOL) s += (d - FLAT_TOL) * CELL_AREA; } return s; }
+    // 目標までの最大のズレ（cm表示用・最外周除外）
+    function maxTargetDev() { let m = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = Math.abs(heights[idx] - targetH[idx]); if (d > m) m = d; } return m; }
+    // 出来形の点数（0〜100）。残った最大ズレも減点に反映（局所の出っ張りで満点が出ないように）。
+    function score() { const base = 100 * (1 - targetError() / game.initErr); const worst = Math.max(0, maxTargetDev() - FLAT_TOL) * 25; return Math.max(0, Math.min(100, Math.round(base - worst))); }
 
     // ===================== 描画層 =====================
     const app = document.getElementById("app");
@@ -403,7 +403,7 @@
       dozer.position.set(game.mx, gy, game.mz); dozer.rotation.y = game.myaw;
       // 押しながら移動した時だけ整地（止まると削れない）。押し始めた高さ(cutHeight)が基準。一定距離(STROKE_DIST)進むごとに次の段へ。
       if (acting && moving && !game.won) {
-        if (!pushing) { pushing = true; pushId++; cutHeight = sampleHeight(game.mx, game.mz); strokeX = game.mx; strokeZ = game.mz; }
+        if (!pushing) { pushing = true; pushId++; const ch = sampleHeight(game.mx, game.mz); cutHeight = (Math.abs(ch - game.targetLevel) <= 1.0) ? game.targetLevel : ch; strokeX = game.mx; strokeZ = game.mz; } // 目標高さの近く(緑)で押すと目標へ吸着、離れた所は押した高さ基準
         else { const ddx = game.mx - strokeX, ddz = game.mz - strokeZ; if (ddx * ddx + ddz * ddz >= STROKE_DIST * STROKE_DIST) { pushId++; strokeX = game.mx; strokeZ = game.mz; } } // 一定距離進んだら次の段＝離さず往復しても掘り進める
         gradePush(dt);
       } else pushing = false;
@@ -438,12 +438,12 @@
       scoreEl.textContent = sc; remEl.textContent = Math.round(maxTargetDev() * 100);
       barEl.style.width = sc + "%";
       if (sc !== lastScore) { lastScore = sc; scoreEl.classList.remove("pop"); void scoreEl.offsetWidth; scoreEl.classList.add("pop"); }
-      finishEl.classList.toggle("ready", !game.won && sc >= PASS_SCORE);
+      finishEl.classList.toggle("ready", !game.won && sc >= PASS_SCORE && maxTargetDev() <= FINISH_MAXDEV);
     }
     function finishJob() {
-      if (game.won) return; const sc = score(); if (sc < PASS_SCORE) return;
+      if (game.won) return; const sc = score(); if (sc < PASS_SCORE || maxTargetDev() > FINISH_MAXDEV) return;
       game.won = true; if (sc > game.best) game.best = sc;
-      const stars = sc >= STAR3 ? 3 : sc >= STAR2 ? 2 : 1;
+      const stars = (sc >= STAR3 && maxTargetDev() <= 0.4) ? 3 : sc >= STAR2 ? 2 : 1;
       document.getElementById("win-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
       document.getElementById("win-text").innerHTML = "出来形 <b>" + sc + "</b> 点　／　自己ベスト " + game.best + " 点";
       document.getElementById("win").classList.add("show"); finishEl.classList.remove("ready"); save();
@@ -482,7 +482,7 @@
         const raw = localStorage.getItem(KEY); if (!raw) return false; const s = JSON.parse(raw);
         if (!s || s.g !== GRID || !s.h || s.h.length !== V * V || !s.b || s.b.length !== V * V) return false;
         heights.set(s.h); baseHeights.set(s.b); setTarget(); game.blade = s.blade || 0; game.totalDug = s.dug || 0; game.best = s.best || 0;
-        game.mx = s.mx || 0; game.mz = s.mz || 6; game.myaw = (s.myaw != null) ? s.myaw : Math.PI; game.initErr = Math.max(1, s.ie || targetError()); game.won = false;
+        game.mx = s.mx || 0; game.mz = s.mz || 6; game.myaw = (s.myaw != null) ? s.myaw : Math.PI; game.initErr = Math.max(1, s.ie || targetError(baseHeights)); game.won = false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
         return true;
       } catch (e) { return false; }
