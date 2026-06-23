@@ -166,8 +166,8 @@
     const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
-    const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.7;
-    const FLAT_TOL = 0.4, WIN_AT = 0.9;
+    const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
+    const FLAT_TOL = 0.4, WIN_AT = 0.9, MAX_DEV_WIN = 1.0;
     const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
 
     // ===================== ルール層 =====================
@@ -176,7 +176,7 @@
     const vx = new Float32Array(V * V), vz = new Float32Array(V * V);
     const passRef = new Float32Array(V * V), passTag = new Int32Array(V * V); // この押しで初接触した高さ / 押しID（1段ずつ削るため）
     const game = { blade: 0, totalDug: 0, initialFlat: 1, mx: 0, mz: 6, myaw: Math.PI, won: false };
-    let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0;
+    let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
 
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) {
       const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD;
@@ -193,8 +193,10 @@
       }
       baseHeights.set(heights); game.initialFlat = Math.max(1, flatness());
     }
-    // 「平ら」＝全体が同じ高さになっているか（平均からのズレ）。どの高さに揃えてもOK（ひと押しで全体を均せば勝てる）。
-    function flatness() { let mean = 0; for (let idx = 0; idx < V * V; idx++) mean += heights[idx]; mean /= V * V; let s = 0; for (let idx = 0; idx < V * V; idx++) { const d = Math.abs(heights[idx] - mean); if (d > FLAT_TOL) s += (d - FLAT_TOL) * CELL_AREA; } return s; }
+    // 「平ら」＝全体が同じ高さか（平均からのズレ）。高い突起ほど重く減点(2乗)。
+    function flatness() { let mean = 0; for (let idx = 0; idx < V * V; idx++) mean += heights[idx]; mean /= V * V; let s = 0; for (let idx = 0; idx < V * V; idx++) { const d = Math.abs(heights[idx] - mean); if (d > FLAT_TOL) { const e = d - FLAT_TOL; s += e * e * CELL_AREA; } } return s; }
+    // 最大のズレ（高い出っ張りが残っていないかの判定用）
+    function maxDeviation() { let mean = 0; for (let idx = 0; idx < V * V; idx++) mean += heights[idx]; mean /= V * V; let m = 0; for (let idx = 0; idx < V * V; idx++) { const d = Math.abs(heights[idx] - mean); if (d > m) m = d; } return m; }
 
     // ===================== 描画層 =====================
     const app = document.getElementById("app");
@@ -372,9 +374,12 @@
       }
       const gy = sampleHeight(game.mx, game.mz);
       dozer.position.set(game.mx, gy, game.mz); dozer.rotation.y = game.myaw;
-      // 押しながら移動した時だけ整地（止まると削れない）。押し始めた高さ(cutHeight)を基準にならす。
-      if (acting && moving && !game.won) { if (!pushing) { pushing = true; pushId++; cutHeight = sampleHeight(game.mx, game.mz); } gradePush(dt); }
-      else pushing = false;
+      // 押しながら移動した時だけ整地（止まると削れない）。押し始めた高さ(cutHeight)が基準。一定距離(STROKE_DIST)進むごとに次の段へ。
+      if (acting && moving && !game.won) {
+        if (!pushing) { pushing = true; pushId++; cutHeight = sampleHeight(game.mx, game.mz); strokeX = game.mx; strokeZ = game.mz; }
+        else { const ddx = game.mx - strokeX, ddz = game.mz - strokeZ; if (ddx * ddx + ddz * ddz >= STROKE_DIST * STROKE_DIST) { pushId++; strokeX = game.mx; strokeZ = game.mz; } } // 一定距離進んだら次の段＝離さず往復しても掘り進める
+        gradePush(dt);
+      } else pushing = false;
       // ブレードの掘る動き
       if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
       else { blade.position.y = BLADE_Y; blade.rotation.x = 0; }
@@ -406,7 +411,7 @@
     }
     function checkWin() {
       if (game.won) return;
-      if (progress() >= WIN_AT) { game.won = true; document.getElementById("win-text").textContent = "削った土 " + game.totalDug.toFixed(1) + " m³ ／ 整地おつかれさま！"; document.getElementById("win").classList.add("show"); }
+      if (progress() >= WIN_AT && maxDeviation() <= MAX_DEV_WIN) { game.won = true; document.getElementById("win-text").textContent = "削った土 " + game.totalDug.toFixed(1) + " m³ ／ 整地おつかれさま！"; document.getElementById("win").classList.add("show"); }
     }
 
     // ===================== ボタン =====================
