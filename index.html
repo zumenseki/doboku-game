@@ -47,7 +47,20 @@
   }
   #goal .label { font-size: 12px; font-weight: 700; color: var(--ink); opacity: .8; margin-bottom: 4px; }
   #bar { height: 9px; background: #d6dee2; border-radius: 6px; overflow: hidden; }
-  #bar > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg,#7bc47f,#2faa55); transition: width .15s ease; }
+  #bar > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg,#e0a020,#2faa55); transition: width .15s ease; }
+  #score-line { font-size: 12px; font-weight: 800; color: var(--ink); margin-top: 5px; text-align: center; font-variant-numeric: tabular-nums; }
+  #score-line b { font-size: 15px; }
+  #score.pop { animation: pop .28s ease; }
+
+  /* 完成ボタン（合格点で出現） */
+  #finish {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom,0px) + 26px); transform: translateX(-50%);
+    display: none; background: var(--fill); color: #fff; border: none; border-radius: 16px;
+    padding: 13px 26px; font-weight: 900; font-size: 16px; box-shadow: 0 5px 16px rgba(0,0,0,.3); cursor: pointer; z-index: 5;
+  }
+  #finish.ready { display: block; animation: pop .3s ease; }
+  #finish:active { transform: translateX(-50%) scale(.96); }
+  #win .stars { font-size: 30px; letter-spacing: 4px; color: #ffd34d; }
 
   /* 左下：FPS風 方向パッド */
   #dpad {
@@ -130,8 +143,9 @@
   </div>
 
   <div id="goal">
-    <div class="label">目標：地面を平らにしよう（山を削り、くぼ地を埋める）</div>
+    <div class="label">目標：お手本(緑の面)の高さに仕上げる　<span style="color:#c0392b">赤=削る</span>／<span style="color:#2a6db0">青=盛る</span>／<span style="color:#2faa55">緑=OK</span></div>
     <div id="bar"><i></i></div>
+    <div id="score-line">出来形 <b id="score">0</b> 点　／　目標まで最大 <b id="rem">0</b> cm</div>
   </div>
 
   <!-- 左下：方向パッド -->
@@ -143,16 +157,18 @@
   </div>
 
   <button id="act">ならす<span>押す</span></button>
-  <button id="reset">最初から</button>
+  <button id="reset">やり直し</button>
+  <button id="finish">この出来で完成</button>
 
   <div id="flash"></div>
-  <div id="hint">左下で移動／<b>押しながら進む</b>と土を削って前へ押す（重機と同じ）<br>高い所を削り、そのままくぼ地へ押し込んで埋める・画面ドラッグで視点（PCはスペース）</div>
+  <div id="hint">お手本(緑の面)の高さに地面を合わせよう<br>赤い所は削る・青い所は盛る・全部緑になったら高得点で完成</div>
   <div id="rotate">📱 横向きがおすすめ</div>
 
   <div id="win">
     <h1>完成！</h1>
+    <div class="stars" id="win-stars">★★★</div>
     <p id="win-text">整地おつかれさま</p>
-    <button id="again">もう一度</button>
+    <button id="again">次の現場へ</button>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -167,15 +183,16 @@
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
-    const FLAT_TOL = 0.4, WIN_AT = 0.9, MAX_DEV_WIN = 1.0;
+    const FLAT_TOL = 0.4, PASS_SCORE = 70, STAR2 = 85, STAR3 = 95;
     const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
 
     // ===================== ルール層 =====================
     const heights = new Float32Array(V * V);
     const baseHeights = new Float32Array(V * V);
+    const targetH = new Float32Array(V * V);   // お題＝目標の高さ（マスごと）
     const vx = new Float32Array(V * V), vz = new Float32Array(V * V);
     const passRef = new Float32Array(V * V), passTag = new Int32Array(V * V); // この押しで初接触した高さ / 押しID（1段ずつ削るため）
-    const game = { blade: 0, totalDug: 0, initialFlat: 1, mx: 0, mz: 6, myaw: Math.PI, won: false };
+    const game = { blade: 0, totalDug: 0, initErr: 1, targetLevel: 0, best: 0, mx: 0, mz: 6, myaw: Math.PI, won: false };
     let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
 
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) {
@@ -191,12 +208,16 @@
         if (h < MIN_H) h = MIN_H; if (h > MAX_H) h = MAX_H;
         heights[idx] = h;
       }
-      baseHeights.set(heights); game.initialFlat = Math.max(1, flatness());
+      baseHeights.set(heights); setTarget(); game.initErr = Math.max(1, targetError());
     }
-    // 「平ら」＝全体が同じ高さか（平均からのズレ）。高い突起ほど重く減点(2乗)。
-    function flatness() { let mean = 0; for (let idx = 0; idx < V * V; idx++) mean += heights[idx]; mean /= V * V; let s = 0; for (let idx = 0; idx < V * V; idx++) { const d = Math.abs(heights[idx] - mean); if (d > FLAT_TOL) { const e = d - FLAT_TOL; s += e * e * CELL_AREA; } } return s; }
-    // 最大のズレ（高い出っ張りが残っていないかの判定用）
-    function maxDeviation() { let mean = 0; for (let idx = 0; idx < V * V; idx++) mean += heights[idx]; mean /= V * V; let m = 0; for (let idx = 0; idx < V * V; idx++) { const d = Math.abs(heights[idx] - mean); if (d > m) m = d; } return m; }
+    // お題（目標の高さ）＝この現場の平均高さに広く平らに（宅地造成）。押し均しの体積保存で達成可能。
+    function setTarget() { let mean = 0; for (let idx = 0; idx < V * V; idx++) mean += baseHeights[idx]; game.targetLevel = mean / (V * V); for (let idx = 0; idx < V * V; idx++) targetH[idx] = game.targetLevel; }
+    // 目標とのズレの合計（許容±FLAT_TOLを超えた分だけ）。0に近いほど図面どおり。
+    function targetError() { let s = 0; for (let idx = 0; idx < V * V; idx++) { const d = Math.abs(heights[idx] - targetH[idx]); if (d > FLAT_TOL) s += (d - FLAT_TOL) * CELL_AREA; } return s; }
+    // 目標までの最大のズレ（cm表示用）
+    function maxTargetDev() { let m = 0; for (let idx = 0; idx < V * V; idx++) { const d = Math.abs(heights[idx] - targetH[idx]); if (d > m) m = d; } return m; }
+    // 出来形の点数（0〜100）
+    function score() { return Math.max(0, Math.min(100, Math.round(100 * (1 - targetError() / game.initErr)))); }
 
     // ===================== 描画層 =====================
     const app = document.getElementById("app");
@@ -221,21 +242,27 @@
     geo.setIndex(indices);
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
     scene.add(ground);
-    const cLow = new THREE.Color(0x6f9a4d), cMid = new THREE.Color(0xb08245), cHigh = new THREE.Color(0x6e4a23), tmpC = new THREE.Color();
-    function colorFor(h, out) {
-      const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
-      if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
+    // お手本（目標の高さの半透明の面）
+    const ghost = new THREE.Mesh(new THREE.PlaneGeometry(WORLD, WORLD), new THREE.MeshBasicMaterial({ color: 0x2faa55, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+    ghost.rotation.x = -Math.PI / 2; scene.add(ghost);
+    function updateGhost() { ghost.position.set(0, game.targetLevel, 0); }
+    const cOK = new THREE.Color(0x5fae57), cRedL = new THREE.Color(0xe8a48f), cRedH = new THREE.Color(0xb83020), cBluL = new THREE.Color(0x9fc5e8), cBluH = new THREE.Color(0x215f9e), tmpC = new THREE.Color();
+    // 目標との差で色分け：赤=高い(削る)／青=低い(盛る)／緑=OK
+    function colorDiff(diff, out) {
+      if (diff > FLAT_TOL) { out.copy(cRedL).lerp(cRedH, Math.min(1, (diff - FLAT_TOL) / 3)); }
+      else if (diff < -FLAT_TOL) { out.copy(cBluL).lerp(cBluH, Math.min(1, (-diff - FLAT_TOL) / 3)); }
+      else out.copy(cOK);
       return out;
     }
     let normalsDone = false;
     function syncGeometry() {
       for (let idx = 0; idx < V * V; idx++) {
         positions[idx * 3] = vx[idx]; positions[idx * 3 + 1] = heights[idx]; positions[idx * 3 + 2] = vz[idx];
-        colorFor(heights[idx], tmpC); colors[idx * 3] = tmpC.r; colors[idx * 3 + 1] = tmpC.g; colors[idx * 3 + 2] = tmpC.b;
+        colorDiff(heights[idx] - targetH[idx], tmpC); colors[idx * 3] = tmpC.r; colors[idx * 3 + 1] = tmpC.g; colors[idx * 3 + 2] = tmpC.b;
       }
       geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
       if (!normalsDone) { geo.computeVertexNormals(); normalsDone = true; }
-      geo.computeBoundingSphere();
+      geo.computeBoundingSphere(); updateGhost();
     }
 
     // 重機
@@ -352,7 +379,7 @@
         }
       }
       game.blade = Math.max(0, blade); game.totalDug += cutVol;
-      if (changed) { digFx(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); refreshHUD(); checkWin(); }
+      if (changed) { digFx(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); refreshHUD(); }
     }
 
     // ===================== 重機の移動（視点に対して前後左右）=====================
@@ -401,17 +428,25 @@
 
     // ===================== HUD =====================
     const dugEl = document.getElementById("dug"), carryEl = document.getElementById("carry"), barEl = document.querySelector("#bar > i");
-    let lastDugFloor = 0;
-    function progress() { return 1 - flatness() / game.initialFlat; }
+    const scoreEl = document.getElementById("score"), remEl = document.getElementById("rem"), finishEl = document.getElementById("finish");
+    let lastDugFloor = 0, lastScore = -1;
     function refreshHUD() {
       dugEl.textContent = game.totalDug.toFixed(1); carryEl.textContent = game.blade.toFixed(1);
       const fl = Math.floor(game.totalDug);
       if (fl !== lastDugFloor) { lastDugFloor = fl; dugEl.classList.remove("pop"); void dugEl.offsetWidth; dugEl.classList.add("pop"); }
-      barEl.style.width = Math.max(0, Math.min(100, progress() * 100)).toFixed(0) + "%";
+      const sc = score();
+      scoreEl.textContent = sc; remEl.textContent = Math.round(maxTargetDev() * 100);
+      barEl.style.width = sc + "%";
+      if (sc !== lastScore) { lastScore = sc; scoreEl.classList.remove("pop"); void scoreEl.offsetWidth; scoreEl.classList.add("pop"); }
+      finishEl.classList.toggle("ready", !game.won && sc >= PASS_SCORE);
     }
-    function checkWin() {
-      if (game.won) return;
-      if (progress() >= WIN_AT && maxDeviation() <= MAX_DEV_WIN) { game.won = true; document.getElementById("win-text").textContent = "削った土 " + game.totalDug.toFixed(1) + " m³ ／ 整地おつかれさま！"; document.getElementById("win").classList.add("show"); }
+    function finishJob() {
+      if (game.won) return; const sc = score(); if (sc < PASS_SCORE) return;
+      game.won = true; if (sc > game.best) game.best = sc;
+      const stars = sc >= STAR3 ? 3 : sc >= STAR2 ? 2 : 1;
+      document.getElementById("win-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
+      document.getElementById("win-text").innerHTML = "出来形 <b>" + sc + "</b> 点　／　自己ベスト " + game.best + " 点";
+      document.getElementById("win").classList.add("show"); finishEl.classList.remove("ready"); save();
     }
 
     // ===================== ボタン =====================
@@ -426,27 +461,28 @@
       actBtn.addEventListener("pointercancel", off);
       actBtn.addEventListener("pointerleave", off);
     })();
-    document.getElementById("reset").addEventListener("click", () => { if (window.confirm("最初の地形に戻しますか？\n削った内容は消えます。")) restore(false); });
+    document.getElementById("reset").addEventListener("click", () => { if (window.confirm("この現場をやり直しますか？\n削った内容は消えます（お題は同じ）。")) restore(false); });
     document.getElementById("again").addEventListener("click", () => { document.getElementById("win").classList.remove("show"); restore(true); });
+    document.getElementById("finish").addEventListener("click", finishJob);
     function restore(regen) {
-      if (regen) generateTerrain(); else { heights.set(baseHeights); game.initialFlat = Math.max(1, flatness()); }
-      game.blade = 0; game.totalDug = 0; game.won = false; pushing = false; lastDugFloor = 0;
+      if (regen) generateTerrain(); else { heights.set(baseHeights); setTarget(); game.initErr = Math.max(1, targetError()); }
+      game.blade = 0; game.totalDug = 0; game.won = false; pushing = false; lastDugFloor = 0; lastScore = -1;
       game.mx = 0; game.mz = 6; game.myaw = Math.PI; syncGeometry(); refreshHUD(); save();
     }
 
     // ===================== 保存 =====================
-    const KEY = "doboku_mvp_v5";
+    const KEY = "doboku_mvp_v6";
     function save() {
       try {
-        localStorage.setItem(KEY, JSON.stringify({ g: GRID, h: Array.from(heights), b: Array.from(baseHeights), blade: game.blade, dug: game.totalDug, mx: game.mx, mz: game.mz, myaw: game.myaw, ifl: game.initialFlat, cy: camYaw, cp: camPitch }));
+        localStorage.setItem(KEY, JSON.stringify({ g: GRID, h: Array.from(heights), b: Array.from(baseHeights), blade: game.blade, dug: game.totalDug, mx: game.mx, mz: game.mz, myaw: game.myaw, ie: game.initErr, best: game.best, cy: camYaw, cp: camPitch }));
       } catch (e) {}
     }
     function load() {
       try {
         const raw = localStorage.getItem(KEY); if (!raw) return false; const s = JSON.parse(raw);
         if (!s || s.g !== GRID || !s.h || s.h.length !== V * V || !s.b || s.b.length !== V * V) return false;
-        heights.set(s.h); baseHeights.set(s.b); game.blade = s.blade || 0; game.totalDug = s.dug || 0;
-        game.mx = s.mx || 0; game.mz = s.mz || 6; game.myaw = (s.myaw != null) ? s.myaw : Math.PI; game.initialFlat = Math.max(1, s.ifl || flatness()); game.won = false;
+        heights.set(s.h); baseHeights.set(s.b); setTarget(); game.blade = s.blade || 0; game.totalDug = s.dug || 0; game.best = s.best || 0;
+        game.mx = s.mx || 0; game.mz = s.mz || 6; game.myaw = (s.myaw != null) ? s.myaw : Math.PI; game.initErr = Math.max(1, s.ie || targetError()); game.won = false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
         return true;
       } catch (e) { return false; }
@@ -478,7 +514,7 @@
     normalsDone = false; syncGeometry(); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
 
     // デバッグ用フック（URLに ?test を付けた時だけ有効・通常は無効）
-    if (/[?&]test\b/.test(location.search)) window.__t = { game, keys, updateDozer, updateCamera, flatness, progress, restore, camera, sampleHeight, setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting, getCut: () => cutHeight, getPushing: () => pushing, terrainStats: () => { let sum = 0, mx = -1e9, mn = 1e9; for (let i = 0; i < V * V; i++) { sum += heights[i]; if (heights[i] > mx) mx = heights[i]; if (heights[i] < mn) mn = heights[i]; } return { sum, mx, mn }; } };
+    if (/[?&]test\b/.test(location.search)) window.__t = { game, keys, updateDozer, updateCamera, score, targetError, maxTargetDev, finishJob, restore, camera, sampleHeight, setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting, getCut: () => cutHeight, getPushing: () => pushing, targetLevel: () => game.targetLevel, terrainStats: () => { let sum = 0, mx = -1e9, mn = 1e9; for (let i = 0; i < V * V; i++) { sum += heights[i]; if (heights[i] > mx) mx = heights[i]; if (heights[i] < mn) mn = heights[i]; } return { sum, mx, mn }; } };
   })();
   </script>
 </body>
