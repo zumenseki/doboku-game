@@ -463,49 +463,44 @@
     // ===================== 削る/盛る（体積保存）=====================
     let lastVib = 0, shake = 0;
     function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
-    // 押し均し[親方FB版・物理ベース]：ブレード前の「目標より高い土」を削り→前にこんもり積む。ブレード高さ(BLADE_PILE_H)を越えた分は後ろにこぼして残す。低い所は山を押し込んで埋まる。土は保存（削った量＝置いた量）。
-    function depositInto(cx, cz, R, vol, useMax) {   // (cx,cz)半径R内のセルへ vol(m³)を分配。天井=目標+BLADE_PILE_H（useMax時はMAX_H）。入り切らない分を返す。各セルは余地に比例して増えるので天井を超えない。
+    // 土を分配[親方FB]：(cx,cz)半径R内のセルへ vol(m³)を、天井 ceil(高さ) まで余地に比例して入れる。入り切らない分を返す（天井を超えない）。
+    function depositInto(cx, cz, R, vol, ceil) {
       let room = 0; const cells = [], R2 = R * R;
       for (let idx = 0; idx < V * V; idx++) {
         const dx = vx[idx] - cx, dz = vz[idx] - cz; if (dx * dx + dz * dz >= R2) continue;
-        const ceil = useMax ? MAX_H : (targetH[idx] + BLADE_PILE_H);
         const r = (ceil - heights[idx]) * CELL_AREA;
         if (r > 0) { cells.push(idx); room += r; }
       }
       if (room <= 0) return vol;
       const place = Math.min(vol, room);
-      for (let k = 0; k < cells.length; k++) {
-        const idx = cells[k], ceil = useMax ? MAX_H : (targetH[idx] + BLADE_PILE_H);
-        const r = (ceil - heights[idx]) * CELL_AREA;
-        heights[idx] += (r / room) * place / CELL_AREA;
-      }
+      for (let k = 0; k < cells.length; k++) { const idx = cells[k], r = (ceil - heights[idx]) * CELL_AREA; heights[idx] += (r / room) * place / CELL_AREA; }
       return vol - place;
     }
-    // 押し均し[親方FB・ハイブリッド版]：高い所を削ってブレードに少し持ち(BLADE_CAPまで)→低い所へ運んで埋める＝確実に平らにできる。ブレードが満杯だとあふれた土は後ろの地面に薄く残る。今持ってる土が多いほど重い(移動で減速)。土は保存(地面+ブレード一定)。
+    // 押し均し[親方FB・ハイブリッド版]：ブレードの高さ(cutHeight=押し始めの足元の高さ)を基準に、前方で「それより高い土」を削ってブレードに少し持ち(BLADE_CAPまで)→「それより低い所」へ運んで埋める。**色/目標には依らず、純粋に高い所を削り低い所へ落とす物理的な動き**[親方FB]。満杯のあふれは後ろの地面に薄く残す。持ってる土が多いほど重い。土は保存(地面+ブレード一定)。
     function gradePush(dt) {
       const s = Math.sin(game.myaw), c = Math.cos(game.myaw);
-      const fx = game.mx + s * 1.4, fz = game.mz + c * 1.4;   // 削り位置＝ブレードの前（広めに削るが足元は下のFOOT_Rで除外＝押した直後に車体が沈まない）[親方FB]
-      const bx = game.mx - s * 1.8, bz = game.mz - c * 1.8;   // 後ろ（あふれを残す・ブレード前と重なりにくい位置）
-      // 後ろに置ける容量（あふれの行き先）。これ＋ブレードの空き＝今フレームで削れる上限。これでブレードが容量を超えて無限に膨らむのを防ぐ。
+      const fx = game.mx + s * 1.4, fz = game.mz + c * 1.4;   // 削り位置＝ブレードの前（広めに削るが足元はFOOT2で除外＝押した直後に車体が沈まない）
+      const bx = game.mx - s * 1.8, bz = game.mz - c * 1.8;   // 後ろ（あふれを残す）
+      const ceil = cutHeight + BLADE_PILE_H;   // 積む天井＝ブレード基準(cutHeight=押し始めの足元の高さ)＋ブレード厚み
       let behindCap = 0; const BR2 = PILE_R * PILE_R;
-      for (let idx = 0; idx < V * V; idx++) { const dx = vx[idx] - bx, dz = vz[idx] - bz; if (dx * dx + dz * dz >= BR2) continue; const r = (targetH[idx] + BLADE_PILE_H - heights[idx]) * CELL_AREA; if (r > 0) behindCap += r; }
-      let blade = game.blade, spill = 0, changed = false; const SCRAPE_R = 2.0, R2 = SCRAPE_R * SCRAPE_R, FOOT2 = 0.9 * 0.9;  // 削り半径は広め・ただし車体足元(FOOT2内)は削らない
+      for (let idx = 0; idx < V * V; idx++) { const dx = vx[idx] - bx, dz = vz[idx] - bz; if (dx * dx + dz * dz >= BR2) continue; const r = (ceil - heights[idx]) * CELL_AREA; if (r > 0) behindCap += r; }
+      let blade = game.blade, spill = 0, changed = false; const SCRAPE_R = 2.0, R2 = SCRAPE_R * SCRAPE_R, FOOT2 = 0.9 * 0.9;
       let budget = Math.max(0, BLADE_CAP - blade) + behindCap;   // 削れる上限＝持てる空き＋後ろに置ける
       for (let idx = 0; idx < V * V; idx++) {
         const dx = vx[idx] - fx, dz = vz[idx] - fz, d2 = dx * dx + dz * dz; if (d2 >= R2) continue;
-        const fdx = vx[idx] - game.mx, fdz = vz[idx] - game.mz; if (fdx * fdx + fdz * fdz < FOOT2) continue;   // 車体の足元は削らない/埋めない（押した直後に沈む/浮くのを防ぐ）[親方FB]
-        const over = heights[idx] - targetH[idx], step = DIG_RATE * dt * Math.max(0.4, 1 - Math.sqrt(d2) / SCRAPE_R);
+        const fdx = vx[idx] - game.mx, fdz = vz[idx] - game.mz; if (fdx * fdx + fdz * fdz < FOOT2) continue;   // 車体足元は触らない
+        const over = heights[idx] - cutHeight, step = DIG_RATE * dt * Math.max(0.4, 1 - Math.sqrt(d2) / SCRAPE_R);   // ブレード基準(cutHeight=押し始めの足元)より高い=削る／低い=埋める（色・目標に依らない）[親方FB]
         if (over > 0.01 && budget > 0.0001) {     // 高い→削る（行き場のある分=budgetだけ）。ブレードに入れ、超過は spill（あふれ）
           const cut = Math.min(over, step, budget / CELL_AREA); heights[idx] -= cut; changed = true;
           const vol = cut * CELL_AREA; budget -= vol;
           const toB = Math.min(vol, Math.max(0, BLADE_CAP - blade)); blade += toB; spill += vol - toB;
-        } else if (over < -0.01 && blade > 0) {   // 低い→ブレードの土で埋める（運搬＝整地）
+        } else if (over < -0.01 && blade > 0) {   // 低い→ブレードの土で埋める（運搬）
           const fill = Math.min(-over, step, blade / CELL_AREA);
           if (fill > 0) { heights[idx] += fill; blade -= fill * CELL_AREA; changed = true; }
         }
       }
       game.blade = Math.max(0, blade);
-      if (spill > 0.0001) { const left = depositInto(bx, bz, PILE_R, spill, false); game.blade += left; }  // あふれを後ろの地面へ薄く残す（budgetで収まる量・重なり端数のみブレードに残る＝保存）
+      if (spill > 0.0001) { const left = depositInto(bx, bz, PILE_R, spill, ceil); game.blade += left; }  // あふれを後ろへ薄く残す（重なり端数のみブレードに残る＝保存）
       if (changed) { digFx(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); refreshHUD(); }
     }
 
@@ -606,9 +601,11 @@
         bladePile.position.set(fxp, sampleHeight(fxp, fzp) + 0.25 + 0.55 * pf, fzp);
         bladePile.scale.set(0.5 + 0.7 * pf, 0.5 + 1.1 * pf, 0.5 + 0.7 * pf); bladePile.rotation.y = dp.myaw;
       } else bladePile.position.y = -999;
-      // 押しながら移動した時だけ整地（ブル選択時のみ・止まると動かない）。前方の高い土を削り→前に積む→あふれは後ろへ（物理ベース gradePush）[親方FB]
-      if (acting && moving && !game.won && active === "dozer") { pushing = true; gradePush(dt); }
-      else pushing = false;
+      // 押しながら移動した時だけ整地（ブル選択時のみ・止まると動かない）。押し始めの足元の高さをブレード基準(cutHeight)に固定し、それより高い土を削り低い所へ運ぶ（色/目標に依らず物理的に）[親方FB]
+      if (acting && moving && !game.won && active === "dozer") {
+        if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); }
+        gradePush(dt);
+      } else pushing = false;
       // ブレードの掘る動き
       if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
       else { blade.position.y = BLADE_Y; blade.rotation.x = 0; }
