@@ -21,7 +21,25 @@
   #b-main .v { color:var(--water); }
   #total-badge { opacity:.92; } #total-badge .v { color:var(--water); }
   #money-badge .v { color:#b8860b; }
+  #blade-badge .v { color:#7a5a2a; } #blade-badge.over { background:#ffd6d6; }
   .badge.done { background:#cdeccd; }
+  #garage { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #garage.show { display:flex; animation:fade .3s ease; }
+  .g-box { background:#fff; border-radius:16px; padding:16px; width:min(94vw,440px); max-height:84vh; overflow:auto; box-shadow:0 8px 30px rgba(0,0,0,.4); }
+  .g-box h2 { margin:0 0 10px; font-size:18px; color:var(--ink); }
+  .g-maker { font-weight:800; font-size:13px; color:var(--ink); margin:11px 2px 5px; padding-bottom:3px; border-bottom:2px solid #dde4e8; }
+  .g-maker:first-child { margin-top:0; }
+  .g-maker small { opacity:.6; font-weight:700; font-size:11px; }
+  .g-card { display:flex; align-items:center; gap:10px; padding:9px; border-radius:12px; background:#f2f5f7; margin-bottom:8px; }
+  .g-card.cur { background:#e2f0e2; box-shadow:inset 0 0 0 2px #9ccf9c; }
+  .g-ic { font-size:30px; line-height:1; }
+  .g-info { flex:1; color:var(--ink); min-width:0; }
+  .g-info b { font-size:14px; } .g-info small { display:block; opacity:.72; font-size:11px; line-height:1.4; }
+  .g-btn { border:none; border-radius:10px; padding:9px 12px; font-weight:800; font-size:13px; cursor:pointer; white-space:nowrap; text-align:center; }
+  .g-btn small { font-size:10px; opacity:.85; font-weight:700; }
+  .g-btn.buy { background:var(--fill); color:#fff; } .g-btn.use { background:var(--water); color:#fff; }
+  .g-btn.used { background:#cdeccd; color:var(--ink); } .g-btn.ng { background:#e6e6e6; color:#999; }
+  #g-close { margin-top:4px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
   #shop { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #machineBtn { position:fixed; left:calc(env(safe-area-inset-left,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:8px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; display:flex; flex-direction:column; align-items:center; line-height:1.1; }
   #machineBtn span { font-size:9px; opacity:.7; margin-top:1px; }
@@ -60,6 +78,7 @@
     <div class="badge" id="b-main">💧 <span id="mainLabel">ため池</span> <span class="v" id="basin">0</span><small>/<span id="basinT">0</span> m³</small></div>
     <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
     <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
+    <div class="badge" id="blade-badge">🪣 <span class="v" id="blade">0</span><small>/<span id="bladeCap">12</span> m³</small></div>
   </div>
   <div id="goal"><div class="label" id="goalLabel">…</div><div id="bar"><i></i></div></div>
   <div id="dpad">
@@ -74,6 +93,7 @@
   <button id="machineBtn" style="display:none">🚜 ブル<span>切替</span></button>
   <div id="hint">…</div>
   <div id="rotate">📱 横向きがおすすめ</div>
+  <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
   <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -94,7 +114,50 @@
     const WATER_EPS = 0.02, RENDER_EPS = 0.0015, SHALLOW_GROUND = -0.1, PLAIN_MIN = 0.08;
     let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
     const ENTER_WATER_MAX = 0.7, UNDERWATER_DIG_MULT = 0.5; let WATER_CAN_ENTER = false;
-    const CLEAR_REWARD = 100, SUB_PRICE = 300; // 万円（クリア報酬・水中バックホウ価格）
+    const CLEAR_REWARD = 100; // 万円（クリア報酬）
+    // 重機ラインナップ（メーカー別・もじり名＝架空。値段は強い/大きいほど高い）。
+    const MAKERS = [
+      { id: 'komashi', name: 'コマシ', sub: '(コマツ風)', dot: '🟡' },
+      { id: 'kuboki', name: 'クボキ', sub: '(クボタ風)', dot: '🟢' },
+      { id: 'hidachi', name: 'ヒダチ', sub: '(日立建機風)', dot: '🔵' },
+      { id: 'caterpia', name: 'キャタピア', sub: '(Cat風)', dot: '🟠' },
+      { id: 'koveriko', name: 'コベリコ', sub: '(コベルコ風)', dot: '🟣' },
+      { id: 'borugo', name: 'ボルゴ', sub: '(ボルボ風)', dot: '🔴' },
+      { id: 'sumiken', name: 'スミケン', sub: '(住友建機風)', dot: '⚪' }
+    ];
+    function makerById(id) { for (let k = 0; k < MAKERS.length; k++) if (MAKERS[k].id === id) return MAKERS[k]; return MAKERS[0]; }
+    const MACHINES = [
+      { id: 'dozer', maker: 'komashi', name: 'コマシ D-51', icon: '🚜', price: 0, ability: '標準のブルドーザー',
+        digRadius: 2.2, digRate: 18, layer: 0.8, moveSpeed: 7, bladeCap: 12, color: 0xf0c020, canEnterWater: false, underwaterFull: false },
+      { id: 'bigdozer', maker: 'komashi', name: 'コマシ D-155', icon: '🏗️', price: 400, ability: '大型ブル・削る幅がとても広い＋整地が速い（移動は遅め）',
+        digRadius: 3.2, digRate: 22, layer: 0.8, moveSpeed: 5.5, bladeCap: 20, color: 0x8a9a3a, canEnterWater: false, underwaterFull: false },
+      { id: 'mini', maker: 'kuboki', name: 'クボキ U-08', icon: '🛺', price: 150, ability: '高速ミニ・移動がとても速い＋小回り（幅/容量は小さめ）',
+        digRadius: 1.5, digRate: 16, layer: 0.8, moveSpeed: 11, bladeCap: 8, color: 0x88dd44, canEnterWater: false, underwaterFull: false },
+      { id: 'kx12', maker: 'kuboki', name: 'クボキ KX-12', icon: '🛠️', price: 220, ability: 'ミニ掘削・小型で機敏＋そこそこ深く掘れる',
+        digRadius: 1.6, digRate: 18, layer: 1.1, moveSpeed: 9, bladeCap: 10, color: 0x70c860, canEnterWater: false, underwaterFull: false },
+      { id: 'sub', maker: 'hidachi', name: 'ヒダチ ZX-AQUA', icon: '🤿', price: 300, ability: '水中バックホウ・深い水に入れる＋水中も普通に掘れる',
+        digRadius: 2.2, digRate: 18, layer: 0.8, moveSpeed: 6, bladeCap: 12, color: 0x3aa0e0, canEnterWater: true, underwaterFull: true },
+      { id: 'digger', maker: 'hidachi', name: 'ヒダチ EX-450', icon: '⛏️', price: 450, ability: '強力掘削・1押しで深く掘れる＋掘る速さUP（幅は狭め）',
+        digRadius: 1.8, digRate: 24, layer: 1.4, moveSpeed: 6.5, bladeCap: 18, color: 0x808890, canEnterWater: false, underwaterFull: false },
+      { id: 'hauler', maker: 'caterpia', name: 'キャタピア 963', icon: '🚛', price: 500, ability: '大容量運搬・土をたくさん運べる＋削る幅が広い（移動やや遅め）',
+        digRadius: 2.8, digRate: 18, layer: 0.8, moveSpeed: 6, bladeCap: 30, color: 0xe07a3a, canEnterWater: false, underwaterFull: false },
+      { id: 'd11', maker: 'caterpia', name: 'キャタピア D-11改', icon: '🦏', price: 800, ability: '超大型ブル・最大の幅＋最大の容量（最高峰だが移動はとても遅い）',
+        digRadius: 3.6, digRate: 24, layer: 1.2, moveSpeed: 4.5, bladeCap: 40, color: 0xc25a20, canEnterWater: false, underwaterFull: false },
+      { id: 'sk200', maker: 'koveriko', name: 'コベリコ SK-200', icon: '🦾', price: 350, ability: '中型バックホウ・掘りも整地もそこそこのバランス掘削',
+        digRadius: 2.0, digRate: 20, layer: 1.2, moveSpeed: 6.5, bladeCap: 14, color: 0x9a5ad0, canEnterWater: false, underwaterFull: false },
+      { id: 'skaqua', maker: 'koveriko', name: 'コベリコ SK-AQUA改', icon: '🌊', price: 650, ability: '大型水中バックホウ・深い水で幅広に掘れる（水中の上位機）',
+        digRadius: 2.6, digRate: 20, layer: 1.0, moveSpeed: 5.5, bladeCap: 18, color: 0x6060c8, canEnterWater: true, underwaterFull: true },
+      { id: 'l90', maker: 'borugo', name: 'ボルゴ L-90', icon: '🚚', price: 380, ability: 'ホイールローダー・速く走って土を運ぶ＋そこそこ容量',
+        digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 9, bladeCap: 22, color: 0xd03838, canEnterWater: false, underwaterFull: false },
+      { id: 'a60', maker: 'borugo', name: 'ボルゴ A-60', icon: '🛻', price: 600, ability: '大型運搬機・最大級の容量で大量に運ぶ（移動は遅い）',
+        digRadius: 2.6, digRate: 18, layer: 0.8, moveSpeed: 5, bladeCap: 50, color: 0xa82828, canEnterWater: false, underwaterFull: false },
+      { id: 'sh77', maker: 'sumiken', name: 'スミケン SH-77', icon: '🔧', price: 550, ability: '万能オールラウンダー・幅/深さ/容量/速さが全部そこそこ',
+        digRadius: 2.5, digRate: 20, layer: 1.0, moveSpeed: 7, bladeCap: 22, color: 0xc8ccd0, canEnterWater: false, underwaterFull: false },
+      { id: 'lsamp', maker: 'sumiken', name: 'スミケン LS-AMP', icon: '🚙', price: 480, ability: '水陸両用・陸も深い水も入れる（水中の掘りは遅め）',
+        digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 6.5, bladeCap: 16, color: 0x40b0a0, canEnterWater: true, underwaterFull: false }
+    ];
+    function machineById(id) { for (let k = 0; k < MACHINES.length; k++) if (MACHINES[k].id === id) return MACHINES[k]; return MACHINES[0]; }
+    function curM() { return machineById(game.machine); }
 
     // ===================== データ =====================
     const heights = new Float32Array(N), baseHeights = new Float32Array(N);
@@ -102,7 +165,7 @@
     const passRef = new Float32Array(N), passTag = new Int32Array(N);
     const waterD = new Float32Array(N);
     const fL = new Float32Array(N), fR = new Float32Array(N), fT = new Float32Array(N), fB = new Float32Array(N);
-    const game = { blade: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, hasSub: false, machine: 'dozer' };
+    const game = { blade: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, owned: ['dozer'], machine: 'dozer' };
     let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
 
@@ -345,7 +408,21 @@
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.9), bodyMat); cabin.position.set(0, 1.6, -0.2); dozer.add(cabin);
     const blade = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 0.25), darkMat); const BLADE_Y = 0.6; blade.position.set(0, BLADE_Y, 1.45); dozer.add(blade);
     const trackL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 2.4), darkMat); trackL.position.set(-0.8, 0.4, 0); dozer.add(trackL);
-    const trackR = trackL.clone(); trackR.position.x = 0.8; dozer.add(trackR); scene.add(dozer);
+    const trackR = trackL.clone(); trackR.position.x = 0.8; dozer.add(trackR);
+    // ===== アタッチメント（重機の種類で見た目を出し分け）。既定は非表示→applyMachineで該当だけ表示 =====
+    const armG = new THREE.Group(); // バックホウ：腕（ブーム＋スティック＋バケット）
+    const boom = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 1.7), darkMat); boom.position.set(0, 1.2, 0.85); boom.rotation.x = 0.55; armG.add(boom);
+    const stick = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 1.05), darkMat); stick.position.set(0, 0.6, 1.75); stick.rotation.x = -0.45; armG.add(stick);
+    const armBkt = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.46, 0.5), darkMat); armBkt.position.set(0, 0.32, 2.12); armG.add(armBkt);
+    armG.visible = false; dozer.add(armG);
+    const loaderG = new THREE.Group(); // ホイールローダー：前バケット（左右アーム＋ワイドな爪）
+    const lArmL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 1.5), darkMat); lArmL.position.set(-0.55, 0.7, 1.0); lArmL.rotation.x = 0.32; loaderG.add(lArmL);
+    const lArmR = lArmL.clone(); lArmR.position.x = 0.55; loaderG.add(lArmR);
+    const scoop = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.52, 0.62), darkMat); scoop.position.set(0, 0.34, 1.95); loaderG.add(scoop);
+    loaderG.visible = false; dozer.add(loaderG);
+    const dumpG = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.78, 1.9), darkMat); dumpG.position.set(0, 1.25, -0.55); // 運搬機：後ろの荷台
+    dumpG.visible = false; dozer.add(dumpG);
+    scene.add(dozer);
 
     // 粒子
     function makeParticles(n, size, color, opacity) {
@@ -395,15 +472,16 @@
     let lastVib = 0, shake = 0;
     function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
     function gradePush(dt) {
+      const M = curM(), RAD = M.digRadius;
       const fx = game.mx + Math.sin(game.myaw) * 1.2, fz = game.mz + Math.cos(game.myaw) * 1.2;
       let blade = game.blade, cutVol = 0, changed = false;
       for (let idx = 0; idx < N; idx++) {
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist >= DIG_RADIUS) continue;
+        if (dist >= RAD) continue;
         if (passTag[idx] !== pushId) { passTag[idx] = pushId; passRef[idx] = heights[idx]; }
-        let step = DIG_RATE * dt * Math.max(0.4, 1 - dist / DIG_RADIUS);
-        if (waterD[idx] > WATER_EPS && game.machine !== 'sub') step *= UNDERWATER_DIG_MULT; // 水中バックホウは水中も普通速度
-        const h = heights[idx], cutFloor = Math.max(cutHeight, passRef[idx] - LAYER), fillCeil = Math.min(cutHeight, passRef[idx] + LAYER);
+        let step = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
+        if (waterD[idx] > WATER_EPS && !M.underwaterFull) step *= UNDERWATER_DIG_MULT; // 水中バックホウは水中も普通速度
+        const h = heights[idx], cutFloor = Math.max(cutHeight, passRef[idx] - M.layer), fillCeil = Math.min(cutHeight, passRef[idx] + M.layer);
         if (h > cutFloor + 0.01) { const cut = Math.min(h - cutFloor, step); if (cut > 0) { heights[idx] = h - cut; blade += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; } }
         else if (h < fillCeil - 0.01 && blade > 0) { const fill = Math.min(fillCeil - h, step, blade / CELL_AREA); if (fill > 0) { heights[idx] = h + fill; blade -= fill * CELL_AREA; changed = true; } }
       }
@@ -418,7 +496,8 @@
       if (keys.right) { mxv += R[0]; mzv += R[1]; } if (keys.left) { mxv -= R[0]; mzv -= R[1]; }
       let moving = false; const len = Math.sqrt(mxv * mxv + mzv * mzv);
       if (len > 0.0001) {
-        mxv /= len; mzv /= len; const step = MOVE_SPEED * dt, half = WORLD / 2 - 0.5;
+        const M = curM(); mxv /= len; mzv /= len;
+        const step = M.moveSpeed * (game.blade > M.bladeCap ? 0.55 : 1) * dt, half = WORLD / 2 - 0.5; // 容量超え＝重くて遅い
         const cx = Math.max(-half, Math.min(half, game.mx + mxv * step)), cz = Math.max(-half, Math.min(half, game.mz + mzv * step));
         let applied = false;
         if (canStand(cx, cz)) { game.mx = cx; game.mz = cz; applied = true; }
@@ -443,7 +522,7 @@
     }
 
     // ===================== HUD・クリア判定・レベル進行 =====================
-    const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel");
+    const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge");
     const workBadge = document.getElementById("b-work"), basinBadge = document.getElementById("b-main"), barEl = document.querySelector("#bar > i"), machineBtn = document.getElementById("machineBtn");
     function drainOf(z, w0) { return w0 > 0 ? Math.max(0, Math.min(1, 1 - zoneVol(z) / w0)) : 0; }
     function levelDone() {
@@ -453,6 +532,7 @@
     }
     function refreshHUD() {
       totalEl.textContent = totalWater().toFixed(0); moneyEl.textContent = game.money;
+      const M = curM(); bladeEl.textContent = game.blade.toFixed(1); bladeCapEl.textContent = M.bladeCap; bladeBadge.classList.toggle("over", game.blade > M.bladeCap);
       let overall = 0;
       if (LV.type === 'level') {
         const fp = Math.max(0, Math.min(1, 1 - zoneFlatness(LV.A) / LV.A0flat));
@@ -512,33 +592,72 @@
     })();
     document.getElementById("reset").addEventListener("click", () => { if (window.confirm("このレベルを最初からやり直しますか？")) loadLevel(curLevel); });
     document.getElementById("again").addEventListener("click", nextLevel);
-    function applyMachine() { // 機械の効果を反映（水中バックホウ=深水OK＋見た目）
-      const sub = game.machine === 'sub';
-      WATER_CAN_ENTER = sub;
-      bodyMat.color.set(sub ? 0x3aa0e0 : 0xf0c020);
-      machineBtn.style.display = game.hasSub ? 'flex' : 'none';
-      machineBtn.classList.toggle('sub', sub);
-      machineBtn.childNodes[0].nodeValue = sub ? '🤿 水中' : '🚜 ブル';
+    // 重機の見た目データ（種類＝アタッチメント／大きさ）。idで明示・未登録は能力テキスト＋値段から自動推定
+    const VKIND = { dozer: 'dozer', bigdozer: 'dozer', d11: 'dozer', mini: 'mini', kx12: 'backhoe', sub: 'backhoe', digger: 'backhoe', sk200: 'backhoe', skaqua: 'backhoe', lsamp: 'backhoe', sh77: 'loader', l90: 'loader', hauler: 'hauler', a60: 'hauler' };
+    const VSCALE = { dozer: 1.0, bigdozer: 1.32, d11: 1.6, mini: 0.72, kx12: 0.82, sub: 1.0, digger: 1.16, sk200: 1.0, skaqua: 1.28, lsamp: 0.92, sh77: 1.1, l90: 1.06, hauler: 1.22, a60: 1.38 };
+    function machineKind(M) {
+      if (VKIND[M.id]) return VKIND[M.id];
+      const a = M.ability || '';
+      if (/ローダー/.test(a)) return 'loader';
+      if (/運搬/.test(a)) return 'hauler';
+      if (/ミニ/.test(a)) return 'mini';
+      if (/バックホウ|掘削|水中/.test(a)) return 'backhoe';
+      return 'dozer';
     }
-    document.getElementById("shop").addEventListener("click", function () {
-      if (game.hasSub) { window.alert("水中バックホウは購入済みです。「機械チェンジ」で乗り換えできます。"); return; }
-      if (game.money < SUB_PRICE) { window.alert("お金が足りません。\n水中バックホウ " + SUB_PRICE + "万円 ／ 所持金 " + game.money + "万円（あと " + (SUB_PRICE - game.money) + "万円）\nレベルをクリアして報酬を貯めよう。"); return; }
-      if (window.confirm("水中バックホウを " + SUB_PRICE + "万円 で購入しますか？\n（深い水に入って水中も掘れるようになります）")) {
-        game.money -= SUB_PRICE; game.hasSub = true; game.machine = 'sub'; applyMachine(); refreshHUD(); save();
-        window.alert("水中バックホウを購入しました！「機械チェンジ」でブルと切替できます。");
+    function machineScale(M) { return VSCALE[M.id] || Math.max(0.75, Math.min(1.6, 0.9 + (M.price || 0) / 1000)); }
+    function applyMachine() { // 今の重機の効果と見た目を反映
+      const M = curM();
+      WATER_CAN_ENTER = M.canEnterWater;
+      bodyMat.color.set(M.color);
+      const k = machineKind(M); // 種類でアタッチメントを出し分け
+      dozer.scale.setScalar(machineScale(M)); // 大きさを重機ごとに変える
+      blade.visible = (k === 'dozer' || k === 'mini');
+      armG.visible = (k === 'backhoe');
+      loaderG.visible = (k === 'loader');
+      dumpG.visible = (k === 'hauler');
+      machineBtn.style.display = game.owned.length > 1 ? 'flex' : 'none'; // 2台以上持っていれば切替ボタン表示
+      machineBtn.classList.toggle('sub', M.canEnterWater);
+      machineBtn.childNodes[0].nodeValue = M.icon + ' ' + M.name;
+    }
+    function ownsMachine(id) { return game.owned.indexOf(id) >= 0; }
+    function setMachine(id) { if (!ownsMachine(id)) return; game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); save(); }
+    const garage = document.getElementById("garage"), gList = document.getElementById("g-list");
+    function renderGarage() {
+      let html = '', lastMaker = '';
+      for (let k = 0; k < MACHINES.length; k++) {
+        const m = MACHINES[k];
+        if (m.maker !== lastMaker) { lastMaker = m.maker; const mk = makerById(m.maker); html += '<div class="g-maker">' + mk.dot + ' ' + mk.name + ' <small>' + mk.sub + '</small></div>'; }
+        const own = ownsMachine(m.id), cur = game.machine === m.id; let btn;
+        if (cur) btn = '<button class="g-btn used" disabled>使用中</button>';
+        else if (own) btn = '<button class="g-btn use" data-id="' + m.id + '">使う</button>';
+        else if (game.money >= m.price) btn = '<button class="g-btn buy" data-id="' + m.id + '">' + m.price + '万円 購入</button>';
+        else btn = '<button class="g-btn ng" disabled>' + m.price + '万円<br><small>あと' + (m.price - game.money) + '</small></button>';
+        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³</small></div>' + btn + '</div>';
       }
+      gList.innerHTML = html;
+    }
+    document.getElementById("shop").addEventListener("click", function () { renderGarage(); garage.classList.add("show"); });
+    document.getElementById("g-close").addEventListener("click", function () { garage.classList.remove("show"); });
+    gList.addEventListener("click", function (e) {
+      const b = e.target.closest ? e.target.closest('.g-btn') : null; if (!b || !b.dataset || !b.dataset.id) return;
+      const id = b.dataset.id, m = machineById(id);
+      if (b.classList.contains('use')) { setMachine(id); renderGarage(); }
+      else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); setMachine(id); renderGarage(); tryVibrate(30); }
     });
-    machineBtn.addEventListener("click", function () { if (!game.hasSub) return; game.machine = game.machine === 'sub' ? 'dozer' : 'sub'; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); save(); });
+    machineBtn.addEventListener("click", function () { if (game.owned.length <= 1) return; const i = game.owned.indexOf(game.machine); setMachine(game.owned[(i + 1) % game.owned.length]); });
 
     // 保存
     const KEY = "doboku_water_proto_v4";
-    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, hasSub: game.hasSub, machine: game.machine })); } catch (e) {} }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine })); } catch (e) {} }
     function load() {
       try {
         const raw = localStorage.getItem(KEY); if (!raw) return false; const s = JSON.parse(raw);
         if (!s || s.g !== GRID || !s.h || s.h.length !== N || s.level == null || s.level >= NLV) return false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
-        game.money = s.money || 0; game.hasSub = !!s.hasSub; game.machine = s.machine || 'dozer';
+        game.money = s.money || 0;
+        game.owned = Array.isArray(s.owned) ? s.owned.slice() : ['dozer'].concat(s.hasSub ? ['sub'] : []); // 旧v4(hasSub)からも移行
+        if (game.owned.indexOf('dozer') < 0) game.owned.unshift('dozer');
+        game.machine = (s.machine && game.owned.indexOf(s.machine) >= 0) ? s.machine : 'dozer';
         loadLevel(s.level, s); return true;
       } catch (e) { return false; }
     }
@@ -573,9 +692,10 @@
       getLevel: () => curLevel, getLV: () => LV, getFps: () => fpsEMA,
       setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting,
       setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, setGF: (v) => { GF = v; }, setDamp: (v) => { FLUX_DAMP = v; },
-      getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, hasSub: () => game.hasSub,
-      buySub: () => { game.money -= SUB_PRICE; game.hasSub = true; game.machine = 'sub'; applyMachine(); refreshHUD(); },
-      setMachine: (m) => { game.machine = m; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); }, SUB_PRICE: SUB_PRICE, REWARD: CLEAR_REWARD,
+      getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, getOwned: () => game.owned.slice(), getBlade: () => game.blade, curM: () => curM(), MACHINES: MACHINES, REWARD: CLEAR_REWARD,
+      buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
+      setMachine: (id) => { if (game.owned.indexOf(id) >= 0) { game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); } },
+      look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), blade: blade.visible, arm: armG.visible, loader: loaderG.visible, dump: dumpG.visible }),
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
     };
