@@ -440,7 +440,7 @@
       const fx = game.mx + Math.sin(game.myaw) * 1.4, fz = game.mz + Math.cos(game.myaw) * 1.4, gy = sampleHeight(fx, fz), wet = sampleWater(fx, fz) > WATER_EPS, nDust = strong ? 4 : 2;
       for (let i = 0; i < nDust; i++) emit(wet ? splash : dust, fx, gy, fz, 3.0, 1.3);
       if (strong && !wet) { const now = performance.now(); if (now - lastChunk > 70) { lastChunk = now; for (let i = 0; i < 2; i++) emit(chunk, fx, gy, fz, 4.2, 0.8); } }
-      digPulse = strong ? 0.16 : 0.10; shake = Math.min(strong ? 0.16 : 0.09, shake + (strong ? 0.06 : 0.03));
+      digPulse = strong ? 0.16 : 0.10; shake = Math.min(strong ? 0.05 : 0.04, shake + (strong ? 0.02 : 0.015)); // 整地中の揺れを控えめに(上限0.16→0.05)
     }
 
     // ===================== 入力 =====================
@@ -696,6 +696,7 @@
       buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
       setMachine: (id) => { if (game.owned.indexOf(id) >= 0) { game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); } },
       look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), blade: blade.visible, arm: armG.visible, loader: loaderG.visible, dump: dumpG.visible }),
+      getShake: () => shake,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
     };
