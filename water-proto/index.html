@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>土木ゲーム 水の試作（4レベル）</title>
+<style>
+  :root { --dig:#e07a1c; --fill:#2faa55; --ink:#20303a; --panel:rgba(255,255,255,0.82); --water:#2f7fd6; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#bfe3f2;
+    font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; touch-action:none; overscroll-behavior:none;
+  }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; touch-action:none; }
+  #hud-top { position:fixed; top:env(safe-area-inset-top,8px); left:0; right:0; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; pointer-events:none; padding:8px env(safe-area-inset-right,8px) 0 env(safe-area-inset-left,8px); }
+  .badge { background:var(--panel); color:var(--ink); border-radius:14px; padding:7px 13px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.15); font-variant-numeric:tabular-nums; }
+  .badge small { font-weight:700; opacity:.7; font-size:.72em; }
+  #b-work .v { color:var(--fill); }
+  #b-main .v { color:var(--water); }
+  #total-badge { opacity:.92; } #total-badge .v { color:var(--water); }
+  #money-badge .v { color:#b8860b; }
+  .badge.done { background:#cdeccd; }
+  #shop { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #machineBtn { position:fixed; left:calc(env(safe-area-inset-left,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:8px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; display:flex; flex-direction:column; align-items:center; line-height:1.1; }
+  #machineBtn span { font-size:9px; opacity:.7; margin-top:1px; }
+  #machineBtn.sub { background:#cfe6f6; }
+  #shop:active, #machineBtn:active { transform:scale(.95); }
+  #lv-badge { background:rgba(32,48,58,.82); color:#fff; }
+  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 52px); left:50%; transform:translateX(-50%); width:min(82vw,380px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); }
+  #goal .label { font-size:12px; font-weight:700; color:var(--ink); opacity:.85; margin-bottom:4px; line-height:1.45; }
+  #bar { height:9px; background:#d6dee2; border-radius:6px; overflow:hidden; }
+  #bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#7db5ec,#2f7fd6); transition:width .2s ease; }
+  #dpad { position:fixed; left:calc(env(safe-area-inset-left,0px) + 16px); bottom:calc(env(safe-area-inset-bottom,0px) + 18px); display:grid; grid-template-columns:repeat(3,56px); grid-template-rows:repeat(3,56px); gap:6px; z-index:4; }
+  .dbtn { border:none; border-radius:14px; background:var(--panel); color:var(--ink); font-size:24px; font-weight:900; box-shadow:0 3px 10px rgba(0,0,0,.2); display:flex; align-items:center; justify-content:center; touch-action:none; }
+  .dbtn:active, .dbtn.on { background:#cfe0ea; transform:scale(.94); }
+  #d-up { grid-area:1/2/2/3; } #d-left { grid-area:2/1/3/2; } #d-right { grid-area:2/3/3/4; } #d-down { grid-area:3/2/4/3; }
+  #act { position:fixed; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 22px); width:96px; height:96px; border-radius:50%; border:none; color:#fff; font-weight:900; font-size:21px; background:var(--dig); box-shadow:0 6px 16px rgba(0,0,0,.28); cursor:pointer; line-height:1.1; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; touch-action:none; }
+  #act span { font-size:11px; font-weight:700; opacity:.9; }
+  #act.on { transform:scale(.93); filter:brightness(1.12); }
+  #reset { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 12px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:10px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #reset:active { transform:scale(.95); }
+  #hint { position:fixed; left:50%; bottom:96px; transform:translateX(-50%); background:rgba(0,0,0,.55); color:#fff; padding:9px 16px; border-radius:18px; font-weight:700; font-size:13px; pointer-events:none; transition:opacity .5s ease; text-align:center; max-width:86vw; line-height:1.6; }
+  #win { position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; background:rgba(10,30,40,.55); color:#fff; text-align:center; z-index:8; gap:14px; }
+  #win.show { display:flex; animation:fade .4s ease; }
+  @keyframes fade { from{opacity:0} to{opacity:1} }
+  #win h1 { font-size:42px; margin:0; text-shadow:0 3px 16px rgba(0,0,0,.5); }
+  #win p { margin:0; font-size:17px; font-weight:700; }
+  #again { margin-top:6px; background:var(--water); color:#fff; border:none; border-radius:14px; padding:14px 30px; font-weight:900; font-size:18px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,.3); }
+  #rotate { position:fixed; top:calc(env(safe-area-inset-top,8px) + 96px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,.6); color:#fff; padding:8px 14px; border-radius:16px; font-weight:700; font-size:13px; pointer-events:none; opacity:0; transition:opacity .4s ease; z-index:6; white-space:nowrap; }
+  #rotate.show { opacity:1; }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="hud-top">
+    <div class="badge" id="lv-badge">LV<span id="lvnum">1</span></div>
+    <div class="badge" id="b-work">🏗 <span id="workLabel">作業場</span> <span class="v" id="work">0</span><small>%</small></div>
+    <div class="badge" id="b-main">💧 <span id="mainLabel">ため池</span> <span class="v" id="basin">0</span><small>/<span id="basinT">0</span> m³</small></div>
+    <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
+    <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
+  </div>
+  <div id="goal"><div class="label" id="goalLabel">…</div><div id="bar"><i></i></div></div>
+  <div id="dpad">
+    <button class="dbtn" id="d-up" data-dir="up" aria-label="前">▲</button>
+    <button class="dbtn" id="d-left" data-dir="left" aria-label="左">◀</button>
+    <button class="dbtn" id="d-right" data-dir="right" aria-label="右">▶</button>
+    <button class="dbtn" id="d-down" data-dir="down" aria-label="後">▼</button>
+  </div>
+  <button id="act">ならす<span>押す</span></button>
+  <button id="reset">最初から</button>
+  <button id="shop">🛒 ショップ</button>
+  <button id="machineBtn" style="display:none">🚜 ブル<span>切替</span></button>
+  <div id="hint">…</div>
+  <div id="rotate">📱 横向きがおすすめ</div>
+  <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+  "use strict";
+  (function () {
+    if (!window.THREE) { document.body.innerHTML = "<p style='color:#fff;padding:20px'>3D部品(Three.js)の読み込みに失敗しました。</p>"; return; }
+
+    // ===================== 設定 =====================
+    const GRID = 36, WORLD = 24, V = GRID + 1, N = V * V;
+    const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
+    const MIN_H = -4, MAX_H = 9;
+    const MOVE_SPEED = 7;
+    const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
+    const FLAT_TOL = 0.4;
+    const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
+    // 水[追加]
+    const WATER_EPS = 0.02, RENDER_EPS = 0.0015, SHALLOW_GROUND = -0.1, PLAIN_MIN = 0.08;
+    let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
+    const ENTER_WATER_MAX = 0.7, UNDERWATER_DIG_MULT = 0.5; let WATER_CAN_ENTER = false;
+    const CLEAR_REWARD = 100, SUB_PRICE = 300; // 万円（クリア報酬・水中バックホウ価格）
+
+    // ===================== データ =====================
+    const heights = new Float32Array(N), baseHeights = new Float32Array(N);
+    const vx = new Float32Array(N), vz = new Float32Array(N);
+    const passRef = new Float32Array(N), passTag = new Int32Array(N);
+    const waterD = new Float32Array(N);
+    const fL = new Float32Array(N), fR = new Float32Array(N), fT = new Float32Array(N), fB = new Float32Array(N);
+    const game = { blade: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, hasSub: false, machine: 'dozer' };
+    let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
+    let curLevel = 0, LV = null, winTimer = 0;
+
+    for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) { const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD; }
+    function gauss(x, z, cx, cz, h, s) { const d2 = (x - cx) * (x - cx) + (z - cz) * (z - cz); return h * Math.exp(-d2 / (2 * s * s)); }
+    function rnd2(k) { return (Math.random() - 0.5) * k; }
+    function rect(i0, i1, j0, j1) { return { i0: i0, i1: i1, j0: j0, j1: j1 }; }
+    function inRect(i, j, z) { return i >= z.i0 && i <= z.i1 && j >= z.j0 && j <= z.j1; }
+    function worldX(i) { return (i / GRID - 0.5) * WORLD; }
+    function worldZ(j) { return (j / GRID - 0.5) * WORLD; }
+    function clamp(h) { return h < MIN_H ? MIN_H : (h > MAX_H ? MAX_H : h); }
+    function clearWater() { waterD.fill(0); fL.fill(0); fR.fill(0); fT.fill(0); fB.fill(0); }
+
+    // ===================== ゾーン計測（汎用） =====================
+    function zoneEach(z, cb) { for (let j = z.j0; j <= z.j1; j++) for (let i = z.i0; i <= z.i1; i++) cb(j * V + i); }
+    function zoneVol(z) { let s = 0; zoneEach(z, (idx) => { s += waterD[idx]; }); return s * CELL_AREA; }
+    function zoneMean(z) { let m = 0, n = 0; zoneEach(z, (idx) => { m += heights[idx]; n++; }); return n ? m / n : 0; }
+    function zoneMaxDev(z) { const mean = zoneMean(z); let m = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > m) m = d; }); return m; }
+    function zoneFlatness(z) { const mean = zoneMean(z); let s = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > FLAT_TOL) { const e = d - FLAT_TOL; s += e * e * CELL_AREA; } }); return s; }
+    function totalWater() { let s = 0; for (let idx = 0; idx < N; idx++) s += waterD[idx]; return s * CELL_AREA; }
+
+    // ===================== レベル地形生成 =====================
+    function genDrain(L) { // L0 / L3: 調整池（作業場を排水+整地, ため池に貯水）
+      clearWater();
+      const A = L.A, B = L.B, bcx = worldX((B.i0 + B.i1) / 2), bcz = worldZ((B.j0 + B.j1) / 2), sc = L.bumpScale;
+      const bumps = [
+        { x: -3.5 + rnd2(2), z: 5.5 + rnd2(1.5), h: 1.3 * sc, s: 1.2 },
+        { x: 3.0 + rnd2(2), z: 7.5 + rnd2(1.5), h: 1.2 * sc, s: 1.2 },
+        { x: -1.0 + rnd2(2), z: 9.0 + rnd2(1.5), h: 1.1 * sc, s: 1.1 },
+        { x: 3.5 + rnd2(2), z: 4.5 + rnd2(1.5), h: 1.0 * sc, s: 1.1 }
+      ];
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
+        let h = rnd2(0.1);
+        h -= gauss(x, z, bcx, bcz, 3.4, 2.6);   // ため池の深い穴
+        h += gauss(x, z, 0, 0, 1.2, 2.2);        // 土手
+        if (inRect(i, j, A)) { const t = (j - A.j0) / (A.j1 - A.j0); h = -0.7 + 0.4 * t + rnd2(0.08); for (let b = 0; b < bumps.length; b++) h += gauss(x, z, bumps[b].x, bumps[b].z, bumps[b].h, bumps[b].s); }
+        heights[idx] = clamp(h);
+      }
+      zoneEach(A, (idx) => { const d = L.wl - heights[idx]; if (d > 0) waterD[idx] = d; });
+    }
+    function genFlow(L) { // L1: 通水（奥の水を尾根を掘って手前へ流す）
+      clearWater();
+      const S = L.S, D = L.B, scz = worldZ((S.j0 + S.j1) / 2), dcz = worldZ((D.j0 + D.j1) / 2);
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        let h = rnd2(0.1);
+        h -= gauss(x, z, 0, scz, 1.6, 3.0);   // 奥の水たまり（上流）
+        h += gauss(x, z, 0, 0, 2.0, 1.8);      // 中央の尾根（掘る対象）
+        h -= gauss(x, z, 0, dcz, 2.6, 3.0);    // 手前の窪み（下流・より深い）
+        heights[idx] = clamp(h);
+      }
+      zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
+    }
+    function genDam(L) { // L2: ため池づくり（盛土で堤防+水路で引き込み）
+      clearWater();
+      const S = L.S, P = L.B;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.1);
+        if (i < 10 || i > 26) h = 0.7 + rnd2(0.1);        // 左右の壁（水路を挟む）
+        else if (j >= S.j0 && j <= S.j1) h = -1.5 + rnd2(0.1); // 奥の水たまり（水源）
+        else if (j >= 10 && j <= 14) h = 0.8 + rnd2(0.1);  // 水源とため池の間の土手（掘る）
+        else if (j >= P.j0 && j <= P.j1) h = -0.8 + rnd2(0.1); // ため池の底（浅い窪み）
+        else if (j >= 27 && j <= 28) h = -0.6 + rnd2(0.05);  // すき間（堤防で盛る対象＝ここから漏れる）
+        else if (j >= 29) h = -2.5 + rnd2(0.1);            // 手前の落ち先（漏れた水が溜まる）
+        else h = rnd2(0.1);
+        heights[idx] = clamp(h);
+      }
+      zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
+    }
+    function genSub(L) { // L5: 水中工事（水没した底の土の山を水中バックホウで掘り下げて平らに）
+      clearWater();
+      const A = L.A, m1 = L.m1, m2 = L.m2;
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
+        let h = rnd2(0.1);
+        if (inRect(i, j, A)) { h = -1.8 + rnd2(0.1); h += gauss(x, z, m1[0], m1[1], 0.9, 1.7) + gauss(x, z, m2[0], m2[1], 0.8, 1.6); } // 深い底＋水中の山
+        heights[idx] = clamp(h);
+      }
+      zoneEach(A, (idx) => { const d = 0.0 - heights[idx]; if (d > 0) waterD[idx] = d; }); // 水面0=深い水(普通のブルは入れない)
+    }
+
+    // ===================== レベル定義 =====================
+    const LEVEL_DEFS = [
+      { type: 'drain', name: '調整池', mainLabel: 'ため池', A: rect(8, 28, 22, 33), B: rect(9, 27, 4, 15),
+        wl: -0.05, bumpScale: 1.0, drainWin: 0.85, maxDev: 0.7, tFrac: 0.5, startZ: 6.3,
+        goal: '調整池の工事：①手前の<b>作業場</b>の水を奥へ流して乾かし平らに ②奥の<b>ため池</b>に水をためる',
+        hint: '緑の枠＝作業場・青の枠＝ため池。土手に<b>水路を掘って排水</b>し、作業場を乾かして平らに',
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genDrain },
+      { type: 'fill', name: '通水（川を通す）', mainLabel: '通水', S: rect(10, 26, 3, 11), B: rect(10, 26, 25, 33),
+        tFrac: 0.5, startZ: 4,
+        goal: '通水の工事：中央の<b>高い尾根を掘って水路</b>を作り、奥の水を手前の<b>下流（緑の枠）</b>へ流そう',
+        hint: '青の枠（奥）＝水源・緑の枠（手前）＝下流。中央の尾根を掘って水路を作り、水を手前へ通そう',
+        markers: [['S', 0x2f7fd6], ['B', 0x2faa55]], gen: genFlow },
+      { type: 'fill', name: 'ため池づくり', mainLabel: 'ため池', S: rect(10, 26, 3, 9), B: rect(10, 26, 15, 26),
+        tFrac: 0.25, startZ: 0,
+        goal: 'ため池づくり：手前の<b>すき間を盛土でせき止め</b>（堤防）、奥から<b>水路を掘って水を引き込み</b>、ため池に貯めよう',
+        hint: '青の枠＝水源・緑の枠＝ため池。まず手前のすき間を<b>盛土でふさぎ</b>、奥の土手を掘って水を引き込む',
+        markers: [['S', 0x2f7fd6], ['B', 0x2faa55]], gen: genDam },
+      { type: 'drain', name: '調整池（難）', mainLabel: 'ため池', A: rect(8, 28, 22, 33), B: rect(9, 27, 4, 15),
+        wl: 0.12, bumpScale: 1.5, drainWin: 0.9, maxDev: 0.6, tFrac: 0.6, startZ: 6.3,
+        goal: '調整池（難しい版）：水多め・目標厳しめ。作業場をしっかり排水＆平らに＋ため池に多く貯める',
+        hint: 'レベル1と同じ要領。水が多く目標も厳しめ。排水路をしっかり掘って排水＆整地',
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genDrain },
+      { type: 'level', name: '水中工事', mainLabel: '', A: rect(9, 27, 9, 27), m1: [-3, 1], m2: [3, -2],
+        maxDev: 0.5, tFrac: 0, startZ: 0,
+        goal: '水中工事：水没した底の<b>土の山</b>を、<b>水中バックホウ</b>で掘り下げて平らに（普通のブルは深い水に入れない→🛒で購入を）',
+        hint: '深い水で普通のブルは入れない。🛒で水中バックホウを買い、機械チェンジして水中の山を削り平らに',
+        markers: [['A', 0x9b59b6]], gen: genSub }
+    ];
+    const NLV = LEVEL_DEFS.length;
+
+    // ===================== 描画層 =====================
+    const app = document.getElementById("app");
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0xbfe3f2, 1);
+    app.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0xbfe3f2, 42, 95);
+    const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 500);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(-6, 12, 7); scene.add(sun);
+
+    const positions = new Float32Array(N * 3), colors = new Float32Array(N * 3), indices = [];
+    for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) { const a = j * V + i, b = j * V + (i + 1), c = (j + 1) * V + i, d = (j + 1) * V + (i + 1); indices.push(a, c, b, b, c, d); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geo.setIndex(indices);
+    const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
+    scene.add(ground);
+    const cLow = new THREE.Color(0x6f9a4d), cMid = new THREE.Color(0xb08245), cHigh = new THREE.Color(0x6e4a23), cWet = new THREE.Color(0x4a5f3a), tmpC = new THREE.Color();
+    function colorFor(h, wet, out) {
+      const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
+      if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
+      if (wet) out.lerp(cWet, 0.32); return out;
+    }
+    let normalsDone = false;
+    function syncGeometry() {
+      for (let idx = 0; idx < N; idx++) {
+        positions[idx * 3] = vx[idx]; positions[idx * 3 + 1] = heights[idx]; positions[idx * 3 + 2] = vz[idx];
+        colorFor(heights[idx], waterD[idx] > WATER_EPS, tmpC); colors[idx * 3] = tmpC.r; colors[idx * 3 + 1] = tmpC.g; colors[idx * 3 + 2] = tmpC.b;
+      }
+      geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
+      if (!normalsDone) { geo.computeVertexNormals(); normalsDone = true; }
+      geo.computeBoundingSphere();
+    }
+
+    // 水メッシュ
+    const wPos = new Float32Array(N * 3);
+    const wGeo = new THREE.BufferGeometry();
+    wGeo.setAttribute("position", new THREE.BufferAttribute(wPos, 3));
+    wGeo.setIndex(indices.slice());
+    const water = new THREE.Mesh(wGeo, new THREE.MeshStandardMaterial({ color: 0x2f7fd6, transparent: true, opacity: 0.72, roughness: 0.2, metalness: 0.05, depthWrite: false }));
+    water.renderOrder = 2; water.frustumCulled = false; scene.add(water);
+    let wt = 0, wframe = 0;
+    function syncWater(dt) {
+      wt += dt; wframe++;
+      for (let idx = 0; idx < N; idx++) {
+        wPos[idx * 3] = vx[idx]; wPos[idx * 3 + 2] = vz[idx];
+        const d = waterD[idx];
+        let show = false;
+        if (d > RENDER_EPS) {
+          if (heights[idx] < SHALLOW_GROUND || d > PLAIN_MIN) show = true; // 窪み or 本物の池の深さ
+          else { // 浅くても「高い縁に囲まれて溜まっている水」(低地に貯まる水)は描く＝水位上昇が見える／囲い無しの平地こぼれ筋は描かない
+            const ii = idx % V, jj = (idx / V) | 0, surf = heights[idx] + d; let rim = -1e9;
+            if (ii > 0 && heights[idx - 1] > rim) rim = heights[idx - 1];
+            if (ii < GRID && heights[idx + 1] > rim) rim = heights[idx + 1];
+            if (jj > 0 && heights[idx - V] > rim) rim = heights[idx - V];
+            if (jj < GRID && heights[idx + V] > rim) rim = heights[idx + V];
+            if (rim > surf + 0.1) show = true; // 隣に水面より高い縁=囲われて溜まっている
+          }
+        }
+        if (show) {
+          const flow = Math.abs(fR[idx] - fL[idx]) + Math.abs(fB[idx] - fT[idx]);
+          const amp = 0.02 + (flow < 0.12 ? flow : 0.12) * 0.5;
+          const ripple = Math.sin(wt * 2.6 + vx[idx] * 0.7 + vz[idx] * 0.7) * (d > 0.05 ? amp : amp * d / 0.05);
+          wPos[idx * 3 + 1] = heights[idx] + d + ripple;
+        } else { wPos[idx * 3 + 1] = heights[idx] - 0.05; }
+      }
+      wGeo.attributes.position.needsUpdate = true;
+      if (wframe % 2 === 0) wGeo.computeVertexNormals();
+    }
+
+    // 水シミュ（仮想パイプ法・浅水＋慣性・総量保存）
+    function simWater(dt) {
+      const dtG = dt * GF, inv = dt / CELL_AREA;
+      for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
+        const c = j * V + i, surfC = heights[c] + waterD[c];
+        let l = (i > 0) ? (fL[c] + dtG * (surfC - (heights[c - 1] + waterD[c - 1]))) : 0; if (l < 0) l = 0; else l *= FLUX_DAMP;
+        let r = (i < GRID) ? (fR[c] + dtG * (surfC - (heights[c + 1] + waterD[c + 1]))) : 0; if (r < 0) r = 0; else r *= FLUX_DAMP;
+        let t = (j > 0) ? (fT[c] + dtG * (surfC - (heights[c - V] + waterD[c - V]))) : 0; if (t < 0) t = 0; else t *= FLUX_DAMP;
+        let b = (j < GRID) ? (fB[c] + dtG * (surfC - (heights[c + V] + waterD[c + V]))) : 0; if (b < 0) b = 0; else b *= FLUX_DAMP;
+        const out = (l + r + t + b) * dt;
+        if (out > 1e-9) { const avail = waterD[c] * CELL_AREA; if (out > avail) { const K = avail / out; l *= K; r *= K; t *= K; b *= K; } }
+        fL[c] = l; fR[c] = r; fT[c] = t; fB[c] = b;
+      }
+      for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
+        const c = j * V + i; let inflow = 0;
+        if (i > 0) inflow += fR[c - 1]; if (i < GRID) inflow += fL[c + 1]; if (j > 0) inflow += fB[c - V]; if (j < GRID) inflow += fT[c + V];
+        const nw = waterD[c] + (inflow - (fL[c] + fR[c] + fT[c] + fB[c])) * inv; waterD[c] = nw > 0 ? nw : 0;
+      }
+    }
+    function sampleWater(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return waterD[j * V + i]; }
+    function canStand(x, z) { return WATER_CAN_ENTER || sampleWater(x, z) <= ENTER_WATER_MAX; }
+    function findDryStart() { // スタートが深い水中なら、近くの立てる場所(乾き/浅瀬)へ寄せる（はまり防止）
+      if (canStand(game.mx, game.mz)) return;
+      const half = WORLD / 2 - 0.5;
+      for (let r = 1; r <= 20; r++) for (let a = 0; a < 12; a++) {
+        const ang = a / 12 * Math.PI * 2, x = game.mx + Math.cos(ang) * r * 0.6, z = game.mz + Math.sin(ang) * r * 0.6;
+        if (Math.abs(x) > half || Math.abs(z) > half) continue;
+        if (canStand(x, z)) { game.mx = x; game.mz = z; return; }
+      }
+    }
+
+    // ゾーン旗・枠
+    const markerGroup = new THREE.Group(); scene.add(markerGroup);
+    function rebuildMarkers(list) {
+      for (let k = markerGroup.children.length - 1; k >= 0; k--) { const c = markerGroup.children[k]; markerGroup.remove(c); if (c.geometry) c.geometry.dispose(); }
+      list.forEach(function (m) {
+        const z = LV[m[0]], colorHex = m[1]; if (!z) return;
+        const x0 = worldX(z.i0), x1 = worldX(z.i1), z0 = worldZ(z.j0), z1 = worldZ(z.j1), col = new THREE.Color(colorHex);
+        const pts = [new THREE.Vector3(x0, 0.3, z0), new THREE.Vector3(x1, 0.3, z0), new THREE.Vector3(x1, 0.3, z1), new THREE.Vector3(x0, 0.3, z1), new THREE.Vector3(x0, 0.3, z0)];
+        markerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: colorHex })));
+        const poleMat = new THREE.MeshStandardMaterial({ color: colorHex, flatShading: true, roughness: 0.6 });
+        const flagMat = new THREE.MeshStandardMaterial({ color: colorHex, flatShading: true, roughness: 0.6, emissive: col.clone().multiplyScalar(0.25) });
+        [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].forEach(function (c) {
+          const pole = new THREE.Mesh(new THREE.BoxGeometry(0.16, 4.0, 0.16), poleMat); pole.position.set(c[0], 1.0, c[1]); markerGroup.add(pole);
+          const flag = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.06), flagMat); flag.position.set(c[0] + 0.45, 2.7, c[1]); markerGroup.add(flag);
+        });
+      });
+    }
+
+    // 重機
+    const dozer = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf0c020, flatShading: true, roughness: 0.7 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x333333, flatShading: true, roughness: 0.9 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.9, 2.2), bodyMat); body.position.y = 0.95; dozer.add(body);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.9), bodyMat); cabin.position.set(0, 1.6, -0.2); dozer.add(cabin);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 0.25), darkMat); const BLADE_Y = 0.6; blade.position.set(0, BLADE_Y, 1.45); dozer.add(blade);
+    const trackL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 2.4), darkMat); trackL.position.set(-0.8, 0.4, 0); dozer.add(trackL);
+    const trackR = trackL.clone(); trackR.position.x = 0.8; dozer.add(trackR); scene.add(dozer);
+
+    // 粒子
+    function makeParticles(n, size, color, opacity) {
+      const pos = new Float32Array(n * 3), vel = new Float32Array(n * 3), life = new Float32Array(n);
+      for (let k = 0; k < n; k++) pos[k * 3 + 1] = -999;
+      const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size, transparent: true, opacity, depthWrite: false })); scene.add(pts);
+      return { pos, vel, life, g, cur: 0, n };
+    }
+    const dust = makeParticles(90, 0.34, 0xbfa478, 0.85), chunk = makeParticles(40, 0.75, 0x8a6234, 0.95), splash = makeParticles(50, 0.4, 0x9fd0ff, 0.9);
+    function emit(p, x, y, z, up, spread) { const k = p.cur; p.cur = (p.cur + 1) % p.n; p.pos[k * 3] = x + rnd2(spread); p.pos[k * 3 + 1] = y + 0.2; p.pos[k * 3 + 2] = z + rnd2(spread); p.vel[k * 3] = rnd2(spread * 2.2); p.vel[k * 3 + 1] = up * (0.7 + Math.random() * 0.8); p.vel[k * 3 + 2] = rnd2(spread * 2.2); p.life[k] = 0.45 + Math.random() * 0.4; }
+    function updateParticles(p, dt, grav) { let live = false; for (let k = 0; k < p.n; k++) { if (p.life[k] > 0) { live = true; p.life[k] -= dt; p.vel[k * 3 + 1] -= grav * dt; p.pos[k * 3] += p.vel[k * 3] * dt; p.pos[k * 3 + 1] += p.vel[k * 3 + 1] * dt; p.pos[k * 3 + 2] += p.vel[k * 3 + 2] * dt; if (p.life[k] <= 0) p.pos[k * 3 + 1] = -999; } } if (live) p.g.attributes.position.needsUpdate = true; }
+    let digPulse = 0, bladePhase = 0, lastChunk = 0;
+    function digFx(strong) {
+      const fx = game.mx + Math.sin(game.myaw) * 1.4, fz = game.mz + Math.cos(game.myaw) * 1.4, gy = sampleHeight(fx, fz), wet = sampleWater(fx, fz) > WATER_EPS, nDust = strong ? 4 : 2;
+      for (let i = 0; i < nDust; i++) emit(wet ? splash : dust, fx, gy, fz, 3.0, 1.3);
+      if (strong && !wet) { const now = performance.now(); if (now - lastChunk > 70) { lastChunk = now; for (let i = 0; i < 2; i++) emit(chunk, fx, gy, fz, 4.2, 0.8); } }
+      digPulse = strong ? 0.16 : 0.10; shake = Math.min(strong ? 0.16 : 0.09, shake + (strong ? 0.06 : 0.03));
+    }
+
+    // ===================== 入力 =====================
+    const keys = { up: false, down: false, left: false, right: false };
+    let acting = false;
+    const clearKeys = () => { keys.up = keys.down = keys.left = keys.right = false; acting = false; document.querySelectorAll(".dbtn").forEach((b) => b.classList.remove("on")); const a = document.getElementById("act"); if (a) a.classList.remove("on"); };
+    document.querySelectorAll(".dbtn").forEach((b) => {
+      const dir = b.getAttribute("data-dir"); const ptrs = new Set();
+      const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && b.setPointerCapture) { try { b.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); keys[dir] = true; b.classList.add("on"); hideHint(); };
+      const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { keys[dir] = false; b.classList.remove("on"); } };
+      b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("pointerleave", off);
+    });
+    const KEYMAP = { ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" };
+    window.addEventListener("keydown", (e) => { if (e.code === "Space") { acting = true; const a = document.getElementById("act"); if (a) a.classList.add("on"); e.preventDefault(); hideHint(); return; } const d = KEYMAP[e.code]; if (d) { keys[d] = true; e.preventDefault(); hideHint(); } });
+    window.addEventListener("keyup", (e) => { if (e.code === "Space") { acting = false; const a = document.getElementById("act"); if (a) a.classList.remove("on"); return; } const d = KEYMAP[e.code]; if (d) keys[d] = false; });
+    window.addEventListener("blur", clearKeys); window.addEventListener("pagehide", clearKeys);
+    const el = renderer.domElement;
+    let lookId = null, lookX = 0, lookY = 0;
+    el.addEventListener("pointerdown", (e) => { if (lookId !== null) return; lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {} });
+    el.addEventListener("pointermove", (e) => { if (e.pointerId !== lookId) return; e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; });
+    const endLook = (e) => { if (e.pointerId === lookId) lookId = null; };
+    el.addEventListener("pointerup", endLook); el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
+    window.addEventListener("touchmove", (e) => { if (lookId !== null) e.preventDefault(); }, { passive: false });
+    let hintTimer = setTimeout(hideHint, 12000);
+    function hideHint() { const h = document.getElementById("hint"); if (h) h.style.opacity = "0"; clearTimeout(hintTimer); }
+    function setHint(txt) { const h = document.getElementById("hint"); if (h) { h.innerHTML = txt; h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 12000); } }
+
+    // ===================== 整地（押し均し・体積保存） =====================
+    let lastVib = 0, shake = 0;
+    function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
+    function gradePush(dt) {
+      const fx = game.mx + Math.sin(game.myaw) * 1.2, fz = game.mz + Math.cos(game.myaw) * 1.2;
+      let blade = game.blade, cutVol = 0, changed = false;
+      for (let idx = 0; idx < N; idx++) {
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist >= DIG_RADIUS) continue;
+        if (passTag[idx] !== pushId) { passTag[idx] = pushId; passRef[idx] = heights[idx]; }
+        let step = DIG_RATE * dt * Math.max(0.4, 1 - dist / DIG_RADIUS);
+        if (waterD[idx] > WATER_EPS && game.machine !== 'sub') step *= UNDERWATER_DIG_MULT; // 水中バックホウは水中も普通速度
+        const h = heights[idx], cutFloor = Math.max(cutHeight, passRef[idx] - LAYER), fillCeil = Math.min(cutHeight, passRef[idx] + LAYER);
+        if (h > cutFloor + 0.01) { const cut = Math.min(h - cutFloor, step); if (cut > 0) { heights[idx] = h - cut; blade += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; } }
+        else if (h < fillCeil - 0.01 && blade > 0) { const fill = Math.min(fillCeil - h, step, blade / CELL_AREA); if (fill > 0) { heights[idx] = h + fill; blade -= fill * CELL_AREA; changed = true; } }
+      }
+      game.blade = Math.max(0, blade); game.totalDug += cutVol;
+      if (changed) { digFx(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); }
+    }
+
+    function updateDozer(dt) {
+      const F = [-Math.sin(camYaw), -Math.cos(camYaw)], R = [-F[1], F[0]];
+      let mxv = 0, mzv = 0;
+      if (keys.up) { mxv += F[0]; mzv += F[1]; } if (keys.down) { mxv -= F[0]; mzv -= F[1]; }
+      if (keys.right) { mxv += R[0]; mzv += R[1]; } if (keys.left) { mxv -= R[0]; mzv -= R[1]; }
+      let moving = false; const len = Math.sqrt(mxv * mxv + mzv * mzv);
+      if (len > 0.0001) {
+        mxv /= len; mzv /= len; const step = MOVE_SPEED * dt, half = WORLD / 2 - 0.5;
+        const cx = Math.max(-half, Math.min(half, game.mx + mxv * step)), cz = Math.max(-half, Math.min(half, game.mz + mzv * step));
+        let applied = false;
+        if (canStand(cx, cz)) { game.mx = cx; game.mz = cz; applied = true; }
+        else if (canStand(cx, game.mz)) { game.mx = cx; applied = true; }
+        else if (canStand(game.mx, cz)) { game.mz = cz; applied = true; }
+        game.myaw = Math.atan2(mxv, mzv); moving = applied;
+      }
+      const gy = sampleHeight(game.mx, game.mz); dozer.position.set(game.mx, gy, game.mz); dozer.rotation.y = game.myaw;
+      if (acting && moving && !game.won) {
+        if (!pushing) { pushing = true; pushId++; cutHeight = sampleHeight(game.mx, game.mz); strokeX = game.mx; strokeZ = game.mz; }
+        else { const ddx = game.mx - strokeX, ddz = game.mz - strokeZ; if (ddx * ddx + ddz * ddz >= STROKE_DIST * STROKE_DIST) { pushId++; strokeX = game.mx; strokeZ = game.mz; } }
+        gradePush(dt);
+      } else pushing = false;
+      if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
+      else { blade.position.y = BLADE_Y; blade.rotation.x = 0; }
+    }
+    function sampleHeight(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return heights[j * V + i]; }
+    function updateCamera() {
+      const aspect = window.innerWidth / Math.max(1, window.innerHeight), f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = CAM_DIST * f, horiz = dist * Math.cos(camPitch);
+      let sx = 0, sy = 0; if (shake > 0.001) { sx = rnd2(shake); sy = rnd2(shake); }
+      camera.position.set(game.mx + horiz * Math.sin(camYaw) + sx, dist * Math.sin(camPitch) + sy, game.mz + horiz * Math.cos(camYaw)); camera.lookAt(game.mx, 1, game.mz);
+    }
+
+    // ===================== HUD・クリア判定・レベル進行 =====================
+    const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel");
+    const workBadge = document.getElementById("b-work"), basinBadge = document.getElementById("b-main"), barEl = document.querySelector("#bar > i"), machineBtn = document.getElementById("machineBtn");
+    function drainOf(z, w0) { return w0 > 0 ? Math.max(0, Math.min(1, 1 - zoneVol(z) / w0)) : 0; }
+    function levelDone() {
+      if (LV.type === 'drain') return drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev && zoneVol(LV.B) >= LV.tB;
+      if (LV.type === 'level') return zoneMaxDev(LV.A) <= LV.maxDev;
+      return zoneVol(LV.B) >= LV.tB;
+    }
+    function refreshHUD() {
+      totalEl.textContent = totalWater().toFixed(0); moneyEl.textContent = game.money;
+      let overall = 0;
+      if (LV.type === 'level') {
+        const fp = Math.max(0, Math.min(1, 1 - zoneFlatness(LV.A) / LV.A0flat));
+        workEl.textContent = Math.round(fp * 100); overall = fp;
+        workBadge.classList.toggle("done", zoneMaxDev(LV.A) <= LV.maxDev);
+      } else {
+        basinEl.textContent = zoneVol(LV.B).toFixed(0); basinTEl.textContent = LV.tB.toFixed(0);
+        let main = LV.tB > 0 ? Math.min(1, zoneVol(LV.B) / LV.tB) : 0; overall = main;
+        if (LV.type === 'drain') {
+          const dr = Math.min(1, drainOf(LV.A, LV.A0water) / LV.drainWin), fl = Math.max(0, Math.min(1, 1 - zoneFlatness(LV.A) / LV.A0flat)), wf = Math.min(dr, fl);
+          workEl.textContent = Math.round(wf * 100); overall = Math.min(wf, main);
+          workBadge.classList.toggle("done", drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev);
+        }
+        basinBadge.classList.toggle("done", zoneVol(LV.B) >= LV.tB);
+      }
+      barEl.style.width = (overall * 100).toFixed(0) + "%";
+    }
+    function checkWin() { if (game.won) return; if (levelDone()) { game.won = true; showWin(); } }
+    function showWin() {
+      const last = curLevel >= NLV - 1;
+      game.money += CLEAR_REWARD; refreshHUD(); save();
+      document.getElementById("win-title").textContent = LV.name + " 完成！";
+      document.getElementById("win-text").textContent = "報酬 +" + CLEAR_REWARD + "万円（所持金 " + game.money + "万円）" + (last ? " ／ 全レベルクリア！" : "");
+      document.getElementById("again").textContent = last ? "もう一度（レベル1へ）" : "次のレベルへ ▶";
+      document.getElementById("win").classList.add("show"); tryVibrate(40);
+      clearTimeout(winTimer); winTimer = setTimeout(nextLevel, 2000);
+    }
+    function nextLevel() { clearTimeout(winTimer); document.getElementById("win").classList.remove("show"); loadLevel((curLevel + 1) % NLV); }
+
+    function loadLevel(n, saved) {
+      clearTimeout(winTimer); curLevel = ((n % NLV) + NLV) % NLV; game.level = curLevel;
+      const D = LEVEL_DEFS[curLevel]; LV = {}; for (const k in D) LV[k] = D[k];
+      if (saved) { heights.set(saved.h); baseHeights.set(saved.b); clearWater(); waterD.set(saved.w); LV.A0water = saved.a0; LV.A0flat = saved.af; LV.tB = saved.tB; }
+      else { D.gen(LV); baseHeights.set(heights); LV.A0water = LV.type === 'drain' ? Math.max(0.001, zoneVol(LV.A)) : 0; LV.A0flat = (LV.type === 'drain' || LV.type === 'level') ? Math.max(1, zoneFlatness(LV.A)) : 1; LV.tB = LV.tFrac * totalWater(); }
+      game.blade = 0; game.totalDug = 0; game.won = false; pushing = false;
+      applyMachine();
+      if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
+      else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
+      lvnumEl.textContent = (curLevel + 1);
+      workLabelEl.textContent = LV.type === 'level' ? '整地' : '作業場';
+      document.getElementById("goalLabel").innerHTML = LV.goal;
+      document.getElementById("mainLabel").textContent = LV.mainLabel;
+      document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level') ? '' : 'none';
+      document.getElementById("b-main").style.display = LV.type === 'level' ? 'none' : '';
+      document.getElementById("win").classList.remove("show");
+      rebuildMarkers(LV.markers); setHint(LV.hint);
+      syncGeometry(); syncWater(0); refreshHUD(); save();
+    }
+
+    // ボタン
+    const actBtn = document.getElementById("act");
+    (function () {
+      const ptrs = new Set();
+      const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && actBtn.setPointerCapture) { try { actBtn.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); acting = true; actBtn.classList.add("on"); hideHint(); };
+      const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { acting = false; actBtn.classList.remove("on"); } };
+      actBtn.addEventListener("pointerdown", on); actBtn.addEventListener("pointerup", off); actBtn.addEventListener("pointercancel", off); actBtn.addEventListener("pointerleave", off);
+    })();
+    document.getElementById("reset").addEventListener("click", () => { if (window.confirm("このレベルを最初からやり直しますか？")) loadLevel(curLevel); });
+    document.getElementById("again").addEventListener("click", nextLevel);
+    function applyMachine() { // 機械の効果を反映（水中バックホウ=深水OK＋見た目）
+      const sub = game.machine === 'sub';
+      WATER_CAN_ENTER = sub;
+      bodyMat.color.set(sub ? 0x3aa0e0 : 0xf0c020);
+      machineBtn.style.display = game.hasSub ? 'flex' : 'none';
+      machineBtn.classList.toggle('sub', sub);
+      machineBtn.childNodes[0].nodeValue = sub ? '🤿 水中' : '🚜 ブル';
+    }
+    document.getElementById("shop").addEventListener("click", function () {
+      if (game.hasSub) { window.alert("水中バックホウは購入済みです。「機械チェンジ」で乗り換えできます。"); return; }
+      if (game.money < SUB_PRICE) { window.alert("お金が足りません。\n水中バックホウ " + SUB_PRICE + "万円 ／ 所持金 " + game.money + "万円（あと " + (SUB_PRICE - game.money) + "万円）\nレベルをクリアして報酬を貯めよう。"); return; }
+      if (window.confirm("水中バックホウを " + SUB_PRICE + "万円 で購入しますか？\n（深い水に入って水中も掘れるようになります）")) {
+        game.money -= SUB_PRICE; game.hasSub = true; game.machine = 'sub'; applyMachine(); refreshHUD(); save();
+        window.alert("水中バックホウを購入しました！「機械チェンジ」でブルと切替できます。");
+      }
+    });
+    machineBtn.addEventListener("click", function () { if (!game.hasSub) return; game.machine = game.machine === 'sub' ? 'dozer' : 'sub'; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); save(); });
+
+    // 保存
+    const KEY = "doboku_water_proto_v4";
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, hasSub: game.hasSub, machine: game.machine })); } catch (e) {} }
+    function load() {
+      try {
+        const raw = localStorage.getItem(KEY); if (!raw) return false; const s = JSON.parse(raw);
+        if (!s || s.g !== GRID || !s.h || s.h.length !== N || s.level == null || s.level >= NLV) return false;
+        if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
+        game.money = s.money || 0; game.hasSub = !!s.hasSub; game.machine = s.machine || 'dozer';
+        loadLevel(s.level, s); return true;
+      } catch (e) { return false; }
+    }
+
+    // リサイズ・ループ
+    let lastW = 0, lastH = 0, rotateTimer = 0;
+    function resize() { const w = window.innerWidth, h = window.innerHeight; if (w === 0 || h === 0) return; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); lastW = w; lastH = h; const rot = document.getElementById("rotate"); if (h > w + 40) { rot.classList.add("show"); clearTimeout(rotateTimer); rotateTimer = setTimeout(() => rot.classList.remove("show"), 3500); } else rot.classList.remove("show"); }
+    window.addEventListener("resize", resize); window.addEventListener("orientationchange", resize);
+    let last = performance.now(), running = true, hudAccum = 0, fpsEMA = 60;
+    function loop(now) {
+      if (document.hidden) { running = false; return; }
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      if (dt > 0) fpsEMA = fpsEMA * 0.92 + (1 / dt) * 0.08;
+      if (window.innerWidth !== lastW || window.innerHeight !== lastH) resize();
+      updateDozer(dt);
+      const sub = dt / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); syncWater(dt);
+      updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0); updateParticles(splash, dt, 6.0);
+      if (shake > 0) shake = Math.max(0, shake - dt * 0.4);
+      hudAccum += dt; if (hudAccum > 0.15) { hudAccum = 0; refreshHUD(); checkWin(); }
+      updateCamera(); renderer.render(scene, camera); requestAnimationFrame(loop);
+    }
+    document.addEventListener("visibilitychange", () => { if (document.hidden) { clearKeys(); } else if (!running) { running = true; last = performance.now(); requestAnimationFrame(loop); } });
+
+    // 起動
+    if (!load()) loadLevel(0);
+    normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
+
+    // デバッグ用フック
+    if (/[?&]test\b/.test(location.search)) window.__t = {
+      game, keys, heights, waterD, simWater, syncWater, syncGeometry, gradePush, updateDozer, camera, sampleHeight, sampleWater,
+      totalWater, zoneVol, zoneMaxDev, zoneFlatness, levelDone, checkWin, loadLevel, refreshHUD, N, V, GRID,
+      getLevel: () => curLevel, getLV: () => LV, getFps: () => fpsEMA,
+      setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting,
+      setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, setGF: (v) => { GF = v; }, setDamp: (v) => { FLUX_DAMP = v; },
+      getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, hasSub: () => game.hasSub,
+      buySub: () => { game.money -= SUB_PRICE; game.hasSub = true; game.machine = 'sub'; applyMachine(); refreshHUD(); },
+      setMachine: (m) => { game.machine = m; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); }, SUB_PRICE: SUB_PRICE, REWARD: CLEAR_REWARD,
+      fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
+      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
+    };
+  })();
+  </script>
+</body>
+</html>
