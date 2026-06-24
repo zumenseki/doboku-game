@@ -68,6 +68,22 @@
   #again { margin-top:6px; background:var(--water); color:#fff; border:none; border-radius:14px; padding:14px 30px; font-weight:900; font-size:18px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,.3); }
   #rotate { position:fixed; top:calc(env(safe-area-inset-top,8px) + 96px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,.6); color:#fff; padding:8px 14px; border-radius:16px; font-weight:700; font-size:13px; pointer-events:none; opacity:0; transition:opacity .4s ease; z-index:6; white-space:nowrap; }
   #rotate.show { opacity:1; }
+  #mute { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 92px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:16px; line-height:1; }
+  #achBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 132px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #mute:active, #achBtn:active { transform:scale(.95); } #mute.off { opacity:.55; }
+  .g-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
+  .g-btn.upg { background:#e89a2a; color:#fff; } .g-btn.maxed { background:#f0d8a0; color:#7a5a10; }
+  #badges { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #badges.show { display:flex; animation:fade .3s ease; }
+  .b-box { background:#fff; border-radius:16px; padding:16px; width:min(94vw,440px); max-height:84vh; overflow:auto; box-shadow:0 8px 30px rgba(0,0,0,.4); }
+  .b-box h2 { margin:0 0 10px; font-size:18px; color:var(--ink); }
+  #b-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
+  .b-item { background:#f2f5f7; border-radius:12px; padding:10px; text-align:center; color:var(--ink); }
+  .b-item.locked { opacity:.45; filter:grayscale(1); }
+  .b-item .b-ic { font-size:30px; line-height:1.2; } .b-item b { display:block; font-size:13px; margin-top:2px; } .b-item small { display:block; font-size:10px; opacity:.7; line-height:1.3; }
+  #b-close { margin-top:10px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
+  #achToast { position:fixed; left:50%; top:calc(env(safe-area-inset-top,8px) + 150px); transform:translateX(-50%); background:rgba(184,134,11,.96); color:#fff; padding:10px 18px; border-radius:18px; font-weight:800; font-size:14px; box-shadow:0 4px 14px rgba(0,0,0,.3); opacity:0; transition:opacity .4s ease; pointer-events:none; z-index:7; text-align:center; white-space:nowrap; }
+  #achToast.show { opacity:1; }
 </style>
 </head>
 <body>
@@ -91,9 +107,13 @@
   <button id="reset">最初から</button>
   <button id="shop">🛒 ショップ</button>
   <button id="machineBtn" style="display:none">🚜 ブル<span>切替</span></button>
+  <button id="mute" aria-label="音">🔊</button>
+  <button id="achBtn">🏅 実績</button>
   <div id="hint">…</div>
   <div id="rotate">📱 横向きがおすすめ</div>
   <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
+  <div id="badges"><div class="b-box"><h2>🏅 実績バッジ</h2><div id="b-list"></div><button id="b-close">とじる</button></div></div>
+  <div id="achToast"></div>
   <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -115,6 +135,16 @@
     let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
     const ENTER_WATER_MAX = 0.7, UNDERWATER_DIG_MULT = 0.5; let WATER_CAN_ENTER = false;
     const CLEAR_REWARD = 100; // 万円（クリア報酬）
+    // 重機レベルアップ（強化）テーブル＝digRate/digRadius/moveSpeed の倍率（index=Lv, Lv0=未強化）
+    const UPG_MAX = 5;
+    const UPG_RATE = [1.0, 1.18, 1.36, 1.55, 1.75, 2.0];   // 掘る速さ
+    const UPG_RAD  = [1.0, 1.06, 1.12, 1.18, 1.24, 1.30];  // 削る幅（広げ過ぎ注意で控えめ）
+    const UPG_SPD  = [1.0, 1.08, 1.16, 1.24, 1.32, 1.40];  // 移動速さ
+    function upgCost(M, lv) { // 現Lv(0..UPG_MAX-1)→lv+1 の費用(万円)。値段帯で段階化
+      const p = M.price || 0;
+      const base = p < 200 ? 40 : (p < 400 ? 70 : (p < 600 ? 110 : 160));
+      return base * (lv + 1);
+    }
     // 重機ラインナップ（メーカー別・もじり名＝架空。値段は強い/大きいほど高い）。
     const MAKERS = [
       { id: 'komashi', name: 'コマシ', sub: '(コマツ風)', dot: '🟡' },
@@ -123,7 +153,9 @@
       { id: 'caterpia', name: 'キャタピア', sub: '(Cat風)', dot: '🟠' },
       { id: 'koveriko', name: 'コベリコ', sub: '(コベルコ風)', dot: '🟣' },
       { id: 'borugo', name: 'ボルゴ', sub: '(ボルボ風)', dot: '🔴' },
-      { id: 'sumiken', name: 'スミケン', sub: '(住友建機風)', dot: '⚪' }
+      { id: 'sumiken', name: 'スミケン', sub: '(住友建機風)', dot: '⚪' },
+      { id: 'yanama', name: 'ヤナマ', sub: '(ヤンマー風)', dot: '🟤' },
+      { id: 'isuzu2', name: 'イスズ', sub: '(いすゞ風)', dot: '🔷' }
     ];
     function makerById(id) { for (let k = 0; k < MAKERS.length; k++) if (MAKERS[k].id === id) return MAKERS[k]; return MAKERS[0]; }
     const MACHINES = [
@@ -154,10 +186,46 @@
       { id: 'sh77', maker: 'sumiken', name: 'スミケン SH-77', icon: '🔧', price: 550, ability: '万能オールラウンダー・幅/深さ/容量/速さが全部そこそこ',
         digRadius: 2.5, digRate: 20, layer: 1.0, moveSpeed: 7, bladeCap: 22, color: 0xc8ccd0, canEnterWater: false, underwaterFull: false },
       { id: 'lsamp', maker: 'sumiken', name: 'スミケン LS-AMP', icon: '🚙', price: 480, ability: '水陸両用・陸も深い水も入れる（水中の掘りは遅め）',
-        digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 6.5, bladeCap: 16, color: 0x40b0a0, canEnterWater: true, underwaterFull: false }
+        digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 6.5, bladeCap: 16, color: 0x40b0a0, canEnterWater: true, underwaterFull: false },
+      { id: 'ym30', maker: 'yanama', name: 'ヤナマ ViO-30', icon: '🌱', price: 260, ability: 'コンパクト掘削・後方小旋回でキビキビ＋そこそこ深く掘れる（幅は狭め）',
+        digRadius: 1.7, digRate: 19, layer: 1.2, moveSpeed: 9.5, bladeCap: 9, color: 0xc23838, canEnterWater: false, underwaterFull: false },
+      { id: 'ymb7', maker: 'yanama', name: 'ヤナマ B7-Sigma', icon: '🪨', price: 700, ability: 'パワー掘削機・深く速く掘れる＋大容量（幅はやや狭め・移動遅め）',
+        digRadius: 2.0, digRate: 26, layer: 1.5, moveSpeed: 5.5, bladeCap: 26, color: 0x9a2a2a, canEnterWater: false, underwaterFull: false },
+      { id: 'igx250', maker: 'isuzu2', name: 'イスズ GIGA-250', icon: '🛞', price: 250, ability: '小型運搬ダンプ・速く走って土を運ぶ＋積載そこそこ（掘りは浅め）',
+        digRadius: 2.2, digRate: 16, layer: 0.7, moveSpeed: 9.5, bladeCap: 24, color: 0x3a6fb0, canEnterWater: false, underwaterFull: false },
+      { id: 'igxmax', maker: 'isuzu2', name: 'イスズ GIGA-MAX', icon: '🚒', price: 720, ability: '大型運搬ダンプ・超大容量で大量に運ぶ＋削る幅広め（移動は遅い）',
+        digRadius: 3.0, digRate: 17, layer: 0.8, moveSpeed: 5, bladeCap: 46, color: 0x244f8a, canEnterWater: false, underwaterFull: false }
     ];
     function machineById(id) { for (let k = 0; k < MACHINES.length; k++) if (MACHINES[k].id === id) return MACHINES[k]; return MACHINES[0]; }
     function curM() { return machineById(game.machine); }
+    // 重機の現強化Lv（0..UPG_MAX）。実効ステータス＝BASE×倍率（毎フレーム呼ばれるので使い回しオブジェクトで割当ゼロ）
+    function upgLv(id) { const v = game.upg[id]; return v ? (v > UPG_MAX ? UPG_MAX : v) : 0; }
+    const _eff = {};
+    function effectiveStats(M) {
+      const lv = upgLv(M.id);
+      _eff.digRadius = M.digRadius * UPG_RAD[lv];
+      _eff.digRate = M.digRate * UPG_RATE[lv];
+      _eff.moveSpeed = M.moveSpeed * UPG_SPD[lv];
+      _eff.layer = M.layer; _eff.bladeCap = M.bladeCap;        // 強化対象外（BASE透過）
+      _eff.underwaterFull = M.underwaterFull; _eff.id = M.id;
+      return _eff;
+    }
+    // 実績バッジ（cond は game を受け真偽。判定は購入/クリア/強化など「変化時のみ」呼ぶ＝毎フレーム禁止）
+    function distinctOwned() { return game.owned.length; }
+    function distinctMakers() { const s = {}; for (let k = 0; k < game.owned.length; k++) s[machineById(game.owned[k]).maker] = 1; return Object.keys(s).length; }
+    const ACHIEVEMENTS = [
+      { id: 'dig100',  icon: '⛏️', name: '見習いオペ',     desc: '累計100m³ 掘る',     cond: g => g.cum.dugAll >= 100 },
+      { id: 'dig1000', icon: '🏗️', name: '土工マイスター', desc: '累計1000m³ 掘る',    cond: g => g.cum.dugAll >= 1000 },
+      { id: 'dig5000', icon: '🌋', name: '大地の主',       desc: '累計5000m³ 掘る',    cond: g => g.cum.dugAll >= 5000 },
+      { id: 'clear1',  icon: '🚩', name: '初現場',         desc: '1レベルクリア',     cond: g => g.cum.cleared >= 1 },
+      { id: 'clear5',  icon: '🏆', name: '現場監督',       desc: '累計5レベルクリア', cond: g => g.cum.cleared >= 5 },
+      { id: 'clear15', icon: '👑', name: 'ベテラン所長',   desc: '累計15レベルクリア', cond: g => g.cum.cleared >= 15 },
+      { id: 'own3',    icon: '🚜', name: 'コレクター',     desc: '重機を3台所有',     cond: g => distinctOwned() >= 3 },
+      { id: 'own6',    icon: '🏭', name: '大車両基地',     desc: '重機を6台所有',     cond: g => distinctOwned() >= 6 },
+      { id: 'mk4',     icon: '🌐', name: 'メーカー通',     desc: '4メーカー集める',   cond: g => distinctMakers() >= 4 },
+      { id: 'mkAll',   icon: '💠', name: '全メーカー制覇', desc: '全メーカー集める',  cond: g => distinctMakers() >= MAKERS.length },
+      { id: 'maxupg',  icon: '⭐', name: 'フルチューン',   desc: '1台をLv5まで強化',  cond: g => { for (const k in g.upg) if (g.upg[k] >= UPG_MAX) return true; return false; } }
+    ];
 
     // ===================== データ =====================
     const heights = new Float32Array(N), baseHeights = new Float32Array(N);
@@ -165,7 +233,7 @@
     const passRef = new Float32Array(N), passTag = new Int32Array(N);
     const waterD = new Float32Array(N);
     const fL = new Float32Array(N), fR = new Float32Array(N), fT = new Float32Array(N), fB = new Float32Array(N);
-    const game = { blade: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, owned: ['dozer'], machine: 'dozer' };
+    const game = { blade: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 } };
     let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
 
@@ -466,6 +534,73 @@
       digPulse = strong ? 0.16 : 0.10; shake = Math.min(strong ? 0.05 : 0.04, shake + (strong ? 0.02 : 0.015)); // 整地中の揺れを控えめに(上限0.16→0.05)
     }
 
+    // ===================== サウンド（手続き生成・WebAudio／音声ファイル不要） =====================
+    // AudioContextは初回ユーザー操作でだけ生成/resume（モバイル自動再生ポリシー対策）。ノードは使い回し（毎フレーム生成しない）。失敗時は全メソッドが無害なno-op。
+    const SND = (function () {
+      const MUTE_KEY = 'doboku_mute_v1';
+      let ctx = null, master = null, ready = false, started = false;
+      let muted = false; try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch (_) {}
+      let engOsc = null, engGain = null, engLP = null, engVibOsc = null, engVibGain = null;
+      let digBus = null, digGain = null, lastDig = 0;
+      function makeNoiseBuffer() {
+        const len = (ctx.sampleRate * 0.5) | 0, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.6;
+        return buf;
+      }
+      function build() {
+        master = ctx.createGain(); master.gain.value = muted ? 0 : 0.5; master.connect(ctx.destination);
+        engGain = ctx.createGain(); engGain.gain.value = 0.0;
+        engLP = ctx.createBiquadFilter(); engLP.type = 'lowpass'; engLP.frequency.value = 420; engLP.Q.value = 0.7;
+        engOsc = ctx.createOscillator(); engOsc.type = 'sawtooth'; engOsc.frequency.value = 48;
+        engVibGain = ctx.createGain(); engVibGain.gain.value = 6;
+        engVibOsc = ctx.createOscillator(); engVibOsc.type = 'sine'; engVibOsc.frequency.value = 7;
+        engVibOsc.connect(engVibGain); engVibGain.connect(engOsc.frequency);
+        engOsc.connect(engLP); engLP.connect(engGain); engGain.connect(master);
+        engOsc.start(); engVibOsc.start();
+        const nz = ctx.createBufferSource(); nz.buffer = makeNoiseBuffer(); nz.loop = true;
+        digBus = ctx.createBiquadFilter(); digBus.type = 'bandpass'; digBus.frequency.value = 900; digBus.Q.value = 0.8;
+        digGain = ctx.createGain(); digGain.gain.value = 0.0;
+        nz.connect(digBus); digBus.connect(digGain); digGain.connect(master);
+        nz.start();
+        ready = true;
+      }
+      function ensure() {
+        if (started) { if (ctx && ctx.state === 'suspended') ctx.resume(); return; }
+        started = true;
+        try { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; ctx = new AC(); build(); if (ctx.state === 'suspended') ctx.resume(); } catch (_) { ready = false; }
+      }
+      // 単発音用（buy/win/click のみ＝離散イベント限定。毎フレーム呼ぶな）
+      function beep(freq, t0, dur, vol, type) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type || 'triangle'; o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + dur + 0.02);
+      }
+      return {
+        unlock: function () { ensure(); },
+        isMuted: function () { return muted; },
+        toggleMute: function () { muted = !muted; try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (_) {} if (ready) master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.02); return muted; },
+        engine: function (moving) {
+          if (!ready || muted) return;
+          const now = ctx.currentTime;
+          engGain.gain.setTargetAtTime(moving ? 0.16 : 0.05, now, 0.08);
+          engOsc.frequency.setTargetAtTime(moving ? 70 : 46, now, 0.12);
+          engLP.frequency.setTargetAtTime(moving ? 620 : 380, now, 0.12);
+        },
+        dig: function (strong) {
+          if (!ready || muted) return;
+          const now = ctx.currentTime; if (now - lastDig < 0.08) return; lastDig = now;
+          digBus.frequency.setTargetAtTime(strong ? 760 : 1050, now, 0.02);
+          digGain.gain.cancelScheduledValues(now); digGain.gain.setValueAtTime(strong ? 0.22 : 0.13, now);
+          digGain.gain.exponentialRampToValueAtTime(0.0008, now + (strong ? 0.16 : 0.10));
+        },
+        click: function () { if (!ready || muted) return; beep(880, ctx.currentTime, 0.05, 0.18, 'square'); },
+        buy: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(660, t, 0.08, 0.2, 'triangle'); beep(990, t + 0.07, 0.1, 0.2, 'triangle'); },
+        win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); }
+      };
+    })();
+
     // ===================== 入力 =====================
     const keys = { up: false, down: false, left: false, right: false };
     let acting = false;
@@ -495,7 +630,7 @@
     let lastVib = 0, shake = 0;
     function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
     function gradePush(dt) {
-      const M = curM(), RAD = M.digRadius;
+      const M = effectiveStats(curM()), RAD = M.digRadius; // 強化倍率を反映した実効ステータス
       const fx = game.mx + Math.sin(game.myaw) * 1.2, fz = game.mz + Math.cos(game.myaw) * 1.2;
       let blade = game.blade, cutVol = 0, changed = false;
       for (let idx = 0; idx < N; idx++) {
@@ -509,7 +644,8 @@
         else if (h < fillCeil - 0.01 && blade > 0) { const fill = Math.min(fillCeil - h, step, blade / CELL_AREA); if (fill > 0) { heights[idx] = h + fill; blade -= fill * CELL_AREA; changed = true; } }
       }
       game.blade = Math.max(0, blade); game.totalDug += cutVol;
-      if (changed) { digFx(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); }
+      if (cutVol > 0) game.cum.dugAll += cutVol; // 累計掘削（レベルをまたいで保持＝実績用）
+      if (changed) { digFx(true); SND.dig(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); }
     }
 
     function updateDozer(dt) {
@@ -519,7 +655,7 @@
       if (keys.right) { mxv += R[0]; mzv += R[1]; } if (keys.left) { mxv -= R[0]; mzv -= R[1]; }
       let moving = false; const len = Math.sqrt(mxv * mxv + mzv * mzv);
       if (len > 0.0001) {
-        const M = curM(); mxv /= len; mzv /= len;
+        const M = effectiveStats(curM()); mxv /= len; mzv /= len; // 強化倍率を反映（移動速さ）
         const step = M.moveSpeed * (game.blade > M.bladeCap ? 0.55 : 1) * dt, half = WORLD / 2 - 0.5; // 容量超え＝重くて遅い
         const cx = Math.max(-half, Math.min(half, game.mx + mxv * step)), cz = Math.max(-half, Math.min(half, game.mz + mzv * step));
         let applied = false;
@@ -573,14 +709,14 @@
       }
       barEl.style.width = (overall * 100).toFixed(0) + "%";
     }
-    function checkWin() { if (game.won) return; if (levelDone()) { game.won = true; showWin(); } }
+    function checkWin() { if (game.won) return; if (levelDone()) { game.won = true; game.cum.cleared++; checkAchievements(); showWin(); } }
     function showWin() {
       const last = curLevel >= NLV - 1;
       game.money += CLEAR_REWARD; refreshHUD(); save();
       document.getElementById("win-title").textContent = LV.name + " 完成！";
       document.getElementById("win-text").textContent = "報酬 +" + CLEAR_REWARD + "万円（所持金 " + game.money + "万円）" + (last ? " ／ 全レベルクリア！" : "");
       document.getElementById("again").textContent = last ? "もう一度（レベル1へ）" : "次のレベルへ ▶";
-      document.getElementById("win").classList.add("show"); tryVibrate(40);
+      document.getElementById("win").classList.add("show"); tryVibrate(40); SND.win();
       clearTimeout(winTimer); winTimer = setTimeout(nextLevel, 2000);
     }
     function nextLevel() { clearTimeout(winTimer); document.getElementById("win").classList.remove("show"); loadLevel((curLevel + 1) % NLV); }
@@ -614,10 +750,11 @@
       actBtn.addEventListener("pointerdown", on); actBtn.addEventListener("pointerup", off); actBtn.addEventListener("pointercancel", off); actBtn.addEventListener("pointerleave", off);
     })();
     document.getElementById("reset").addEventListener("click", () => { if (window.confirm("このレベルを最初からやり直しますか？")) loadLevel(curLevel); });
+    (function () { const mb = document.getElementById('mute'); function paint() { mb.textContent = SND.isMuted() ? '🔇' : '🔊'; mb.classList.toggle('off', SND.isMuted()); } mb.addEventListener('click', function () { SND.unlock(); SND.toggleMute(); paint(); }); paint(); })();
     document.getElementById("again").addEventListener("click", nextLevel);
     // 重機の見た目データ（種類＝アタッチメント／大きさ）。idで明示・未登録は能力テキスト＋値段から自動推定
-    const VKIND = { dozer: 'dozer', bigdozer: 'dozer', d11: 'dozer', mini: 'mini', kx12: 'backhoe', sub: 'backhoe', digger: 'backhoe', sk200: 'backhoe', skaqua: 'backhoe', lsamp: 'backhoe', sh77: 'loader', l90: 'loader', hauler: 'hauler', a60: 'hauler' };
-    const VSCALE = { dozer: 1.0, bigdozer: 1.32, d11: 1.6, mini: 0.72, kx12: 0.82, sub: 1.0, digger: 1.16, sk200: 1.0, skaqua: 1.28, lsamp: 0.92, sh77: 1.1, l90: 1.06, hauler: 1.22, a60: 1.38 };
+    const VKIND = { dozer: 'dozer', bigdozer: 'dozer', d11: 'dozer', mini: 'mini', kx12: 'backhoe', sub: 'backhoe', digger: 'backhoe', sk200: 'backhoe', skaqua: 'backhoe', lsamp: 'backhoe', sh77: 'loader', l90: 'loader', hauler: 'hauler', a60: 'hauler', ym30: 'backhoe', ymb7: 'backhoe', igx250: 'hauler', igxmax: 'hauler' };
+    const VSCALE = { dozer: 1.0, bigdozer: 1.32, d11: 1.6, mini: 0.72, kx12: 0.82, sub: 1.0, digger: 1.16, sk200: 1.0, skaqua: 1.28, lsamp: 0.92, sh77: 1.1, l90: 1.06, hauler: 1.22, a60: 1.38, ym30: 0.8, ymb7: 1.18, igx250: 1.1, igxmax: 1.42 };
     function machineKind(M) {
       if (VKIND[M.id]) return VKIND[M.id];
       const a = M.ability || '';
@@ -644,6 +781,46 @@
     }
     function ownsMachine(id) { return game.owned.indexOf(id) >= 0; }
     function setMachine(id) { if (!ownsMachine(id)) return; game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); save(); }
+    // ===== 重機レベルアップ＆実績バッジ =====
+    function buyUpgrade(id) {
+      if (game.owned.indexOf(id) < 0) return;
+      const M = machineById(id), lv = upgLv(id);
+      if (lv >= UPG_MAX) return;
+      const cost = upgCost(M, lv);
+      if (game.money < cost) return;
+      game.money -= cost; game.upg[id] = lv + 1;
+      if (id === game.machine) applyMachine(); // 現行機なら整合（見た目は不変）
+      checkAchievements(); refreshHUD(); save(); renderGarage(); SND.buy(); tryVibrate(20);
+    }
+    let achQueue = [], achToastTimer = 0;
+    function checkAchievements(silent) { // 解禁チェックは「変化イベント時のみ」呼ぶ（毎フレーム禁止）。silent=移行時など静かに解禁
+      for (let k = 0; k < ACHIEVEMENTS.length; k++) {
+        const a = ACHIEVEMENTS[k];
+        if (game.unlockedAch[a.id]) continue;
+        if (a.cond(game)) { game.unlockedAch[a.id] = true; if (!silent) achQueue.push(a); }
+      }
+      if (!silent && achQueue.length) { save(); pumpAchToast(); }
+    }
+    function pumpAchToast() {
+      const el = document.getElementById("achToast"); if (!el) return;
+      if (el.classList.contains("show") || achQueue.length === 0) return;
+      const a = achQueue.shift();
+      el.innerHTML = '🏅 実績解禁！ ' + a.icon + ' <b>' + a.name + '</b>';
+      el.classList.add("show"); tryVibrate(30);
+      clearTimeout(achToastTimer);
+      achToastTimer = setTimeout(function () { el.classList.remove("show"); setTimeout(pumpAchToast, 450); }, 2200);
+    }
+    function renderBadges() {
+      let html = '';
+      for (let k = 0; k < ACHIEVEMENTS.length; k++) {
+        const a = ACHIEVEMENTS[k], got = !!game.unlockedAch[a.id];
+        html += '<div class="b-item' + (got ? '' : ' locked') + '"><div class="b-ic">' + a.icon + '</div><b>' + a.name + '</b><small>' + a.desc + '</small></div>';
+      }
+      document.getElementById("b-list").innerHTML = html;
+      const n = Object.keys(game.unlockedAch).length, h2 = document.querySelector("#badges h2");
+      if (h2) h2.textContent = '🏅 実績バッジ (' + n + '/' + ACHIEVEMENTS.length + ')';
+    }
+    function sanitizeUpg(o) { const out = {}; for (const id in o) { if (game.owned.indexOf(id) < 0) continue; let lv = o[id] | 0; if (lv < 1) continue; if (lv > UPG_MAX) lv = UPG_MAX; out[id] = lv; } return out; }
     const garage = document.getElementById("garage"), gList = document.getElementById("g-list");
     function renderGarage() {
       let html = '', lastMaker = '';
@@ -655,33 +832,51 @@
         else if (own) btn = '<button class="g-btn use" data-id="' + m.id + '">使う</button>';
         else if (game.money >= m.price) btn = '<button class="g-btn buy" data-id="' + m.id + '">' + m.price + '万円 購入</button>';
         else btn = '<button class="g-btn ng" disabled>' + m.price + '万円<br><small>あと' + (m.price - game.money) + '</small></button>';
-        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³</small></div>' + btn + '</div>';
+        let upgBtn = '', upgTag = '';
+        if (own) {
+          const lv = upgLv(m.id);
+          if (lv > 0) upgTag = ' <b style="color:#b8860b">+強化Lv' + lv + '</b>';
+          if (lv >= UPG_MAX) upgBtn = '<button class="g-btn maxed" disabled>強化MAX</button>';
+          else { const c = upgCost(m, lv); upgBtn = game.money >= c ? '<button class="g-btn upg" data-id="' + m.id + '">⬆強化 Lv' + lv + '→' + (lv + 1) + '<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
+        }
+        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³' + upgTag + '</small></div><div class="g-btns">' + btn + upgBtn + '</div></div>';
       }
       gList.innerHTML = html;
     }
-    document.getElementById("shop").addEventListener("click", function () { renderGarage(); garage.classList.add("show"); });
-    document.getElementById("g-close").addEventListener("click", function () { garage.classList.remove("show"); });
+    document.getElementById("shop").addEventListener("click", function () { renderGarage(); garage.classList.add("show"); SND.click(); });
+    document.getElementById("g-close").addEventListener("click", function () { garage.classList.remove("show"); SND.click(); });
     gList.addEventListener("click", function (e) {
       const b = e.target.closest ? e.target.closest('.g-btn') : null; if (!b || !b.dataset || !b.dataset.id) return;
       const id = b.dataset.id, m = machineById(id);
-      if (b.classList.contains('use')) { setMachine(id); renderGarage(); }
-      else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); setMachine(id); renderGarage(); tryVibrate(30); }
+      if (b.classList.contains('use')) { setMachine(id); renderGarage(); SND.click(); }
+      else if (b.classList.contains('upg')) { buyUpgrade(id); }
+      else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); setMachine(id); renderGarage(); SND.buy(); tryVibrate(30); checkAchievements(); }
     });
-    machineBtn.addEventListener("click", function () { if (game.owned.length <= 1) return; const i = game.owned.indexOf(game.machine); setMachine(game.owned[(i + 1) % game.owned.length]); });
+    machineBtn.addEventListener("click", function () { if (game.owned.length <= 1) return; const i = game.owned.indexOf(game.machine); setMachine(game.owned[(i + 1) % game.owned.length]); SND.click(); });
+    const badgesEl = document.getElementById("badges");
+    document.getElementById("achBtn").addEventListener("click", function () { renderBadges(); badgesEl.classList.add("show"); SND.click(); });
+    document.getElementById("b-close").addEventListener("click", function () { badgesEl.classList.remove("show"); SND.click(); });
 
     // 保存
-    const KEY = "doboku_water_proto_v4";
-    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine })); } catch (e) {} }
+    const KEY = "doboku_water_proto_v5", KEY_OLD = "doboku_water_proto_v4";
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 5, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine, upg: game.upg, ach: game.unlockedAch, cum: game.cum })); } catch (e) {} }
     function load() {
       try {
-        const raw = localStorage.getItem(KEY); if (!raw) return false; const s = JSON.parse(raw);
+        let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
+        if (!raw) return false; const s = JSON.parse(raw);
         if (!s || s.g !== GRID || !s.h || s.h.length !== N || s.level == null || s.level >= NLV) return false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
         game.money = s.money || 0;
         game.owned = Array.isArray(s.owned) ? s.owned.slice() : ['dozer'].concat(s.hasSub ? ['sub'] : []); // 旧v4(hasSub)からも移行
         if (game.owned.indexOf('dozer') < 0) game.owned.unshift('dozer');
         game.machine = (s.machine && game.owned.indexOf(s.machine) >= 0) ? s.machine : 'dozer';
-        loadLevel(s.level, s); return true;
+        // --- v4→v5 マイグレーション（旧セーブは新フィールド欠落→安全デフォルト） ---
+        game.upg = (s.upg && typeof s.upg === 'object') ? sanitizeUpg(s.upg) : {};
+        game.unlockedAch = (s.ach && typeof s.ach === 'object') ? s.ach : {};
+        game.cum = (s.cum && typeof s.cum === 'object') ? { dugAll: +s.cum.dugAll || 0, cleared: (s.cum.cleared | 0) } : { dugAll: 0, cleared: 0 };
+        loadLevel(s.level, s);
+        checkAchievements(true); // 移行直後＝既に条件を満たす所有/メーカー系バッジを静かに解禁（トースト無し）
+        return true;
       } catch (e) { return false; }
     }
 
@@ -696,13 +891,16 @@
       if (dt > 0) fpsEMA = fpsEMA * 0.92 + (1 / dt) * 0.08;
       if (window.innerWidth !== lastW || window.innerHeight !== lastH) resize();
       updateDozer(dt);
+      SND.engine(pushing || keys.up || keys.down || keys.left || keys.right); // エンジン音（動くと大きく）
       const sub = dt / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); syncWater(dt);
       updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0); updateParticles(splash, dt, 6.0);
       if (shake > 0) shake = Math.max(0, shake - dt * 0.4);
       hudAccum += dt; if (hudAccum > 0.15) { hudAccum = 0; refreshHUD(); checkWin(); }
       updateCamera(); renderer.render(scene, camera); requestAnimationFrame(loop);
     }
-    document.addEventListener("visibilitychange", () => { if (document.hidden) { clearKeys(); } else if (!running) { running = true; last = performance.now(); requestAnimationFrame(loop); } });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) { clearKeys(); SND.engine(false); } else { SND.unlock(); if (!running) { running = true; last = performance.now(); requestAnimationFrame(loop); } } });
+    // 初回ユーザー操作で音を解錠（モバイル自動再生ポリシー。unlockはidempotent＝何度呼んでも安全）
+    ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) { window.addEventListener(ev, function () { SND.unlock(); }, { passive: true }); });
 
     // 起動
     if (!load()) loadLevel(0);
@@ -720,6 +918,9 @@
       setMachine: (id) => { if (game.owned.indexOf(id) >= 0) { game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); } },
       look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), blade: blade.visible, arm: armG.visible, loader: loaderG.visible, dump: dumpG.visible }),
       getShake: () => shake,
+      getUpg: () => JSON.parse(JSON.stringify(game.upg)), getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
+      buyUpgrade: (id) => buyUpgrade(id), upgCostOf: (id) => upgCost(machineById(id), upgLv(id)), upgLvOf: (id) => upgLv(id),
+      effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
     };
