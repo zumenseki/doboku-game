@@ -88,6 +88,17 @@
   #act span { font-size: 11px; font-weight: 700; opacity: .9; }
   #act.on { transform: scale(.93); filter: brightness(1.12); }
 
+  /* 右下：ブル専用「下ろす」ボタン（貯めた土を戻す・ブル選択時だけ表示）[親方FB] */
+  #unload {
+    position: fixed; right: calc(env(safe-area-inset-right,0px) + 126px); bottom: calc(env(safe-area-inset-bottom,0px) + 30px);
+    width: 78px; height: 78px; border-radius: 50%; border: none; color: #fff; font-weight: 900; font-size: 16px;
+    background: var(--fill); box-shadow: 0 6px 16px rgba(0,0,0,.28); cursor: pointer; line-height: 1.1; z-index: 4;
+    display: none; flex-direction: column; align-items: center; justify-content: center; touch-action: none;
+  }
+  #unload span { font-size: 10px; font-weight: 700; opacity: .9; }
+  #unload.on { transform: scale(.93); filter: brightness(1.12); }
+  #unload.show { display: flex; }
+
   /* 右上：リセット */
   #reset {
     position: fixed; right: calc(env(safe-area-inset-right,0px) + 14px); top: calc(env(safe-area-inset-top,0px) + 12px);
@@ -169,6 +180,7 @@
   </div>
 
   <button id="act">ならす<span>押す</span></button>
+  <button id="unload">下ろす<span>押す</span></button>
   <button id="reset">やり直し</button>
   <button id="machine">🚜 ブル<span>タップで切替</span></button>
   <button id="finish">この出来で完成</button>
@@ -512,8 +524,9 @@
 
     // ===================== 入力：左下パッド＋キーボード＝移動 / 画面ドラッグ＝視点 =====================
     const keys = { up: false, down: false, left: false, right: false };
-    let acting = false;   // 動作ボタン（押している間だけ 削る/盛る）
-    const clearKeys = () => { keys.up = keys.down = keys.left = keys.right = false; acting = false; document.querySelectorAll(".dbtn").forEach((b) => b.classList.remove("on")); const a = document.getElementById("act"); if (a) a.classList.remove("on"); };
+    let acting = false;   // 動作ボタン（押している間だけ ならす/掘る/降ろす）
+    let unloading = false;   // ブル専用「下ろす」ボタン（押している間だけ 貯めた土を下ろす）[親方FB]
+    const clearKeys = () => { keys.up = keys.down = keys.left = keys.right = false; acting = false; unloading = false; document.querySelectorAll(".dbtn").forEach((b) => b.classList.remove("on")); const a = document.getElementById("act"); if (a) a.classList.remove("on"); const u = document.getElementById("unload"); if (u) u.classList.remove("on"); };
     document.querySelectorAll(".dbtn").forEach((b) => {
       const dir = b.getAttribute("data-dir"); const ptrs = new Set();
       const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && b.setPointerCapture) { try { b.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); keys[dir] = true; b.classList.add("on"); hideHint(); };
@@ -553,7 +566,7 @@
       const h = document.getElementById("hint"); if (!h) return;
       if (game.scene === "tank") h.innerHTML = '🌊 調整池：手前の<b>水浸しの作業場</b>を乾かす現場。中央の<b>土手に水路を掘って</b>奥のため池へ排水→作業場を<b>平らに</b>→ため池に水がたまれば完成';
       else if (game.scene === "dig") h.innerHTML = '🪏 バックホウは<b>掘る↔下ろすの繰り返し</b>。1回で<b>バケット満タンまで掘る</b>→運んで<b>奥の盛り場に降ろす</b>→また掘る。盛りはラフでOK';
-      else h.innerHTML = 'お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に<br><b>止まって押しっぱなし</b>で貯めた土を下ろせる';
+      else h.innerHTML = 'お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に<br>貯めた土は右下の<b>下ろす</b>ボタンで戻せる';
       h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 8000);
     }
     // 目標ラベル/点数行の文言を現場別に切替[F5]
@@ -722,13 +735,11 @@
         bladePile.scale.set(0.5 + 0.7 * pf, 0.5 + 1.1 * pf, 0.5 + 0.7 * pf); bladePile.rotation.y = dp.myaw;
       } else bladePile.position.y = -999;
       // 押しながら移動した時だけ整地（ブル選択時のみ・止まると動かない）。押し始めの足元の高さをブレード基準(cutHeight)に固定し、それより高い土を削り低い所へ運ぶ（色/目標に依らず物理的に）[親方FB]
-      if (acting && moving && !game.won && active === "dozer") {
+      if (active === "dozer" && unloading && !game.won && game.blade > 0.01) { pushing = false; bladeUnload(dt); }   // 「下ろす」ボタン＝貯めた土を少しずつ前へ戻す[親方FB]
+      else if (acting && moving && !game.won && active === "dozer") {
         if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); }
         gradePush(dt);
-      } else {
-        pushing = false;
-        if (acting && !moving && !game.won && active === "dozer" && game.blade > 0.01) bladeUnload(dt);   // 止まって押しっぱなし＝貯めた土を少しずつ下ろす[親方FB]
-      }
+      } else pushing = false;
       // ブレードの掘る動き
       if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
       else { blade.position.y = BLADE_Y; blade.rotation.x = 0; }
@@ -823,6 +834,17 @@
       actBtn.addEventListener("pointercancel", off);
       actBtn.addEventListener("pointerleave", off);
     })();
+    // ブル専用「下ろす」ボタン：押している間だけ貯めた土を下ろす[親方FB]
+    const unloadBtn = document.getElementById("unload");
+    (function () {
+      const ptrs = new Set();
+      const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && unloadBtn.setPointerCapture) { try { unloadBtn.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); unloading = true; unloadBtn.classList.add("on"); hideHint(); };
+      const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { unloading = false; unloadBtn.classList.remove("on"); } };
+      unloadBtn.addEventListener("pointerdown", on);
+      unloadBtn.addEventListener("pointerup", off);
+      unloadBtn.addEventListener("pointercancel", off);
+      unloadBtn.addEventListener("pointerleave", off);
+    })();
     document.getElementById("reset").addEventListener("click", () => { if (window.confirm("この現場をやり直しますか？\n削った内容は消えます（お題は同じ）。")) restore(false); });
     document.getElementById("again").addEventListener("click", () => { document.getElementById("win").classList.remove("show"); restore(true); });
     document.getElementById("finish").addEventListener("click", finishJob);
@@ -844,7 +866,7 @@
       }
       if (html !== actLabelCur) { actLabelCur = html; actBtn.innerHTML = html; }   // 変化時のみ DOM 書換（毎フレーム呼んでも軽い）
     }
-    function updateMachineUI() { if (machineBtn) machineBtn.innerHTML = MACHINE_LABEL[active] + '<span>タップで切替</span>'; updateActLabel(); }
+    function updateMachineUI() { if (machineBtn) machineBtn.innerHTML = MACHINE_LABEL[active] + '<span>タップで切替</span>'; const u = document.getElementById("unload"); if (u) u.classList.toggle("show", active === "dozer"); updateActLabel(); }
     function switchMachine() {
       flushActive();
       active = (active === "dozer") ? "backhoe" : "dozer";
@@ -932,7 +954,7 @@
     normalsDone = false; syncGeometry(); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
 
     // デバッグ用フック（URLに ?test を付けた時だけ有効・通常は無効）
-    if (/[?&]test\b/.test(location.search)) window.__t = { game, keys, updateDozer, updateCamera, score, targetError, maxTargetDev, finishJob, restore, camera, sampleHeight, setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting, setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, getCut: () => cutHeight, getPushing: () => pushing, targetLevel: () => game.targetLevel, terrainStats: () => { let sum = 0, mx = -1e9, mn = 1e9; for (let i = 0; i < V * V; i++) { sum += heights[i]; if (heights[i] > mx) mx = heights[i]; if (heights[i] < mn) mn = heights[i]; } return { sum, mx, mn }; }, soilTotal: () => currentSoil(), soil0: () => game.soil0, soilDrift: () => currentSoil() - game.soil0, bucket: () => game.bucket, active: () => active, dozerPos: () => ({ mx: dozerState.mx, mz: dozerState.mz, myaw: dozerState.myaw }), backhoePos: () => ({ mx: backhoeState.mx, mz: backhoeState.mz, myaw: backhoeState.myaw }), doSwitch: () => switchMachine(), scene: () => game.scene, sampleTarget, finishMaxDev: () => finishMaxDev(), totalWater: () => totalWater(), sampleWater, waterHasNaN: () => { for (let i = 0; i < N; i++) if (!isFinite(waterD[i])) return true; return false; }, fillWaterTest: (d) => { for (let i = 0; i < N; i++) waterD[i] = d; }, fillLowTest: (lvl, d) => { for (let i = 0; i < N; i++) waterD[i] = heights[i] < lvl ? d : 0; }, simWater, syncWater, setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, tankDone: () => tankDone(), tankProg: () => tankProgress(), tankDrain: () => game.tankA ? drainOf(game.tankA, game.tankA0) : 0, tankWorkDev: () => game.tankA ? zoneMaxDev(game.tankA) : 0, tankBasin: () => game.tankB ? zoneVol(game.tankB) : 0, tankTarget: () => game.tankTB || 0, solveTank: () => { if (game.scene !== "tank") return false; const A = game.tankA; for (let j = 10; j <= 14; j++) for (let i = 10; i <= 14; i++) { const idx = j * V + i; if (heights[idx] > -0.3) heights[idx] = -0.3; } zoneEach(A, (idx) => { heights[idx] = 0.2; }); for (let k = 0; k < 3500; k++) { const sub = 0.016 / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); } syncGeometry(); return true; }, bhPushId: () => bhPushId, maxDevRaw: () => { let m = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = Math.abs(heights[idx] - targetH[idx]); if (d > m) m = d; } return m; }, solve: () => { heights.set(targetH); game.blade = 0; game.bucket = 0; syncGeometry(); refreshHUD(); }, solveNoisy: (amp, bias) => { for (let idx = 0; idx < V * V; idx++) heights[idx] = Math.max(MIN_H, Math.min(MAX_H, targetH[idx] + (Math.random() - 0.5) * 2 * (amp || 0) + (bias || 0))); game.blade = 0; game.bucket = 0; syncGeometry(); refreshHUD(); }, targetSoil: () => { let s = 0; for (let i = 0; i < V * V; i++) s += targetH[i]; return s * CELL_AREA; } };
+    if (/[?&]test\b/.test(location.search)) window.__t = { game, keys, updateDozer, updateCamera, score, targetError, maxTargetDev, finishJob, restore, camera, sampleHeight, setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting, setUnloading: (v) => { unloading = v; }, blade: () => game.blade, unloadShown: () => { const u = document.getElementById("unload"); return !!(u && u.classList.contains("show")); }, setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, getCut: () => cutHeight, getPushing: () => pushing, targetLevel: () => game.targetLevel, terrainStats: () => { let sum = 0, mx = -1e9, mn = 1e9; for (let i = 0; i < V * V; i++) { sum += heights[i]; if (heights[i] > mx) mx = heights[i]; if (heights[i] < mn) mn = heights[i]; } return { sum, mx, mn }; }, soilTotal: () => currentSoil(), soil0: () => game.soil0, soilDrift: () => currentSoil() - game.soil0, bucket: () => game.bucket, active: () => active, dozerPos: () => ({ mx: dozerState.mx, mz: dozerState.mz, myaw: dozerState.myaw }), backhoePos: () => ({ mx: backhoeState.mx, mz: backhoeState.mz, myaw: backhoeState.myaw }), doSwitch: () => switchMachine(), scene: () => game.scene, sampleTarget, finishMaxDev: () => finishMaxDev(), totalWater: () => totalWater(), sampleWater, waterHasNaN: () => { for (let i = 0; i < N; i++) if (!isFinite(waterD[i])) return true; return false; }, fillWaterTest: (d) => { for (let i = 0; i < N; i++) waterD[i] = d; }, fillLowTest: (lvl, d) => { for (let i = 0; i < N; i++) waterD[i] = heights[i] < lvl ? d : 0; }, simWater, syncWater, setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, tankDone: () => tankDone(), tankProg: () => tankProgress(), tankDrain: () => game.tankA ? drainOf(game.tankA, game.tankA0) : 0, tankWorkDev: () => game.tankA ? zoneMaxDev(game.tankA) : 0, tankBasin: () => game.tankB ? zoneVol(game.tankB) : 0, tankTarget: () => game.tankTB || 0, solveTank: () => { if (game.scene !== "tank") return false; const A = game.tankA; for (let j = 10; j <= 14; j++) for (let i = 10; i <= 14; i++) { const idx = j * V + i; if (heights[idx] > -0.3) heights[idx] = -0.3; } zoneEach(A, (idx) => { heights[idx] = 0.2; }); for (let k = 0; k < 3500; k++) { const sub = 0.016 / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); } syncGeometry(); return true; }, bhPushId: () => bhPushId, maxDevRaw: () => { let m = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = Math.abs(heights[idx] - targetH[idx]); if (d > m) m = d; } return m; }, solve: () => { heights.set(targetH); game.blade = 0; game.bucket = 0; syncGeometry(); refreshHUD(); }, solveNoisy: (amp, bias) => { for (let idx = 0; idx < V * V; idx++) heights[idx] = Math.max(MIN_H, Math.min(MAX_H, targetH[idx] + (Math.random() - 0.5) * 2 * (amp || 0) + (bias || 0))); game.blade = 0; game.bucket = 0; syncGeometry(); refreshHUD(); }, targetSoil: () => { let s = 0; for (let i = 0; i < V * V; i++) s += targetH[i]; return s * CELL_AREA; } };
   })();
   </script>
 </body>
