@@ -197,7 +197,7 @@
     const MOVE_SPEED = 7;
     const BLADE_CAP = 12, STALL_FRAC = 0.35, PILE_R = 1.6, UNLOAD_RATE = 14;  // ブル押し[親方FB・ハイブリッド]：持てる土量/満杯時速度割合(35%)/積む半径/置いていく速さ(ならすを離して移動中)
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
-    const BH_REACH = 2.1, BH_DIG_R = 1.7, BH_DIG_RATE = 13, BUCKET_CAP = 10, BH_DUMP_RATE = 16;  // バックホウ[F2]：腕の届く距離/掘る半径/掘る速さ/バケット上限/降ろす速さ
+    const BH_REACH = 2.1, BH_DIG_R = 1.7, BH_DIG_RATE = 13, BUCKET_CAP = 10, BH_DUMP_RATE = 16, BH_MAX_CUT = 3.0, BH_MAX_FILL = 2.5;  // バックホウ[F2]：腕の届く距離/掘る半径/掘る速さ/バケット上限/降ろす速さ/掘り下げ上限/積み上げ上限(共に元の地面baseHeightsから・親方FB 2026-06-25「深さ・高さを一定に＝塔/深穴の不自然を防ぐ」)
     const FLAT_TOL = 0.3, PASS_SCORE = 70, STAR2 = 85, STAR3 = 95, FINISH_MAXDEV = 0.5, FINISH_MAXDEV_DIG = 1.5;
     const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
     // 水[F5・water-protoから移植]：仮想パイプ法(浅水＋慣性)。表示しきい/浅地/物理/連動の各定数。
@@ -627,10 +627,11 @@
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
         if (dist >= BH_DIG_R) continue;
         const h = heights[idx];
-        if (h <= MIN_H + 0.001) continue;   // 1段制限は廃止＝「掘る↔下ろす交互」で1すくい=バケット満タンまで掘る[親方FB]
+        const floor = Math.max(MIN_H, baseHeights[idx] - BH_MAX_CUT);   // 掘り下げ上限[親方FB]：元の地面から BH_MAX_CUT より深くは掘れない（深い穴の不自然を防ぐ）
+        if (h <= floor + 0.001) continue;   // 1段制限は廃止＝「掘る↔下ろす交互」で1すくい=バケット満タンまで掘る[親方FB]（ただし掘り下げ上限まで）
         let step = BH_DIG_RATE * dt * Math.max(0.4, 1 - dist / BH_DIG_R);
         if (waterD[idx] > WATER_EPS) step *= UNDERWATER_DIG_MULT;   // 水[F5]：水中は掘り遅い（水中バックホウは第2段で普通速度に）
-        const cut = Math.min(h - MIN_H, step, room / CELL_AREA);
+        const cut = Math.min(h - floor, step, room / CELL_AREA);
         if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
       }
       game.bucket = Math.min(BUCKET_CAP, bucket); game.totalDug += cutVol;
@@ -653,9 +654,10 @@
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
         if (dist >= BH_DIG_R) continue;
         const h = heights[idx];
-        if (h >= MAX_H - 0.001) continue;   // 1段制限は廃止＝バケットが空になるまで降ろす[親方FB]
+        const ceil = Math.min(MAX_H, baseHeights[idx] + BH_MAX_FILL);   // 積み上げ上限[親方FB]：元の地面から BH_MAX_FILL より高くは積めない（細い塔の不自然を防ぐ・満ちたら別の所へ降ろす）
+        if (h >= ceil - 0.001) continue;   // 1段制限は廃止＝バケットが空になるまで降ろす[親方FB]（ただし積み上げ上限まで）
         const give = BH_DUMP_RATE * dt * Math.max(0.4, 1 - dist / BH_DIG_R);
-        const add = Math.min(give, MAX_H - h, bucket / CELL_AREA);
+        const add = Math.min(give, ceil - h, bucket / CELL_AREA);
         if (add > 0) { heights[idx] = h + add; bucket -= add * CELL_AREA; changed = true; }
       }
       game.bucket = Math.max(0, bucket);
