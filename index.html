@@ -37,6 +37,7 @@
   #dug.pop { animation: pop .28s ease; }
   @keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.28)} 100%{transform:scale(1)} }
   #carry-badge.full { animation: fullflash .5s ease; background: #ffe08a; }
+  #bucket-badge.full { animation: fullflash .5s ease; background: #ffe08a; }
   @keyframes fullflash { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
 
   /* 目標バー */
@@ -95,6 +96,16 @@
   }
   #reset:active { transform: scale(.95); }
 
+  /* 左上：機械チェンジ */
+  #machine {
+    position: fixed; left: calc(env(safe-area-inset-left,0px) + 14px); top: calc(env(safe-area-inset-top,0px) + 12px);
+    background: var(--panel); color: var(--ink); border: none; border-radius: 12px; padding: 8px 13px;
+    font-weight: 900; box-shadow: 0 3px 10px rgba(0,0,0,.18); cursor: pointer; z-index: 4; font-size: 14px;
+    display: flex; flex-direction: column; align-items: center; line-height: 1.15; gap: 1px;
+  }
+  #machine span { font-size: 10px; font-weight: 700; opacity: .65; }
+  #machine:active { transform: scale(.95); }
+
   /* 中央フラッシュ（モード切替） */
   #flash {
     position: fixed; left: 50%; top: 44%; transform: translate(-50%,-50%);
@@ -139,7 +150,8 @@
 
   <div id="hud-top">
     <div class="badge"><span id="dug">0.0</span> <small>m³ 削った土</small></div>
-    <div class="badge" id="carry-badge"><span id="carry">0.0</span> <small>m³ ブレードの土</small></div>
+    <div class="badge" id="carry-badge"><span id="carry">0.0</span> <small>m³ 今押してる土</small></div>
+    <div class="badge" id="bucket-badge" style="display:none"><span id="bucket-hud">0.0</span> <small>/ 10 m³ バケット</small></div>
   </div>
 
   <div id="goal">
@@ -158,6 +170,7 @@
 
   <button id="act">ならす<span>押す</span></button>
   <button id="reset">やり直し</button>
+  <button id="machine">🚜 ブル<span>タップで切替</span></button>
   <button id="finish">この出来で完成</button>
 
   <div id="flash"></div>
@@ -182,8 +195,10 @@
     const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
+    const BLADE_PILE_H = 0.7, BLADE_CAP = 12, STALL_FRAC = 0.35, PILE_R = 1.6;  // ブル押し[親方FB・ハイブリッド]：あふれ地面の頭打ち高さ/ブレードが持てる土量(m³)/満杯時の速度割合(35%=重いが運べる)/あふれを残す半径（重さ・容量は親方の体感で調整可）
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
-    const FLAT_TOL = 0.3, PASS_SCORE = 70, STAR2 = 85, STAR3 = 95, FINISH_MAXDEV = 0.5;
+    const BH_REACH = 2.1, BH_DIG_R = 1.7, BH_DIG_RATE = 13, BUCKET_CAP = 10, BH_DUMP_RATE = 16;  // バックホウ[F2]：腕の届く距離/掘る半径/掘る速さ/バケット上限/降ろす速さ
+    const FLAT_TOL = 0.3, PASS_SCORE = 70, STAR2 = 85, STAR3 = 95, FINISH_MAXDEV = 0.5, FINISH_MAXDEV_DIG = 1.5;
     const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
 
     // ===================== ルール層 =====================
@@ -192,32 +207,82 @@
     const targetH = new Float32Array(V * V);   // お題＝目標の高さ（マスごと）
     const vx = new Float32Array(V * V), vz = new Float32Array(V * V);
     const passRef = new Float32Array(V * V), passTag = new Int32Array(V * V); // この押しで初接触した高さ / 押しID（1段ずつ削るため）
-    const game = { blade: 0, totalDug: 0, initErr: 1, targetLevel: 0, best: 0, mx: 0, mz: 6, myaw: Math.PI, won: false };
+    const game = { blade: 0, bucket: 0, totalDug: 0, initErr: 1, targetLevel: 0, best: 0, mx: 0, mz: 6, myaw: Math.PI, won: false, soil0: 0 };
     let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
+    // 機械2台[F2]：ブル(dozer)とバックホウ(backhoe)。game.mx/mz/myaw は「選択中の機械」の現在位置を映す。切替時に flushActive で退避→新機械を読み込む。
+    const dozerState = { mx: 0, mz: 6, myaw: Math.PI };
+    const backhoeState = { mx: 5, mz: 6, myaw: Math.PI };
+    let active = "dozer";
+    let bhMode = null, prevActing = false, bhPhase = 0, bhDigAmt = 0, bhDumpAmt = 0;  // バックホウ：押し始めに固定する掘る/降ろすモード・うでアニメ状態[F2]
+    // バックホウ[F2-S5]：1回押すごとに「掘る/盛る」を1段(LAYER)までに制限（あり得ない高さの山・谷を防ぐ）。押し始めの高さを bhRef に記録し ±LAYER で頭打ち。離して押し直すと bhPushId が進み次の段へ。
+    const bhRef = new Float32Array(V * V), bhTag = new Int32Array(V * V); let bhPushId = 0;
+    function flushActive() { const s = (active === "dozer") ? dozerState : backhoeState; s.mx = game.mx; s.mz = game.mz; s.myaw = game.myaw; }
 
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) {
       const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD;
     }
     function gauss(x, z, cx, cz, h, s) { const d2 = (x - cx) * (x - cx) + (z - cz) * (z - cz); return h * Math.exp(-d2 / (2 * s * s)); }
-    function generateTerrain() {
-      const hx = -4 + (Math.random() - 0.5) * 4, hz = -2 + (Math.random() - 0.5) * 4, hH = 3.6 + Math.random() * 1.2;
-      const px = 5 + (Math.random() - 0.5) * 3, pz = 5 + (Math.random() - 0.5) * 3;
-      for (let idx = 0; idx < V * V; idx++) {
-        const x = vx[idx], z = vz[idx];
-        let h = gauss(x, z, hx, hz, hH, 3.0) - gauss(x, z, px, pz, 1.8, 2.4) + (Math.random() - 0.5) * 0.15;
-        if (h < MIN_H) h = MIN_H; if (h > MAX_H) h = MAX_H;
-        heights[idx] = h;
+    function generateTerrain(scene) {
+      game.scene = (scene === "dig") ? "dig" : "flat";
+      if (game.scene === "dig") {
+        buildDigScene();
+        baseHeights.set(heights);
+      } else {
+        const hx = -4 + (Math.random() - 0.5) * 4, hz = -2 + (Math.random() - 0.5) * 4, hH = 3.6 + Math.random() * 1.2;
+        const px = 5 + (Math.random() - 0.5) * 3, pz = 5 + (Math.random() - 0.5) * 3;
+        for (let idx = 0; idx < V * V; idx++) {
+          const x = vx[idx], z = vz[idx];
+          let h = gauss(x, z, hx, hz, hH, 3.0) - gauss(x, z, px, pz, 1.8, 2.4) + (Math.random() - 0.5) * 0.15;
+          if (h < MIN_H) h = MIN_H; if (h > MAX_H) h = MAX_H;
+          heights[idx] = h;
+        }
+        baseHeights.set(heights); setTarget();
       }
-      baseHeights.set(heights); setTarget(); game.initErr = Math.max(1, targetError());
+      game.initErr = Math.max(1, targetError()); game.soil0 = currentSoil(); updateGhost(); setSceneHint();
+    }
+    // 掘る現場[F2-S4]：初期=平ら(h0)／目標=手前に池(掘る)＋奥に盛り場(盛る)。掘る量＝盛る量で体積中立＝必ず達成可能。
+    function buildDigScene() {
+      const h0 = 1.0;
+      for (let idx = 0; idx < V * V; idx++) { heights[idx] = h0; targetH[idx] = h0; }
+      // 池[S5]：底は平ら(バックホウで掘りやすい＝段で揃えられる)＋縁だけ斜面。底の高さ＝h0-pitDepth。
+      const pitCx = 0, pitCz = 3.5, pitR = 4.2, pitFlat = 2.6, pitDepth = 2.2;
+      let removed = 0;
+      for (let idx = 0; idx < V * V; idx++) {
+        const d = Math.sqrt((vx[idx] - pitCx) * (vx[idx] - pitCx) + (vz[idx] - pitCz) * (vz[idx] - pitCz));
+        if (d < pitR) {
+          let drop;
+          if (d <= pitFlat) drop = pitDepth;                                            // 平らな底
+          else { const t = (d - pitFlat) / (pitR - pitFlat); drop = pitDepth * 0.5 * (1 + Math.cos(Math.PI * t)); } // 縁の斜面
+          targetH[idx] -= drop; removed += drop;
+        }
+      }
+      // 盛り場[S5]：平らな台地(フラットトップ)＝バックホウで降ろして埋めやすい。中心 pileFlat は一定の高さ、縁だけ斜面。掘った体積(removed)をそのまま分配＝体積中立。
+      const pileCx = 0, pileCz = -5, pileFlat = 3.0, pileR = 4.6; let wsum = 0; const w = new Float32Array(V * V);
+      for (let idx = 0; idx < V * V; idx++) {
+        const d = Math.sqrt((vx[idx] - pileCx) * (vx[idx] - pileCx) + (vz[idx] - pileCz) * (vz[idx] - pileCz));
+        if (d <= pileFlat) { w[idx] = 1; wsum += 1; }                                                  // 平らな天端
+        else if (d < pileR) { const tt = (d - pileFlat) / (pileR - pileFlat); const f = 0.5 * (1 + Math.cos(Math.PI * tt)); w[idx] = f; wsum += f; }  // 縁の斜面
+      }
+      if (wsum > 0) for (let idx = 0; idx < V * V; idx++) if (w[idx] > 0) targetH[idx] += removed * w[idx] / wsum;
+      for (let idx = 0; idx < V * V; idx++) { if (targetH[idx] < MIN_H) targetH[idx] = MIN_H; if (targetH[idx] > MAX_H) targetH[idx] = MAX_H; }
+      game.targetLevel = h0;
     }
     // お題（目標の高さ）＝この現場の平均高さに広く平らに（宅地造成）。押し均しの体積保存で達成可能。
     function setTarget() { let mean = 0; for (let idx = 0; idx < V * V; idx++) mean += baseHeights[idx]; game.targetLevel = mean / (V * V); for (let idx = 0; idx < V * V; idx++) targetH[idx] = game.targetLevel; }
+    // 体積検算[F2]：地面の総土量＋ブレードの土＋バケットの土＝一定（土が湧く/消える不具合を検出する用）。
+    function currentSoil() { let s = 0; for (let idx = 0; idx < V * V; idx++) s += heights[idx]; return s * CELL_AREA + game.blade + (game.bucket || 0); }
+    // 減点対象のズレ[S5]：掘る現場はラフ運用＝「盛り場(目標が地盤h0より高い)は盛り足りない分／池(h0より低い)は掘り足りない分」だけ減点し、掘りすぎ・盛りすぎは不問(0)。平ら地(目標≒h0)と平ら現場は従来どおり両方向きっちり(絶対差)。
+    function devAt(idx, arr) { arr = arr || heights; const diff = arr[idx] - targetH[idx]; if (game.scene === "dig") { const tl = game.targetLevel; if (targetH[idx] > tl + 0.05) return Math.max(0, -diff); if (targetH[idx] < tl - 0.05) return Math.max(0, diff); } return Math.abs(diff); }
     // 目標とのズレの合計（許容±FLAT_TOL超過分だけ）。0に近いほど図面どおり。最外周マスは除外（角の理不尽防止）。
-    function targetError(arr) { arr = arr || heights; let s = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = Math.abs(arr[idx] - targetH[idx]); if (d > FLAT_TOL) s += (d - FLAT_TOL) * CELL_AREA; } return s; }
-    // 目標までの最大のズレ（cm表示用・最外周除外）
-    function maxTargetDev() { let m = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = Math.abs(heights[idx] - targetH[idx]); if (d > m) m = d; } return m; }
+    function targetError(arr) { arr = arr || heights; let s = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = devAt(idx, arr); if (d > FLAT_TOL) s += (d - FLAT_TOL) * CELL_AREA; } return s; }
+    // 目標までの最大のズレ（cm表示用・最外周除外・盛り場の盛りすぎは除外）
+    function maxTargetDev() { let m = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = devAt(idx); if (d > m) m = d; } return m; }
+    // 完成判定の最大ズレしきい値[S5]：掘る現場は緩め(盛りラフ運用)・平ら現場は従来どおり厳しめ。
+    function finishMaxDev() { return game.scene === "dig" ? FINISH_MAXDEV_DIG : FINISH_MAXDEV; }
+    // 削った土の量(m³)[親方FB]＝元の地面より下げた分の正味。転がる山を毎コマ数え直して暴走するのを防ぐため、累積でなく現在の掘り下げ量で表示。
+    function digVolume() { let s = 0; for (let idx = 0; idx < V * V; idx++) { const d = baseHeights[idx] - heights[idx]; if (d > 0) s += d * CELL_AREA; } return s; }
     // 出来形の点数（0〜100）。残った最大ズレも減点に反映（局所の出っ張りで満点が出ないように）。
-    function score() { const base = 100 * (1 - targetError() / game.initErr); const worst = Math.max(0, maxTargetDev() - FLAT_TOL) * 25; return Math.max(0, Math.min(100, Math.round(base - worst))); }
+    function score() { const base = 100 * (1 - targetError() / game.initErr); const worst = (game.scene === "dig") ? Math.max(0, maxTargetDev() - FINISH_MAXDEV_DIG) * 10 : Math.max(0, maxTargetDev() - FLAT_TOL) * 25; return Math.max(0, Math.min(100, Math.round(base - worst))); }
 
     // ===================== 描画層 =====================
     const app = document.getElementById("app");
@@ -242,10 +307,17 @@
     geo.setIndex(indices);
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
     scene.add(ground);
-    // お手本（目標の高さの半透明の面）
-    const ghost = new THREE.Mesh(new THREE.PlaneGeometry(WORLD, WORLD), new THREE.MeshBasicMaterial({ color: 0x2faa55, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
-    ghost.rotation.x = -Math.PI / 2; scene.add(ghost);
-    function updateGhost() { ghost.position.set(0, game.targetLevel, 0); }
+    // お手本（目標の高さの半透明サーフェス）：平ら現場は平面、掘る現場は池+盛り場の形をそのまま表示。
+    const ghostPos = new Float32Array(V * V * 3);
+    const ghostGeo = new THREE.BufferGeometry();
+    ghostGeo.setAttribute("position", new THREE.BufferAttribute(ghostPos, 3));
+    ghostGeo.setIndex(indices.slice());
+    const ghost = new THREE.Mesh(ghostGeo, new THREE.MeshBasicMaterial({ color: 0x2faa55, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
+    scene.add(ghost);
+    function updateGhost() {
+      for (let idx = 0; idx < V * V; idx++) { ghostPos[idx * 3] = vx[idx]; ghostPos[idx * 3 + 1] = targetH[idx] + 0.05; ghostPos[idx * 3 + 2] = vz[idx]; }
+      ghostGeo.attributes.position.needsUpdate = true; ghostGeo.computeBoundingSphere();
+    }
     const cOK = new THREE.Color(0x5fae57), cRedL = new THREE.Color(0xe8a48f), cRedH = new THREE.Color(0xb83020), cBluL = new THREE.Color(0x9fc5e8), cBluH = new THREE.Color(0x215f9e), tmpC = new THREE.Color();
     // 目標との差で色分け：赤=高い(削る)／青=低い(盛る)／緑=OK
     function colorDiff(diff, out) {
@@ -262,7 +334,7 @@
       }
       geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
       if (!normalsDone) { geo.computeVertexNormals(); normalsDone = true; }
-      geo.computeBoundingSphere(); updateGhost();
+      geo.computeBoundingSphere();
     }
 
     // 重機
@@ -275,6 +347,29 @@
     const trackL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 2.4), darkMat); trackL.position.set(-0.8, 0.4, 0); dozer.add(trackL);
     const trackR = trackL.clone(); trackR.position.x = 0.8; dozer.add(trackR);
     scene.add(dozer);
+
+    // バックホウ[F2]：履帯＋旋回体(キャビン)＋うで(ブーム→アーム→バケット)。掘るアニメは関節を回す(S2で実装)。
+    const backhoe = new THREE.Group();
+    const bhMat = new THREE.MeshStandardMaterial({ color: 0xe8861a, flatShading: true, roughness: 0.7 });
+    const bhTrackL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 2.3), darkMat); bhTrackL.position.set(-0.72, 0.38, 0); backhoe.add(bhTrackL);
+    const bhTrackR = bhTrackL.clone(); bhTrackR.position.x = 0.72; backhoe.add(bhTrackR);
+    const bhHouse = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 1.7), bhMat); bhHouse.position.set(0, 1.05, -0.25); backhoe.add(bhHouse);
+    const bhCab = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.75, 0.85), bhMat); bhCab.position.set(0, 1.7, -0.5); backhoe.add(bhCab);
+    // うで（前方+zへ伸びる2関節）。bhBoomPivot を下げ、bhArmPivot を曲げて掘る。
+    const bhBoomPivot = new THREE.Group(); bhBoomPivot.position.set(0, 1.15, 0.55); backhoe.add(bhBoomPivot);
+    const bhBoom = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 1.7), darkMat); bhBoom.position.set(0, 0, 0.85); bhBoomPivot.add(bhBoom);
+    const bhArmPivot = new THREE.Group(); bhArmPivot.position.set(0, 0, 1.7); bhBoomPivot.add(bhArmPivot);
+    const bhStick = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 1.2), darkMat); bhStick.position.set(0, 0, 0.6); bhArmPivot.add(bhStick);
+    const bhBucket = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.55), bhMat); bhBucket.position.set(0, -0.18, 1.18); bhArmPivot.add(bhBucket);
+    const BH_BOOM_REST = -0.5, BH_ARM_REST = 0.95;  // 待機ポーズ（少し持ち上げ）
+    bhBoomPivot.rotation.x = BH_BOOM_REST; bhArmPivot.rotation.x = BH_ARM_REST;
+    scene.add(backhoe);
+    // 選択中マーカー（足元の光る輪）：active 機械の下に毎フレーム置く。
+    const selRing = new THREE.Mesh(new THREE.RingGeometry(1.5, 1.85, 28), new THREE.MeshBasicMaterial({ color: 0xffe14d, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+    selRing.rotation.x = -Math.PI / 2; scene.add(selRing);
+    // ブレード前の「持ってる土の山」の見た目[親方FB]：ブレードが持つ土量(game.blade)に応じて大きくなる茶色の山。体積は地面と二重計上しない見た目専用。
+    const bladePile = new THREE.Mesh(new THREE.ConeGeometry(1.1, 1, 7), new THREE.MeshStandardMaterial({ color: 0x8a6234, flatShading: true, roughness: 1 }));
+    bladePile.position.y = -999; scene.add(bladePile);
 
     // 粒子（細かい土ぼこり＋飛ぶ土の塊）の共通プール
     function makeParticles(n, size, color, opacity) {
@@ -357,29 +452,121 @@
 
     let hintTimer = setTimeout(hideHint, 8000);
     function hideHint() { const h = document.getElementById("hint"); if (h) h.style.opacity = "0"; clearTimeout(hintTimer); }
+    // 現場ごとのヒント文[S5]：掘る現場はバックホウ手順、平ら現場は押し均し手順。数秒だけ出す。
+    function setSceneHint() {
+      const h = document.getElementById("hint"); if (!h) return;
+      if (game.scene === "dig") h.innerHTML = '🪏 バックホウで<b>手前の池を掘る</b>→たまった土を<b>奥の盛り場(緑が高い所)に降ろす</b><br>1回押すごとに1段ずつ・盛りはラフでOK';
+      else h.innerHTML = 'お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に';
+      h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 8000);
+    }
 
     // ===================== 削る/盛る（体積保存）=====================
     let lastVib = 0, shake = 0;
     function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
-    // 押し均し：押し始めた高さ(cutHeight)へ、1回の押し＝1段(LAYER)ずつ整地。高い所を削りブレードに溜め、低い所へ押し出す。土は保存。
-    function gradePush(dt) {
-      const fx = game.mx + Math.sin(game.myaw) * 1.2, fz = game.mz + Math.cos(game.myaw) * 1.2; // ブレード前方
-      let blade = game.blade, cutVol = 0, changed = false;
+    // 土を分配[親方FB]：(cx,cz)半径R内のセルへ vol(m³)を、天井 ceil(高さ) まで余地に比例して入れる。入り切らない分を返す（天井を超えない）。
+    function depositInto(cx, cz, R, vol, ceil) {
+      let room = 0; const cells = [], R2 = R * R;
       for (let idx = 0; idx < V * V; idx++) {
-        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist >= DIG_RADIUS) continue;
-        if (passTag[idx] !== pushId) { passTag[idx] = pushId; passRef[idx] = heights[idx]; } // この押しで初めて触れた高さを記録
-        const step = DIG_RATE * dt * Math.max(0.4, 1 - dist / DIG_RADIUS), h = heights[idx];
-        const cutFloor = Math.max(cutHeight, passRef[idx] - LAYER);  // この押しでは1段(LAYER)までしか掘れない
-        const fillCeil = Math.min(cutHeight, passRef[idx] + LAYER);  // 埋めも1段まで
-        if (h > cutFloor + 0.01) {                 // 高い→1段だけ削ってブレードに溜める
-          const cut = Math.min(h - cutFloor, step); if (cut > 0) { heights[idx] = h - cut; blade += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
-        } else if (h < fillCeil - 0.01 && blade > 0) { // 低い→1段だけブレードの土で押し埋める
-          const fill = Math.min(fillCeil - h, step, blade / CELL_AREA); if (fill > 0) { heights[idx] = h + fill; blade -= fill * CELL_AREA; changed = true; }
+        const dx = vx[idx] - cx, dz = vz[idx] - cz; if (dx * dx + dz * dz >= R2) continue;
+        const r = (ceil - heights[idx]) * CELL_AREA;
+        if (r > 0) { cells.push(idx); room += r; }
+      }
+      if (room <= 0) return vol;
+      const place = Math.min(vol, room);
+      for (let k = 0; k < cells.length; k++) { const idx = cells[k], r = (ceil - heights[idx]) * CELL_AREA; heights[idx] += (r / room) * place / CELL_AREA; }
+      return vol - place;
+    }
+    // 押し均し[親方FB・ハイブリッド版]：ブレードの高さ(cutHeight=押し始めの足元の高さ)を基準に、前方で「それより高い土」を削ってブレードに少し持ち(BLADE_CAPまで)→「それより低い所」へ運んで埋める。**色/目標には依らず、純粋に高い所を削り低い所へ落とす物理的な動き**[親方FB]。満杯のあふれは後ろの地面に薄く残す。持ってる土が多いほど重い。土は保存(地面+ブレード一定)。
+    function gradePush(dt) {
+      const s = Math.sin(game.myaw), c = Math.cos(game.myaw);
+      const fx = game.mx + s * 1.4, fz = game.mz + c * 1.4;   // 削り位置＝ブレードの前（広めに削るが足元はFOOT2で除外＝押した直後に車体が沈まない）
+      const bx = game.mx - s * 1.8, bz = game.mz - c * 1.8;   // 後ろ（あふれを残す）
+      const ceil = cutHeight + BLADE_PILE_H;   // 積む天井＝ブレード基準(cutHeight=押し始めの足元の高さ)＋ブレード厚み
+      let behindCap = 0; const BR2 = PILE_R * PILE_R;
+      for (let idx = 0; idx < V * V; idx++) { const dx = vx[idx] - bx, dz = vz[idx] - bz; if (dx * dx + dz * dz >= BR2) continue; const r = (ceil - heights[idx]) * CELL_AREA; if (r > 0) behindCap += r; }
+      let blade = game.blade, spill = 0, changed = false; const SCRAPE_R = 2.0, R2 = SCRAPE_R * SCRAPE_R, FOOT2 = 0.9 * 0.9;
+      let budget = Math.max(0, BLADE_CAP - blade) + behindCap;   // 削れる上限＝持てる空き＋後ろに置ける
+      for (let idx = 0; idx < V * V; idx++) {
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, d2 = dx * dx + dz * dz; if (d2 >= R2) continue;
+        const fdx = vx[idx] - game.mx, fdz = vz[idx] - game.mz; if (fdx * fdx + fdz * fdz < FOOT2) continue;   // 車体足元は触らない
+        const over = heights[idx] - cutHeight, step = DIG_RATE * dt * Math.max(0.4, 1 - Math.sqrt(d2) / SCRAPE_R);   // ブレード基準(cutHeight=押し始めの足元)より高い=削る／低い=埋める（色・目標に依らない）[親方FB]
+        if (over > 0.01 && budget > 0.0001) {     // 高い→削る（行き場のある分=budgetだけ）。ブレードに入れ、超過は spill（あふれ）
+          const cut = Math.min(over, step, budget / CELL_AREA); heights[idx] -= cut; changed = true;
+          const vol = cut * CELL_AREA; budget -= vol;
+          const toB = Math.min(vol, Math.max(0, BLADE_CAP - blade)); blade += toB; spill += vol - toB;
+        } else if (over < -0.01 && blade > 0) {   // 低い→ブレードの土で埋める（運搬）
+          const fill = Math.min(-over, step, blade / CELL_AREA);
+          if (fill > 0) { heights[idx] += fill; blade -= fill * CELL_AREA; changed = true; }
         }
       }
-      game.blade = Math.max(0, blade); game.totalDug += cutVol;
+      game.blade = Math.max(0, blade);
+      if (spill > 0.0001) { const left = depositInto(bx, bz, PILE_R, spill, ceil); game.blade += left; }  // あふれを後ろへ薄く残す（重なり端数のみブレードに残る＝保存）
       if (changed) { digFx(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); refreshHUD(); }
+    }
+
+    // バックホウ[F2-S2]：足元前方の土を1すくいずつ削ってバケットへ（体積保存・バケット上限 BUCKET_CAP）。
+    function backhoeDig(dt) {
+      const fx = game.mx + Math.sin(game.myaw) * BH_REACH, fz = game.mz + Math.cos(game.myaw) * BH_REACH;
+      let bucket = game.bucket, cutVol = 0, changed = false;
+      for (let idx = 0; idx < V * V; idx++) {
+        const room = BUCKET_CAP - bucket; if (room <= 0.0001) break;
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist >= BH_DIG_R) continue;
+        if (bhTag[idx] !== bhPushId) { bhTag[idx] = bhPushId; bhRef[idx] = heights[idx]; }  // この押しで初めて触れた高さを記録
+        const h = heights[idx];
+        const digFloor = Math.max(MIN_H, bhRef[idx] - LAYER);   // 1回の押しでは1段(LAYER)までしか掘れない（深掘りは離して押し直す）
+        if (h <= digFloor + 0.001) continue;
+        const step = BH_DIG_RATE * dt * Math.max(0.4, 1 - dist / BH_DIG_R);
+        const cut = Math.min(h - digFloor, step, room / CELL_AREA);
+        if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
+      }
+      game.bucket = Math.min(BUCKET_CAP, bucket); game.totalDug += cutVol;
+      if (changed) {
+        const gy = sampleHeight(fx, fz);
+        for (let i = 0; i < 3; i++) emit(dust, fx, gy, fz, 2.6, 1.1);
+        const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(8); }
+        shake = Math.min(0.10, shake + 0.025);
+        syncGeometry(); refreshHUD();
+      }
+      return changed;
+    }
+    // バックホウ[F2-S3]：バケットの土を足元前方へ降ろして地面を盛る（体積保存・上限 MAX_H）。
+    function backhoeDump(dt) {
+      if (game.bucket <= 0.0001) return false;
+      const fx = game.mx + Math.sin(game.myaw) * BH_REACH, fz = game.mz + Math.cos(game.myaw) * BH_REACH;
+      let bucket = game.bucket, changed = false;
+      for (let idx = 0; idx < V * V; idx++) {
+        if (bucket <= 0.0001) break;
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist >= BH_DIG_R) continue;
+        if (bhTag[idx] !== bhPushId) { bhTag[idx] = bhPushId; bhRef[idx] = heights[idx]; }  // この押しで初めて触れた高さを記録
+        const h = heights[idx];
+        const dumpCeil = Math.min(MAX_H, bhRef[idx] + LAYER);   // 1回の押しでは1段(LAYER)までしか盛れない（高盛りは離して押し直す）
+        if (h >= dumpCeil - 0.001) continue;
+        const give = BH_DUMP_RATE * dt * Math.max(0.4, 1 - dist / BH_DIG_R);
+        const add = Math.min(give, dumpCeil - h, bucket / CELL_AREA);
+        if (add > 0) { heights[idx] = h + add; bucket -= add * CELL_AREA; changed = true; }
+      }
+      game.bucket = Math.max(0, bucket);
+      if (changed) {
+        const gy = sampleHeight(fx, fz);
+        for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 2.0, 1.0);
+        const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(7); }
+        shake = Math.min(0.08, shake + 0.02);
+        syncGeometry(); refreshHUD();
+      }
+      return changed;
+    }
+    // バックホウのうでアニメ：'dig'=ブーム下げ＋アーム巻きで往復すくい／'dump'=腕を前へ伸ばしバケットを傾けて流す／null=待機へ戻る。
+    function animateBackhoe(dt, action) {
+      const digging = action === "dig", dumping = action === "dump";
+      bhDigAmt = Math.max(0, Math.min(1, bhDigAmt + (digging ? dt * 5 : -dt * 5)));
+      bhDumpAmt = Math.max(0, Math.min(1, bhDumpAmt + (dumping ? dt * 5 : -dt * 5)));
+      bhPhase += dt * ((digging || dumping) ? 9 : 3);
+      const scoop = Math.sin(bhPhase) * 0.32 * bhDigAmt;
+      bhBoomPivot.rotation.x = BH_BOOM_REST - 0.5 * bhDigAmt - scoop * 0.5 - 0.12 * bhDumpAmt;
+      bhArmPivot.rotation.x = BH_ARM_REST + 0.55 * bhDigAmt + scoop - 0.45 * bhDumpAmt;
+      bhBucket.rotation.x = 1.0 * bhDumpAmt + 0.25 * Math.sin(bhPhase) * bhDumpAmt;
     }
 
     // ===================== 重機の移動（視点に対して前後左右）=====================
@@ -394,27 +581,62 @@
       if (keys.left) { mxv -= R[0]; mzv -= R[1]; }
       let moving = false; const len = Math.sqrt(mxv * mxv + mzv * mzv);
       if (len > 0.0001) {
-        mxv /= len; mzv /= len; const step = MOVE_SPEED * dt; const half = WORLD / 2 - 0.5;
+        mxv /= len; mzv /= len; game.myaw = Math.atan2(mxv, mzv);
+        let sf = 1;
+        if (acting && active === "dozer" && !game.won) sf = Math.max(STALL_FRAC, 1 - game.blade / BLADE_CAP);  // ブレードに持ってる土が多いほど重く→だんだん遅い→満杯で実質停止[親方FB]
+        const step = MOVE_SPEED * dt * sf; const half = WORLD / 2 - 0.5;
         game.mx = Math.max(-half, Math.min(half, game.mx + mxv * step));
         game.mz = Math.max(-half, Math.min(half, game.mz + mzv * step));
-        game.myaw = Math.atan2(mxv, mzv); moving = true;
+        moving = true;
       }
-      const gy = sampleHeight(game.mx, game.mz);
-      dozer.position.set(game.mx, gy, game.mz); dozer.rotation.y = game.myaw;
-      // 押しながら移動した時だけ整地（止まると削れない）。押し始めた高さ(cutHeight)が基準。一定距離(STROKE_DIST)進むごとに次の段へ。
-      if (acting && moving && !game.won) {
-        if (!pushing) { pushing = true; pushId++; const ch = sampleHeight(game.mx, game.mz); cutHeight = (Math.abs(ch - game.targetLevel) <= 1.0) ? game.targetLevel : ch; strokeX = game.mx; strokeZ = game.mz; } // 目標高さの近く(緑)で押すと目標へ吸着、離れた所は押した高さ基準
-        else { const ddx = game.mx - strokeX, ddz = game.mz - strokeZ; if (ddx * ddx + ddz * ddz >= STROKE_DIST * STROKE_DIST) { pushId++; strokeX = game.mx; strokeZ = game.mz; } } // 一定距離進んだら次の段＝離さず往復しても掘り進める
+      // 2台とも配置（active=game の現在地／非active=退避スロット）。選択中の足元に輪を出す。
+      const dp = (active === "dozer") ? game : dozerState, bp = (active === "backhoe") ? game : backhoeState;
+      dozer.position.set(dp.mx, sampleHeight(dp.mx, dp.mz), dp.mz); dozer.rotation.y = dp.myaw;
+      backhoe.position.set(bp.mx, sampleHeight(bp.mx, bp.mz), bp.mz); backhoe.rotation.y = bp.myaw;
+      selRing.position.set(game.mx, sampleHeight(game.mx, game.mz) + 0.12, game.mz);
+      // ブレード前の土の山[親方FB]：ブル選択中、持ってる土(game.blade)に応じて大きく。空ならしまう。
+      if (active === "dozer" && game.blade > 0.15) {
+        const pf = Math.min(1, game.blade / BLADE_CAP), s2 = Math.sin(dp.myaw), c2 = Math.cos(dp.myaw);
+        const fxp = dp.mx + s2 * 1.65, fzp = dp.mz + c2 * 1.65;
+        bladePile.position.set(fxp, sampleHeight(fxp, fzp) + 0.25 + 0.55 * pf, fzp);
+        bladePile.scale.set(0.5 + 0.7 * pf, 0.5 + 1.1 * pf, 0.5 + 0.7 * pf); bladePile.rotation.y = dp.myaw;
+      } else bladePile.position.y = -999;
+      // 押しながら移動した時だけ整地（ブル選択時のみ・止まると動かない）。押し始めの足元の高さをブレード基準(cutHeight)に固定し、それより高い土を削り低い所へ運ぶ（色/目標に依らず物理的に）[親方FB]
+      if (acting && moving && !game.won && active === "dozer") {
+        if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); }
         gradePush(dt);
       } else pushing = false;
       // ブレードの掘る動き
       if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
       else { blade.position.y = BLADE_Y; blade.rotation.x = 0; }
+      // バックホウ[F2]：選択中は acting で掘る/降ろす。モードは「押し始めのバケット状態」で固定（空→掘る／土あり→降ろす）。降ろしはS3で実装。
+      if (active === "backhoe") {
+        if (acting && !prevActing) {  // 押し始めにモード決定[S5]：満タン→降ろす／空→掘る／土ありは足元が目標より高い(赤)なら掘り進め・他(青/平ら)は降ろす。お手本連動で直感的に。bhPushId を進めて1段制限をリセット。
+          const ffx = game.mx + Math.sin(game.myaw) * BH_REACH, ffz = game.mz + Math.cos(game.myaw) * BH_REACH;
+          const gh = sampleHeight(ffx, ffz), lt = sampleTarget(ffx, ffz);
+          if (game.bucket >= BUCKET_CAP - 0.05) bhMode = "dump";
+          else if (game.bucket <= 0.05) bhMode = "dig";
+          else bhMode = (gh > lt + FLAT_TOL) ? "dig" : "dump";
+          bhPushId++; updateActLabel();
+        }
+        else if (!acting && bhMode !== null) { bhMode = null; }   // 離したらモード解除
+        if (!acting) updateActLabel();   // アイドル中は移動に追従して掘る/降ろす予測表示を更新（内部で変化時のみDOM書換）
+        let action = null;
+        if (acting && !game.won && bhMode === "dig" && game.bucket < BUCKET_CAP) { backhoeDig(dt); action = "dig"; }
+        else if (acting && !game.won && bhMode === "dump" && game.bucket > 0.0001) { backhoeDump(dt); action = "dump"; }
+        animateBackhoe(dt, action);
+      } else { bhMode = null; }
+      prevActing = acting;
     }
     function sampleHeight(x, z) {
       const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID)));
       const j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID)));
       return heights[j * V + i];
+    }
+    function sampleTarget(x, z) {
+      const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID)));
+      const j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID)));
+      return targetH[j * V + i];
     }
 
     // ===================== カメラ（重機を中心に旋回）=====================
@@ -429,21 +651,31 @@
     // ===================== HUD =====================
     const dugEl = document.getElementById("dug"), carryEl = document.getElementById("carry"), barEl = document.querySelector("#bar > i");
     const scoreEl = document.getElementById("score"), remEl = document.getElementById("rem"), finishEl = document.getElementById("finish");
-    let lastDugFloor = 0, lastScore = -1;
+    const carryBadgeEl = document.getElementById("carry-badge"), bucketBadgeEl = document.getElementById("bucket-badge"), bucketHudEl = document.getElementById("bucket-hud");
+    let lastDugFloor = 0, lastScore = -1, lastBucketFull = false;
     function refreshHUD() {
-      dugEl.textContent = game.totalDug.toFixed(1); carryEl.textContent = game.blade.toFixed(1);
-      const fl = Math.floor(game.totalDug);
+      const dug = digVolume();
+      dugEl.textContent = dug.toFixed(1); carryEl.textContent = (active === "dozer" ? game.blade : 0).toFixed(1);
+      // バケットHUD[S5]：バックホウ選択中だけ「バケット x/10」を表示（ブルの時は従来のブレードの土）。満タンで点滅。
+      const isBH = (active === "backhoe");
+      carryBadgeEl.style.display = isBH ? "none" : ""; bucketBadgeEl.style.display = isBH ? "" : "none";
+      bucketHudEl.textContent = game.bucket.toFixed(1);
+      const full = game.bucket >= BUCKET_CAP - 0.05;
+      if (full && !lastBucketFull) { bucketBadgeEl.classList.remove("full"); void bucketBadgeEl.offsetWidth; bucketBadgeEl.classList.add("full"); }
+      lastBucketFull = full;
+      const fl = Math.floor(dug);
       if (fl !== lastDugFloor) { lastDugFloor = fl; dugEl.classList.remove("pop"); void dugEl.offsetWidth; dugEl.classList.add("pop"); }
       const sc = score();
       scoreEl.textContent = sc; remEl.textContent = Math.round(maxTargetDev() * 100);
       barEl.style.width = sc + "%";
       if (sc !== lastScore) { lastScore = sc; scoreEl.classList.remove("pop"); void scoreEl.offsetWidth; scoreEl.classList.add("pop"); }
-      finishEl.classList.toggle("ready", !game.won && sc >= PASS_SCORE && maxTargetDev() <= FINISH_MAXDEV);
+      finishEl.classList.toggle("ready", !game.won && sc >= PASS_SCORE && maxTargetDev() <= finishMaxDev());
     }
     function finishJob() {
-      if (game.won) return; const sc = score(); if (sc < PASS_SCORE || maxTargetDev() > FINISH_MAXDEV) return;
+      if (game.won) return; const sc = score(); if (sc < PASS_SCORE || maxTargetDev() > finishMaxDev()) return;
       game.won = true; if (sc > game.best) game.best = sc;
-      const stars = (sc >= STAR3 && maxTargetDev() <= 0.4) ? 3 : sc >= STAR2 ? 2 : 1;
+      const s3dev = (game.scene === "dig") ? 0.8 : 0.4;
+      const stars = (sc >= STAR3 && maxTargetDev() <= s3dev) ? 3 : sc >= STAR2 ? 2 : 1;
       document.getElementById("win-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
       document.getElementById("win-text").innerHTML = "出来形 <b>" + sc + "</b> 点　／　自己ベスト " + game.best + " 点";
       document.getElementById("win").classList.add("show"); finishEl.classList.remove("ready"); save();
@@ -464,26 +696,69 @@
     document.getElementById("reset").addEventListener("click", () => { if (window.confirm("この現場をやり直しますか？\n削った内容は消えます（お題は同じ）。")) restore(false); });
     document.getElementById("again").addEventListener("click", () => { document.getElementById("win").classList.remove("show"); restore(true); });
     document.getElementById("finish").addEventListener("click", finishJob);
+
+    // ===================== 機械チェンジ[F2]：ブル⇔バックホウ =====================
+    const machineBtn = document.getElementById("machine");
+    const MACHINE_LABEL = { dozer: "🚜 ブル", backhoe: "🪏 バックホウ" };
+    function showFlash(txt) { const f = document.getElementById("flash"); if (!f) return; f.textContent = txt; f.classList.remove("show"); void f.offsetWidth; f.classList.add("show"); }
+    let actLabelCur = "";
+    function updateActLabel() {
+      let html;
+      if (active === "dozer") html = 'ならす<span>押す</span>';
+      else {
+        let lbl;
+        if (bhMode === "dig") lbl = '掘る';
+        else if (bhMode === "dump") lbl = '降ろす';
+        // アイドル時も押し始めの判定式と同じ予測を表示（満タン→降ろす/空→掘る/土ありは足元が目標より高い赤なら掘る・他は降ろす）＝表示と動作を一致させる[S5点検]
+        else if (game.bucket >= BUCKET_CAP - 0.05) lbl = '降ろす';
+        else if (game.bucket <= 0.05) lbl = '掘る';
+        else { const ffx = game.mx + Math.sin(game.myaw) * BH_REACH, ffz = game.mz + Math.cos(game.myaw) * BH_REACH; lbl = (sampleHeight(ffx, ffz) > sampleTarget(ffx, ffz) + FLAT_TOL) ? '掘る' : '降ろす'; }
+        html = lbl + '<span>押す</span>';
+      }
+      if (html !== actLabelCur) { actLabelCur = html; actBtn.innerHTML = html; }   // 変化時のみ DOM 書換（毎フレーム呼んでも軽い）
+    }
+    function updateMachineUI() { if (machineBtn) machineBtn.innerHTML = MACHINE_LABEL[active] + '<span>タップで切替</span>'; updateActLabel(); }
+    function switchMachine() {
+      flushActive();
+      active = (active === "dozer") ? "backhoe" : "dozer";
+      const ns = (active === "dozer") ? dozerState : backhoeState;
+      game.mx = ns.mx; game.mz = ns.mz; game.myaw = ns.myaw;
+      pushing = false; clearKeys();
+      updateMachineUI(); refreshHUD(); showFlash(active === "dozer" ? "ブルドーザー" : "バックホウ"); save();
+    }
+    if (machineBtn) machineBtn.addEventListener("click", switchMachine);
+
     function restore(regen) {
-      if (regen) generateTerrain(); else { heights.set(baseHeights); setTarget(); game.initErr = Math.max(1, targetError()); }
+      if (regen) generateTerrain(game.scene === "flat" ? "dig" : "flat"); else { heights.set(baseHeights); game.initErr = Math.max(1, targetError()); updateGhost(); }
       game.blade = 0; game.totalDug = 0; game.won = false; pushing = false; lastDugFloor = 0; lastScore = -1;
-      game.mx = 0; game.mz = 6; game.myaw = Math.PI; syncGeometry(); refreshHUD(); save();
+      active = "dozer"; dozerState.mx = 0; dozerState.mz = 6; dozerState.myaw = Math.PI; backhoeState.mx = 5; backhoeState.mz = 6; backhoeState.myaw = Math.PI;
+      game.mx = 0; game.mz = 6; game.myaw = Math.PI; game.bucket = 0; game.soil0 = currentSoil(); updateMachineUI(); setSceneHint(); syncGeometry(); refreshHUD(); save();
     }
 
     // ===================== 保存 =====================
-    const KEY = "doboku_mvp_v6";
+    const KEY = "doboku_mvp_v7";
     function save() {
       try {
-        localStorage.setItem(KEY, JSON.stringify({ g: GRID, h: Array.from(heights), b: Array.from(baseHeights), blade: game.blade, dug: game.totalDug, mx: game.mx, mz: game.mz, myaw: game.myaw, ie: game.initErr, best: game.best, cy: camYaw, cp: camPitch }));
+        flushActive();
+        localStorage.setItem(KEY, JSON.stringify({ g: GRID, h: Array.from(heights), b: Array.from(baseHeights), th: Array.from(targetH), scene: game.scene, tl: game.targetLevel, blade: game.blade, bucket: game.bucket, dug: game.totalDug, ds: [dozerState.mx, dozerState.mz, dozerState.myaw], bs: [backhoeState.mx, backhoeState.mz, backhoeState.myaw], act: active, ie: game.initErr, best: game.best, cy: camYaw, cp: camPitch }));
       } catch (e) {}
     }
     function load() {
       try {
         const raw = localStorage.getItem(KEY); if (!raw) return false; const s = JSON.parse(raw);
         if (!s || s.g !== GRID || !s.h || s.h.length !== V * V || !s.b || s.b.length !== V * V) return false;
-        heights.set(s.h); baseHeights.set(s.b); setTarget(); game.blade = s.blade || 0; game.totalDug = s.dug || 0; game.best = s.best || 0;
-        game.mx = s.mx || 0; game.mz = s.mz || 6; game.myaw = (s.myaw != null) ? s.myaw : Math.PI; game.initErr = Math.max(1, s.ie || targetError(baseHeights)); game.won = false;
+        heights.set(s.h); baseHeights.set(s.b);
+        game.scene = (s.scene === "dig") ? "dig" : "flat";
+        if (s.th && s.th.length === V * V) targetH.set(s.th); else setTarget();
+        if (s.tl != null) game.targetLevel = s.tl;
+        game.blade = 0; game.totalDug = s.dug || 0; game.best = s.best || 0;   // ブレードに数字で溜める方式は廃止[親方FB]＝常に0（今押してる土は前の地面の山で表現）
+        game.initErr = Math.max(1, s.ie || targetError(baseHeights)); game.won = false;
+        if (s.ds) { dozerState.mx = s.ds[0]; dozerState.mz = s.ds[1]; dozerState.myaw = s.ds[2]; }
+        if (s.bs) { backhoeState.mx = s.bs[0]; backhoeState.mz = s.bs[1]; backhoeState.myaw = s.bs[2]; }
+        active = (s.act === "backhoe") ? "backhoe" : "dozer";
+        const ls = (active === "dozer") ? dozerState : backhoeState; game.mx = ls.mx; game.mz = ls.mz; game.myaw = ls.myaw;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
+        game.bucket = s.bucket || 0; game.soil0 = currentSoil(); updateGhost();
         return true;
       } catch (e) { return false; }
     }
@@ -510,11 +785,15 @@
     document.addEventListener("visibilitychange", () => { if (document.hidden) { clearKeys(); } else if (!running) { running = true; last = performance.now(); requestAnimationFrame(loop); } });
 
     // ===================== 起動 =====================
-    if (!load()) generateTerrain();
+    // URL に ?dig / ?flat を付けると、その現場で新規スタート（親方の手触り確認用・付けた時だけ効く）。
+    const forceScene = /[?&]dig\b/.test(location.search) ? "dig" : (/[?&]flat\b/.test(location.search) ? "flat" : null);
+    if (forceScene) generateTerrain(forceScene);
+    else if (!load()) generateTerrain(); else setSceneHint();   // generateTerrain は末尾で setSceneHint を呼ぶ。load 成功時のみ別途呼ぶ（コールド起動の二重実行を回避）[S5点検]
+    updateMachineUI();
     normalsDone = false; syncGeometry(); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
 
     // デバッグ用フック（URLに ?test を付けた時だけ有効・通常は無効）
-    if (/[?&]test\b/.test(location.search)) window.__t = { game, keys, updateDozer, updateCamera, score, targetError, maxTargetDev, finishJob, restore, camera, sampleHeight, setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting, getCut: () => cutHeight, getPushing: () => pushing, targetLevel: () => game.targetLevel, terrainStats: () => { let sum = 0, mx = -1e9, mn = 1e9; for (let i = 0; i < V * V; i++) { sum += heights[i]; if (heights[i] > mx) mx = heights[i]; if (heights[i] < mn) mn = heights[i]; } return { sum, mx, mn }; } };
+    if (/[?&]test\b/.test(location.search)) window.__t = { game, keys, updateDozer, updateCamera, score, targetError, maxTargetDev, finishJob, restore, camera, sampleHeight, setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting, setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, getCut: () => cutHeight, getPushing: () => pushing, targetLevel: () => game.targetLevel, terrainStats: () => { let sum = 0, mx = -1e9, mn = 1e9; for (let i = 0; i < V * V; i++) { sum += heights[i]; if (heights[i] > mx) mx = heights[i]; if (heights[i] < mn) mn = heights[i]; } return { sum, mx, mn }; }, soilTotal: () => currentSoil(), soil0: () => game.soil0, soilDrift: () => currentSoil() - game.soil0, bucket: () => game.bucket, active: () => active, dozerPos: () => ({ mx: dozerState.mx, mz: dozerState.mz, myaw: dozerState.myaw }), backhoePos: () => ({ mx: backhoeState.mx, mz: backhoeState.mz, myaw: backhoeState.myaw }), doSwitch: () => switchMachine(), scene: () => game.scene, sampleTarget, finishMaxDev: () => finishMaxDev(), bhPushId: () => bhPushId, maxDevRaw: () => { let m = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = Math.abs(heights[idx] - targetH[idx]); if (d > m) m = d; } return m; }, solve: () => { heights.set(targetH); game.blade = 0; game.bucket = 0; syncGeometry(); refreshHUD(); }, solveNoisy: (amp, bias) => { for (let idx = 0; idx < V * V; idx++) heights[idx] = Math.max(MIN_H, Math.min(MAX_H, targetH[idx] + (Math.random() - 0.5) * 2 * (amp || 0) + (bias || 0))); game.blade = 0; game.bucket = 0; syncGeometry(); refreshHUD(); }, targetSoil: () => { let s = 0; for (let i = 0; i < V * V; i++) s += targetH[i]; return s * CELL_AREA; } };
   })();
   </script>
 </body>
