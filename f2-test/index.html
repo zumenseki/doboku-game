@@ -566,7 +566,7 @@
       const h = document.getElementById("hint"); if (!h) return;
       if (game.scene === "tank") h.innerHTML = '🌊 調整池：手前の<b>水浸しの作業場</b>を乾かす現場。中央の<b>土手に水路を掘って</b>奥のため池へ排水→作業場を<b>平らに</b>→ため池に水がたまれば完成';
       else if (game.scene === "dig") h.innerHTML = '🪏 バックホウは<b>掘る↔下ろすの繰り返し</b>。1回で<b>バケット満タンまで掘る</b>→運んで<b>奥の盛り場に降ろす</b>→また掘る。盛りはラフでOK';
-      else h.innerHTML = 'お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に<br>貯めた土は右下の<b>下ろす</b>ボタンで戻せる';
+      else h.innerHTML = 'お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に<br>貯めた土は<b>下ろす</b>ボタンを押しながら<b>進む</b>と撒ける';
       h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 8000);
     }
     // 目標ラベル/点数行の文言を現場別に切替[F5]
@@ -713,7 +713,7 @@
       if (len > 0.0001) {
         mxv /= len; mzv /= len; game.myaw = Math.atan2(mxv, mzv);
         let sf = 1;
-        if (acting && active === "dozer" && !game.won) sf = Math.max(STALL_FRAC, 1 - game.blade / BLADE_CAP);  // ブレードに持ってる土が多いほど重く→だんだん遅い→満杯で実質停止[親方FB]
+        if ((acting || unloading) && active === "dozer" && !game.won) sf = Math.max(STALL_FRAC, 1 - game.blade / BLADE_CAP);  // ブレードに持ってる土が多いほど重く→だんだん遅い（ならし中・下ろし移動中とも）[親方FB]
         const step = MOVE_SPEED * dt * sf; const half = WORLD / 2 - 0.5;
         const ox = game.mx, oz = game.mz;
         const nx = Math.max(-half, Math.min(half, game.mx + mxv * step));
@@ -735,7 +735,7 @@
         bladePile.scale.set(0.5 + 0.7 * pf, 0.5 + 1.1 * pf, 0.5 + 0.7 * pf); bladePile.rotation.y = dp.myaw;
       } else bladePile.position.y = -999;
       // 押しながら移動した時だけ整地（ブル選択時のみ・止まると動かない）。押し始めの足元の高さをブレード基準(cutHeight)に固定し、それより高い土を削り低い所へ運ぶ（色/目標に依らず物理的に）[親方FB]
-      if (active === "dozer" && unloading && !game.won && game.blade > 0.01) { pushing = false; bladeUnload(dt); }   // 「下ろす」ボタン＝貯めた土を少しずつ前へ戻す[親方FB]
+      if (active === "dozer" && unloading && moving && !game.won && game.blade > 0.01) { pushing = false; bladeUnload(dt); }   // 「下ろす」ボタンを押しながら<b>移動</b>＝進みながら土を撒く（その場では下ろさない）[親方FB]
       else if (acting && moving && !game.won && active === "dozer") {
         if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); }
         gradePush(dt);
