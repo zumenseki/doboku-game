@@ -195,7 +195,7 @@
     const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
-    const BLADE_PILE_H = 0.7, BLADE_CAP = 12, STALL_FRAC = 0.35, PILE_R = 1.6;  // ブル押し[親方FB・ハイブリッド]：あふれ地面の頭打ち高さ/ブレードが持てる土量(m³)/満杯時の速度割合(35%=重いが運べる)/あふれを残す半径（重さ・容量は親方の体感で調整可）
+    const BLADE_PILE_H = 0.7, BLADE_CAP = 12, STALL_FRAC = 0.35, PILE_R = 1.6, UNLOAD_RATE = 14;  // ブル押し[親方FB・ハイブリッド]：あふれ頭打ち高さ/持てる土量/満杯時速度割合(35%)/積む半径/下ろす速さ(止まって押しっぱなし時)
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
     const BH_REACH = 2.1, BH_DIG_R = 1.7, BH_DIG_RATE = 13, BUCKET_CAP = 10, BH_DUMP_RATE = 16;  // バックホウ[F2]：腕の届く距離/掘る半径/掘る速さ/バケット上限/降ろす速さ
     const FLAT_TOL = 0.3, PASS_SCORE = 70, STAR2 = 85, STAR3 = 95, FINISH_MAXDEV = 0.5, FINISH_MAXDEV_DIG = 1.5;
@@ -552,8 +552,8 @@
       updateGoalUI();
       const h = document.getElementById("hint"); if (!h) return;
       if (game.scene === "tank") h.innerHTML = '🌊 調整池：手前の<b>水浸しの作業場</b>を乾かす現場。中央の<b>土手に水路を掘って</b>奥のため池へ排水→作業場を<b>平らに</b>→ため池に水がたまれば完成';
-      else if (game.scene === "dig") h.innerHTML = '🪏 バックホウで<b>手前の池を掘る</b>→たまった土を<b>奥の盛り場(緑が高い所)に降ろす</b><br>1回押すごとに1段ずつ・盛りはラフでOK';
-      else h.innerHTML = 'お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に';
+      else if (game.scene === "dig") h.innerHTML = '🪏 バックホウは<b>掘る↔下ろすの繰り返し</b>。1回で<b>バケット満タンまで掘る</b>→運んで<b>奥の盛り場に降ろす</b>→また掘る。盛りはラフでOK';
+      else h.innerHTML = 'お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に<br><b>止まって押しっぱなし</b>で貯めた土を下ろせる';
       h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 8000);
     }
     // 目標ラベル/点数行の文言を現場別に切替[F5]
@@ -613,6 +613,16 @@
       if (spill > 0.0001) { const left = depositInto(bx, bz, PILE_R, spill, ceil); game.blade += left; }  // あふれを後ろへ薄く残す（重なり端数のみブレードに残る＝保存）
       if (changed) { digFx(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); refreshHUD(); }
     }
+    // ブル[親方FB]：止まって動作ボタン押しっぱなし＝貯めた土(blade)を前へ少しずつ下ろす。土は保存(blade→地面)。
+    function bladeUnload(dt) {
+      const s = Math.sin(game.myaw), c = Math.cos(game.myaw), fx = game.mx + s * 1.4, fz = game.mz + c * 1.4;
+      const amt = Math.min(game.blade, UNLOAD_RATE * dt); if (amt <= 0) return;
+      const ceil = sampleHeight(fx, fz) + 2.0;   // 前の地面より少し高く積むまで（満ちたら移動して下ろす）
+      const left = depositInto(fx, fz, PILE_R, amt, ceil);
+      game.blade = Math.max(0, game.blade - (amt - left));
+      const gy = sampleHeight(fx, fz); for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 1.8, 1.0);
+      shake = Math.min(0.06, shake + 0.012); syncGeometry(); refreshHUD();
+    }
 
     // バックホウ[F2-S2]：足元前方の土を1すくいずつ削ってバケットへ（体積保存・バケット上限 BUCKET_CAP）。
     function backhoeDig(dt) {
@@ -622,13 +632,11 @@
         const room = BUCKET_CAP - bucket; if (room <= 0.0001) break;
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
         if (dist >= BH_DIG_R) continue;
-        if (bhTag[idx] !== bhPushId) { bhTag[idx] = bhPushId; bhRef[idx] = heights[idx]; }  // この押しで初めて触れた高さを記録
         const h = heights[idx];
-        const digFloor = Math.max(MIN_H, bhRef[idx] - LAYER);   // 1回の押しでは1段(LAYER)までしか掘れない（深掘りは離して押し直す）
-        if (h <= digFloor + 0.001) continue;
+        if (h <= MIN_H + 0.001) continue;   // 1段制限は廃止＝「掘る↔下ろす交互」で1すくい=バケット満タンまで掘る[親方FB]
         let step = BH_DIG_RATE * dt * Math.max(0.4, 1 - dist / BH_DIG_R);
         if (waterD[idx] > WATER_EPS) step *= UNDERWATER_DIG_MULT;   // 水[F5]：水中は掘り遅い（水中バックホウは第2段で普通速度に）
-        const cut = Math.min(h - digFloor, step, room / CELL_AREA);
+        const cut = Math.min(h - MIN_H, step, room / CELL_AREA);
         if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
       }
       game.bucket = Math.min(BUCKET_CAP, bucket); game.totalDug += cutVol;
@@ -650,12 +658,10 @@
         if (bucket <= 0.0001) break;
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
         if (dist >= BH_DIG_R) continue;
-        if (bhTag[idx] !== bhPushId) { bhTag[idx] = bhPushId; bhRef[idx] = heights[idx]; }  // この押しで初めて触れた高さを記録
         const h = heights[idx];
-        const dumpCeil = Math.min(MAX_H, bhRef[idx] + LAYER);   // 1回の押しでは1段(LAYER)までしか盛れない（高盛りは離して押し直す）
-        if (h >= dumpCeil - 0.001) continue;
+        if (h >= MAX_H - 0.001) continue;   // 1段制限は廃止＝バケットが空になるまで降ろす[親方FB]
         const give = BH_DUMP_RATE * dt * Math.max(0.4, 1 - dist / BH_DIG_R);
-        const add = Math.min(give, dumpCeil - h, bucket / CELL_AREA);
+        const add = Math.min(give, MAX_H - h, bucket / CELL_AREA);
         if (add > 0) { heights[idx] = h + add; bucket -= add * CELL_AREA; changed = true; }
       }
       game.bucket = Math.max(0, bucket);
@@ -719,22 +725,17 @@
       if (acting && moving && !game.won && active === "dozer") {
         if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); }
         gradePush(dt);
-      } else pushing = false;
+      } else {
+        pushing = false;
+        if (acting && !moving && !game.won && active === "dozer" && game.blade > 0.01) bladeUnload(dt);   // 止まって押しっぱなし＝貯めた土を少しずつ下ろす[親方FB]
+      }
       // ブレードの掘る動き
       if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
       else { blade.position.y = BLADE_Y; blade.rotation.x = 0; }
       // バックホウ[F2]：選択中は acting で掘る/降ろす。モードは「押し始めのバケット状態」で固定（空→掘る／土あり→降ろす）。降ろしはS3で実装。
       if (active === "backhoe") {
-        if (acting && !prevActing) {  // 押し始めにモード決定[S5]：満タン→降ろす／空→掘る／土ありは足元が目標より高い(赤)なら掘り進め・他(青/平ら)は降ろす。お手本連動で直感的に。bhPushId を進めて1段制限をリセット。
-          const ffx = game.mx + Math.sin(game.myaw) * BH_REACH, ffz = game.mz + Math.cos(game.myaw) * BH_REACH;
-          const gh = sampleHeight(ffx, ffz), lt = sampleTarget(ffx, ffz);
-          if (game.bucket >= BUCKET_CAP - 0.05) bhMode = "dump";
-          else if (game.bucket <= 0.05) bhMode = "dig";
-          else bhMode = (gh > lt + FLAT_TOL) ? "dig" : "dump";
-          bhPushId++; updateActLabel();
-        }
-        else if (!acting && bhMode !== null) { bhMode = null; }   // 離したらモード解除
-        if (!acting) updateActLabel();   // アイドル中は移動に追従して掘る/降ろす予測表示を更新（内部で変化時のみDOM書換）
+        if (acting && !prevActing) { bhMode = (game.bucket < 0.05) ? "dig" : "dump"; updateActLabel(); }   // 掘る↔下ろす交互[親方FB]：空なら掘る／土があれば下ろす（1すくい掘る→満タン→次は下ろす→空→掘る…の繰り返し）
+        else if (!acting && bhMode !== null) { bhMode = null; updateActLabel(); }   // 離したらモード解除＋ラベル更新（満タンなら次は「降ろす」表示へ）
         let action = null;
         if (acting && !game.won && bhMode === "dig" && game.bucket < BUCKET_CAP) { backhoeDig(dt); action = "dig"; }
         else if (acting && !game.won && bhMode === "dump" && game.bucket > 0.0001) { backhoeDump(dt); action = "dump"; }
@@ -838,10 +839,7 @@
         let lbl;
         if (bhMode === "dig") lbl = '掘る';
         else if (bhMode === "dump") lbl = '降ろす';
-        // アイドル時も押し始めの判定式と同じ予測を表示（満タン→降ろす/空→掘る/土ありは足元が目標より高い赤なら掘る・他は降ろす）＝表示と動作を一致させる[S5点検]
-        else if (game.bucket >= BUCKET_CAP - 0.05) lbl = '降ろす';
-        else if (game.bucket <= 0.05) lbl = '掘る';
-        else { const ffx = game.mx + Math.sin(game.myaw) * BH_REACH, ffz = game.mz + Math.cos(game.myaw) * BH_REACH; lbl = (sampleHeight(ffx, ffz) > sampleTarget(ffx, ffz) + FLAT_TOL) ? '掘る' : '降ろす'; }
+        else lbl = (game.bucket > 0.05) ? '降ろす' : '掘る';   // 掘る↔下ろす交互[親方FB]：空なら次は掘る・土があれば次は降ろす
         html = lbl + '<span>押す</span>';
       }
       if (html !== actLabelCur) { actLabelCur = html; actBtn.innerHTML = html; }   // 変化時のみ DOM 書換（毎フレーム呼んでも軽い）
