@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>土木ゲーム 水の試作（4レベル）</title>
+<style>
+  :root { --dig:#e07a1c; --fill:#2faa55; --ink:#20303a; --panel:rgba(255,255,255,0.82); --water:#2f7fd6; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#bfe3f2;
+    font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; touch-action:none; overscroll-behavior:none;
+  }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; touch-action:none; }
+  #hud-top { position:fixed; top:env(safe-area-inset-top,8px); left:0; right:0; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; pointer-events:none; padding:8px env(safe-area-inset-right,8px) 0 env(safe-area-inset-left,8px); }
+  .badge { background:var(--panel); color:var(--ink); border-radius:14px; padding:7px 13px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.15); font-variant-numeric:tabular-nums; }
+  .badge small { font-weight:700; opacity:.7; font-size:.72em; }
+  #b-work .v { color:var(--fill); }
+  #b-main .v { color:var(--water); }
+  #total-badge { opacity:.92; } #total-badge .v { color:var(--water); }
+  #money-badge .v { color:#b8860b; }
+  #blade-badge .v { color:#7a5a2a; } #blade-badge.over { background:#ffd6d6; }
+  .badge.done { background:#cdeccd; }
+  #garage { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #garage.show { display:flex; animation:fade .3s ease; }
+  .g-box { background:#fff; border-radius:16px; padding:16px; width:min(94vw,440px); max-height:84vh; overflow:auto; box-shadow:0 8px 30px rgba(0,0,0,.4); }
+  .g-box h2 { margin:0 0 10px; font-size:18px; color:var(--ink); }
+  .g-maker { font-weight:800; font-size:13px; color:var(--ink); margin:11px 2px 5px; padding-bottom:3px; border-bottom:2px solid #dde4e8; }
+  .g-maker:first-child { margin-top:0; }
+  .g-maker small { opacity:.6; font-weight:700; font-size:11px; }
+  .g-card { display:flex; align-items:center; gap:10px; padding:9px; border-radius:12px; background:#f2f5f7; margin-bottom:8px; }
+  .g-card.cur { background:#e2f0e2; box-shadow:inset 0 0 0 2px #9ccf9c; }
+  .g-ic { font-size:30px; line-height:1; }
+  .g-info { flex:1; color:var(--ink); min-width:0; }
+  .g-info b { font-size:14px; } .g-info small { display:block; opacity:.72; font-size:11px; line-height:1.4; }
+  .g-btn { border:none; border-radius:10px; padding:9px 12px; font-weight:800; font-size:13px; cursor:pointer; white-space:nowrap; text-align:center; }
+  .g-btn small { font-size:10px; opacity:.85; font-weight:700; }
+  .g-btn.buy { background:var(--fill); color:#fff; } .g-btn.use { background:var(--water); color:#fff; }
+  .g-btn.used { background:#cdeccd; color:var(--ink); } .g-btn.ng { background:#e6e6e6; color:#999; }
+  #g-close { margin-top:4px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
+  #shop { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #machineBtn { position:fixed; left:calc(env(safe-area-inset-left,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:8px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; display:flex; flex-direction:column; align-items:center; line-height:1.1; }
+  #machineBtn span { font-size:9px; opacity:.7; margin-top:1px; }
+  #machineBtn.sub { background:#cfe6f6; }
+  #shop:active, #machineBtn:active { transform:scale(.95); }
+  #lv-badge { background:rgba(32,48,58,.82); color:#fff; }
+  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 52px); left:50%; transform:translateX(-50%); width:min(82vw,380px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); }
+  #goal .label { font-size:12px; font-weight:700; color:var(--ink); opacity:.85; margin-bottom:4px; line-height:1.45; }
+  #bar { height:9px; background:#d6dee2; border-radius:6px; overflow:hidden; }
+  #bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#7db5ec,#2f7fd6); transition:width .2s ease; }
+  #dpad { position:fixed; left:calc(env(safe-area-inset-left,0px) + 16px); bottom:calc(env(safe-area-inset-bottom,0px) + 18px); display:grid; grid-template-columns:repeat(3,56px); grid-template-rows:repeat(3,56px); gap:6px; z-index:4; }
+  .dbtn { border:none; border-radius:14px; background:var(--panel); color:var(--ink); font-size:24px; font-weight:900; box-shadow:0 3px 10px rgba(0,0,0,.2); display:flex; align-items:center; justify-content:center; touch-action:none; }
+  .dbtn:active, .dbtn.on { background:#cfe0ea; transform:scale(.94); }
+  #d-up { grid-area:1/2/2/3; } #d-left { grid-area:2/1/3/2; } #d-right { grid-area:2/3/3/4; } #d-down { grid-area:3/2/4/3; }
+  #act { position:fixed; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 22px); width:96px; height:96px; border-radius:50%; border:none; color:#fff; font-weight:900; font-size:21px; background:var(--dig); box-shadow:0 6px 16px rgba(0,0,0,.28); cursor:pointer; line-height:1.1; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; touch-action:none; }
+  #act span { font-size:11px; font-weight:700; opacity:.9; }
+  #act.on { transform:scale(.93); filter:brightness(1.12); }
+  #reset { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 12px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:10px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #reset:active { transform:scale(.95); }
+  #hint { position:fixed; left:50%; bottom:96px; transform:translateX(-50%); background:rgba(0,0,0,.55); color:#fff; padding:9px 16px; border-radius:18px; font-weight:700; font-size:13px; pointer-events:none; transition:opacity .5s ease; text-align:center; max-width:86vw; line-height:1.6; }
+  #win { position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; background:rgba(10,30,40,.55); color:#fff; text-align:center; z-index:8; gap:14px; }
+  #win.show { display:flex; animation:fade .4s ease; }
+  @keyframes fade { from{opacity:0} to{opacity:1} }
+  #win h1 { font-size:42px; margin:0; text-shadow:0 3px 16px rgba(0,0,0,.5); }
+  #win p { margin:0; font-size:17px; font-weight:700; }
+  #again { margin-top:6px; background:var(--water); color:#fff; border:none; border-radius:14px; padding:14px 30px; font-weight:900; font-size:18px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,.3); }
+  #rotate { position:fixed; top:calc(env(safe-area-inset-top,8px) + 96px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,.6); color:#fff; padding:8px 14px; border-radius:16px; font-weight:700; font-size:13px; pointer-events:none; opacity:0; transition:opacity .4s ease; z-index:6; white-space:nowrap; }
+  #rotate.show { opacity:1; }
+  #mute { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 92px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:16px; line-height:1; }
+  #achBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 132px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #mute:active, #achBtn:active { transform:scale(.95); } #mute.off { opacity:.55; }
+  .g-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
+  .g-btn.upg { background:#e89a2a; color:#fff; } .g-btn.maxed { background:#f0d8a0; color:#7a5a10; }
+  #badges { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #badges.show { display:flex; animation:fade .3s ease; }
+  .b-box { background:#fff; border-radius:16px; padding:16px; width:min(94vw,440px); max-height:84vh; overflow:auto; box-shadow:0 8px 30px rgba(0,0,0,.4); }
+  .b-box h2 { margin:0 0 10px; font-size:18px; color:var(--ink); }
+  #b-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
+  .b-item { background:#f2f5f7; border-radius:12px; padding:10px; text-align:center; color:var(--ink); }
+  .b-item.locked { opacity:.45; filter:grayscale(1); }
+  .b-item .b-ic { font-size:30px; line-height:1.2; } .b-item b { display:block; font-size:13px; margin-top:2px; } .b-item small { display:block; font-size:10px; opacity:.7; line-height:1.3; }
+  #b-close { margin-top:10px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
+  #achToast { position:fixed; left:50%; top:calc(env(safe-area-inset-top,8px) + 150px); transform:translateX(-50%); background:rgba(184,134,11,.96); color:#fff; padding:10px 18px; border-radius:18px; font-weight:800; font-size:14px; box-shadow:0 4px 14px rgba(0,0,0,.3); opacity:0; transition:opacity .4s ease; pointer-events:none; z-index:7; text-align:center; white-space:nowrap; }
+  #achToast.show { opacity:1; }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="hud-top">
+    <div class="badge" id="lv-badge">LV<span id="lvnum">1</span></div>
+    <div class="badge" id="b-work">🏗 <span id="workLabel">作業場</span> <span class="v" id="work">0</span><small>%</small></div>
+    <div class="badge" id="b-main">💧 <span id="mainLabel">ため池</span> <span class="v" id="basin">0</span><small>/<span id="basinT">0</span> m³</small></div>
+    <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
+    <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
+    <div class="badge" id="blade-badge">🪣 <span class="v" id="blade">0</span><small>/<span id="bladeCap">12</span> m³</small></div>
+  </div>
+  <div id="goal"><div class="label" id="goalLabel">…</div><div id="bar"><i></i></div></div>
+  <div id="dpad">
+    <button class="dbtn" id="d-up" data-dir="up" aria-label="前">▲</button>
+    <button class="dbtn" id="d-left" data-dir="left" aria-label="左">◀</button>
+    <button class="dbtn" id="d-right" data-dir="right" aria-label="右">▶</button>
+    <button class="dbtn" id="d-down" data-dir="down" aria-label="後">▼</button>
+  </div>
+  <button id="act">ならす<span>押す</span></button>
+  <button id="reset">最初から</button>
+  <button id="shop">🛒 ショップ</button>
+  <button id="machineBtn" style="display:none">🚜 ブル<span>切替</span></button>
+  <button id="mute" aria-label="音">🔊</button>
+  <button id="achBtn">🏅 実績</button>
+  <div id="hint">…</div>
+  <div id="rotate">📱 横向きがおすすめ</div>
+  <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
+  <div id="badges"><div class="b-box"><h2>🏅 実績バッジ</h2><div id="b-list"></div><button id="b-close">とじる</button></div></div>
+  <div id="achToast"></div>
+  <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+  "use strict";
+  (function () {
+    if (!window.THREE) { document.body.innerHTML = "<p style='color:#fff;padding:20px'>3D部品(Three.js)の読み込みに失敗しました。</p>"; return; }
+
+    // ===================== 設定 =====================
+    const GRID = 36, WORLD = 24, V = GRID + 1, N = V * V;
+    const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
+    const MIN_H = -4, MAX_H = 9;
+    const MOVE_SPEED = 7;
+    const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
+    const FLAT_TOL = 0.4;
+    const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
+    // 水[追加]
+    const WATER_EPS = 0.02, RENDER_EPS = 0.0015, SHALLOW_GROUND = -0.1, PLAIN_MIN = 0.08;
+    let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
+    const ENTER_WATER_MAX = 0.7, UNDERWATER_DIG_MULT = 0.5; let WATER_CAN_ENTER = false;
+    // バックホウ本物掘削[本体移植 2026-06-25]：掘り下げ/積み上げを「今いる場所(足元)の高さ」から一定で頭打ち（段切り＝降りればさらに深く/積んだ上に乗ればさらに高く）。容量=その重機のバケット(bladeCap)・掘る速さ=digRate・範囲=digRadius。
+    const BH_MAX_CUT = 3.0, BH_MAX_FILL = 2.5;
+    const CLEAR_REWARD = 100; // 万円（クリア報酬）
+    // 重機レベルアップ（強化）テーブル＝digRate/digRadius/moveSpeed の倍率（index=Lv, Lv0=未強化）
+    const UPG_MAX = 5;
+    const UPG_RATE = [1.0, 1.18, 1.36, 1.55, 1.75, 2.0];   // 掘る速さ
+    const UPG_RAD  = [1.0, 1.06, 1.12, 1.18, 1.24, 1.30];  // 削る幅（広げ過ぎ注意で控えめ）
+    const UPG_SPD  = [1.0, 1.08, 1.16, 1.24, 1.32, 1.40];  // 移動速さ
+    function upgCost(M, lv) { // 現Lv(0..UPG_MAX-1)→lv+1 の費用(万円)。値段帯で段階化
+      const p = M.price || 0;
+      const base = p < 200 ? 40 : (p < 400 ? 70 : (p < 600 ? 110 : 160));
+      return base * (lv + 1);
+    }
+    // 重機ラインナップ（メーカー別・もじり名＝架空。値段は強い/大きいほど高い）。
+    const MAKERS = [
+      { id: 'komashi', name: 'コマシ', sub: '(コマツ風)', dot: '🟡' },
+      { id: 'kuboki', name: 'クボキ', sub: '(クボタ風)', dot: '🟢' },
+      { id: 'hidachi', name: 'ヒダチ', sub: '(日立建機風)', dot: '🔵' },
+      { id: 'caterpia', name: 'キャタピア', sub: '(Cat風)', dot: '🟠' },
+      { id: 'koveriko', name: 'コベリコ', sub: '(コベルコ風)', dot: '🟣' },
+      { id: 'borugo', name: 'ボルゴ', sub: '(ボルボ風)', dot: '🔴' },
+      { id: 'sumiken', name: 'スミケン', sub: '(住友建機風)', dot: '⚪' },
+      { id: 'yanama', name: 'ヤナマ', sub: '(ヤンマー風)', dot: '🟤' },
+      { id: 'isuzu2', name: 'イスズ', sub: '(いすゞ風)', dot: '🔷' }
+    ];
+    function makerById(id) { for (let k = 0; k < MAKERS.length; k++) if (MAKERS[k].id === id) return MAKERS[k]; return MAKERS[0]; }
+    const MACHINES = [
+      { id: 'dozer', maker: 'komashi', name: 'コマシ D-51', icon: '🚜', price: 0, ability: '標準のブルドーザー',
+        digRadius: 2.2, digRate: 18, layer: 0.8, moveSpeed: 7, bladeCap: 12, color: 0xf0c020, canEnterWater: false, underwaterFull: false },
+      { id: 'bigdozer', maker: 'komashi', name: 'コマシ D-155', icon: '🏗️', price: 400, ability: '大型ブル・削る幅がとても広い＋整地が速い（移動は遅め）',
+        digRadius: 3.2, digRate: 22, layer: 0.8, moveSpeed: 5.5, bladeCap: 20, color: 0x8a9a3a, canEnterWater: false, underwaterFull: false },
+      { id: 'mini', maker: 'kuboki', name: 'クボキ U-08', icon: '🛺', price: 150, ability: '高速ミニ・移動がとても速い＋小回り（幅/容量は小さめ）',
+        digRadius: 1.5, digRate: 16, layer: 0.8, moveSpeed: 11, bladeCap: 8, color: 0x88dd44, canEnterWater: false, underwaterFull: false },
+      { id: 'kx12', maker: 'kuboki', name: 'クボキ KX-12', icon: '🛠️', price: 220, ability: 'ミニ掘削・小型で機敏＋そこそこ深く掘れる',
+        digRadius: 1.6, digRate: 18, layer: 1.1, moveSpeed: 9, bladeCap: 10, color: 0x70c860, canEnterWater: false, underwaterFull: false },
+      { id: 'sub', maker: 'hidachi', name: 'ヒダチ ZX-AQUA', icon: '🤿', price: 300, ability: '水中バックホウ・深い水に入れる＋水中も普通に掘れる',
+        digRadius: 2.2, digRate: 18, layer: 0.8, moveSpeed: 6, bladeCap: 12, color: 0x3aa0e0, canEnterWater: true, underwaterFull: true },
+      { id: 'digger', maker: 'hidachi', name: 'ヒダチ EX-450', icon: '⛏️', price: 450, ability: '強力掘削・1押しで深く掘れる＋掘る速さUP（幅は狭め）',
+        digRadius: 1.8, digRate: 24, layer: 1.4, moveSpeed: 6.5, bladeCap: 18, color: 0x808890, canEnterWater: false, underwaterFull: false },
+      { id: 'hauler', maker: 'caterpia', name: 'キャタピア 963', icon: '🚛', price: 500, ability: '大容量運搬・土をたくさん運べる＋削る幅が広い（移動やや遅め）',
+        digRadius: 2.8, digRate: 18, layer: 0.8, moveSpeed: 6, bladeCap: 30, color: 0xe07a3a, canEnterWater: false, underwaterFull: false },
+      { id: 'd11', maker: 'caterpia', name: 'キャタピア D-11改', icon: '🦏', price: 800, ability: '超大型ブル・最大の幅＋最大の容量（最高峰だが移動はとても遅い）',
+        digRadius: 3.6, digRate: 24, layer: 1.2, moveSpeed: 4.5, bladeCap: 40, color: 0xc25a20, canEnterWater: false, underwaterFull: false },
+      { id: 'sk200', maker: 'koveriko', name: 'コベリコ SK-200', icon: '🦾', price: 350, ability: '中型バックホウ・掘りも整地もそこそこのバランス掘削',
+        digRadius: 2.0, digRate: 20, layer: 1.2, moveSpeed: 6.5, bladeCap: 14, color: 0x9a5ad0, canEnterWater: false, underwaterFull: false },
+      { id: 'skaqua', maker: 'koveriko', name: 'コベリコ SK-AQUA改', icon: '🌊', price: 650, ability: '大型水中バックホウ・深い水で幅広に掘れる（水中の上位機）',
+        digRadius: 2.6, digRate: 20, layer: 1.0, moveSpeed: 5.5, bladeCap: 18, color: 0x6060c8, canEnterWater: true, underwaterFull: true },
+      { id: 'l90', maker: 'borugo', name: 'ボルゴ L-90', icon: '🚚', price: 380, ability: 'ホイールローダー・速く走って土を運ぶ＋そこそこ容量',
+        digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 9, bladeCap: 22, color: 0xd03838, canEnterWater: false, underwaterFull: false },
+      { id: 'a60', maker: 'borugo', name: 'ボルゴ A-60', icon: '🛻', price: 600, ability: '大型運搬機・最大級の容量で大量に運ぶ（移動は遅い）',
+        digRadius: 2.6, digRate: 18, layer: 0.8, moveSpeed: 5, bladeCap: 50, color: 0xa82828, canEnterWater: false, underwaterFull: false },
+      { id: 'sh77', maker: 'sumiken', name: 'スミケン SH-77', icon: '🔧', price: 550, ability: '万能オールラウンダー・幅/深さ/容量/速さが全部そこそこ',
+        digRadius: 2.5, digRate: 20, layer: 1.0, moveSpeed: 7, bladeCap: 22, color: 0xc8ccd0, canEnterWater: false, underwaterFull: false },
+      { id: 'lsamp', maker: 'sumiken', name: 'スミケン LS-AMP', icon: '🚙', price: 480, ability: '水陸両用・陸も深い水も入れる（水中の掘りは遅め）',
+        digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 6.5, bladeCap: 16, color: 0x40b0a0, canEnterWater: true, underwaterFull: false },
+      { id: 'ym30', maker: 'yanama', name: 'ヤナマ ViO-30', icon: '🌱', price: 260, ability: 'コンパクト掘削・後方小旋回でキビキビ＋そこそこ深く掘れる（幅は狭め）',
+        digRadius: 1.7, digRate: 19, layer: 1.2, moveSpeed: 9.5, bladeCap: 9, color: 0xc23838, canEnterWater: false, underwaterFull: false },
+      { id: 'ymb7', maker: 'yanama', name: 'ヤナマ B7-Sigma', icon: '🪨', price: 700, ability: 'パワー掘削機・深く速く掘れる＋大容量（幅はやや狭め・移動遅め）',
+        digRadius: 2.0, digRate: 26, layer: 1.5, moveSpeed: 5.5, bladeCap: 26, color: 0x9a2a2a, canEnterWater: false, underwaterFull: false },
+      { id: 'igx250', maker: 'isuzu2', name: 'イスズ GIGA-250', icon: '🛞', price: 250, ability: '小型運搬ダンプ・速く走って土を運ぶ＋積載そこそこ（掘りは浅め）',
+        digRadius: 2.2, digRate: 16, layer: 0.7, moveSpeed: 9.5, bladeCap: 24, color: 0x3a6fb0, canEnterWater: false, underwaterFull: false },
+      { id: 'igxmax', maker: 'isuzu2', name: 'イスズ GIGA-MAX', icon: '🚒', price: 720, ability: '大型運搬ダンプ・超大容量で大量に運ぶ＋削る幅広め（移動は遅い）',
+        digRadius: 3.0, digRate: 17, layer: 0.8, moveSpeed: 5, bladeCap: 46, color: 0x244f8a, canEnterWater: false, underwaterFull: false }
+    ];
+    function machineById(id) { for (let k = 0; k < MACHINES.length; k++) if (MACHINES[k].id === id) return MACHINES[k]; return MACHINES[0]; }
+    function curM() { return machineById(game.machine); }
+    // 重機の現強化Lv（0..UPG_MAX）。実効ステータス＝BASE×倍率（毎フレーム呼ばれるので使い回しオブジェクトで割当ゼロ）
+    function upgLv(id) { const v = game.upg[id]; return v ? (v > UPG_MAX ? UPG_MAX : v) : 0; }
+    const _eff = {};
+    function effectiveStats(M) {
+      const lv = upgLv(M.id);
+      _eff.digRadius = M.digRadius * UPG_RAD[lv];
+      _eff.digRate = M.digRate * UPG_RATE[lv];
+      _eff.moveSpeed = M.moveSpeed * UPG_SPD[lv];
+      _eff.layer = M.layer; _eff.bladeCap = M.bladeCap;        // 強化対象外（BASE透過）
+      _eff.underwaterFull = M.underwaterFull; _eff.id = M.id;
+      return _eff;
+    }
+    // 実績バッジ（cond は game を受け真偽。判定は購入/クリア/強化など「変化時のみ」呼ぶ＝毎フレーム禁止）
+    function distinctOwned() { return game.owned.length; }
+    function distinctMakers() { const s = {}; for (let k = 0; k < game.owned.length; k++) s[machineById(game.owned[k]).maker] = 1; return Object.keys(s).length; }
+    const ACHIEVEMENTS = [
+      { id: 'dig100',  icon: '⛏️', name: '見習いオペ',     desc: '累計100m³ 掘る',     cond: g => g.cum.dugAll >= 100 },
+      { id: 'dig1000', icon: '🏗️', name: '土工マイスター', desc: '累計1000m³ 掘る',    cond: g => g.cum.dugAll >= 1000 },
+      { id: 'dig5000', icon: '🌋', name: '大地の主',       desc: '累計5000m³ 掘る',    cond: g => g.cum.dugAll >= 5000 },
+      { id: 'clear1',  icon: '🚩', name: '初現場',         desc: '1レベルクリア',     cond: g => g.cum.cleared >= 1 },
+      { id: 'clear5',  icon: '🏆', name: '現場監督',       desc: '累計5レベルクリア', cond: g => g.cum.cleared >= 5 },
+      { id: 'clear15', icon: '👑', name: 'ベテラン所長',   desc: '累計15レベルクリア', cond: g => g.cum.cleared >= 15 },
+      { id: 'own3',    icon: '🚜', name: 'コレクター',     desc: '重機を3台所有',     cond: g => distinctOwned() >= 3 },
+      { id: 'own6',    icon: '🏭', name: '大車両基地',     desc: '重機を6台所有',     cond: g => distinctOwned() >= 6 },
+      { id: 'mk4',     icon: '🌐', name: 'メーカー通',     desc: '4メーカー集める',   cond: g => distinctMakers() >= 4 },
+      { id: 'mkAll',   icon: '💠', name: '全メーカー制覇', desc: '全メーカー集める',  cond: g => distinctMakers() >= MAKERS.length },
+      { id: 'maxupg',  icon: '⭐', name: 'フルチューン',   desc: '1台をLv5まで強化',  cond: g => { for (const k in g.upg) if (g.upg[k] >= UPG_MAX) return true; return false; } }
+    ];
+
+    // ===================== データ =====================
+    const heights = new Float32Array(N), baseHeights = new Float32Array(N);
+    const vx = new Float32Array(N), vz = new Float32Array(N);
+    const passRef = new Float32Array(N), passTag = new Int32Array(N);
+    const waterD = new Float32Array(N);
+    const fL = new Float32Array(N), fR = new Float32Array(N), fT = new Float32Array(N), fB = new Float32Array(N);
+    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 } };
+    let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
+    let curLevel = 0, LV = null, winTimer = 0;
+
+    for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) { const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD; }
+    function gauss(x, z, cx, cz, h, s) { const d2 = (x - cx) * (x - cx) + (z - cz) * (z - cz); return h * Math.exp(-d2 / (2 * s * s)); }
+    function rnd2(k) { return (Math.random() - 0.5) * k; }
+    function rect(i0, i1, j0, j1) { return { i0: i0, i1: i1, j0: j0, j1: j1 }; }
+    function inRect(i, j, z) { return i >= z.i0 && i <= z.i1 && j >= z.j0 && j <= z.j1; }
+    function worldX(i) { return (i / GRID - 0.5) * WORLD; }
+    function worldZ(j) { return (j / GRID - 0.5) * WORLD; }
+    function clamp(h) { return h < MIN_H ? MIN_H : (h > MAX_H ? MAX_H : h); }
+    function clearWater() { waterD.fill(0); fL.fill(0); fR.fill(0); fT.fill(0); fB.fill(0); }
+
+    // ===================== ゾーン計測（汎用） =====================
+    function zoneEach(z, cb) { for (let j = z.j0; j <= z.j1; j++) for (let i = z.i0; i <= z.i1; i++) cb(j * V + i); }
+    function zoneVol(z) { let s = 0; zoneEach(z, (idx) => { s += waterD[idx]; }); return s * CELL_AREA; }
+    function zoneMean(z) { let m = 0, n = 0; zoneEach(z, (idx) => { m += heights[idx]; n++; }); return n ? m / n : 0; }
+    function zoneMaxDev(z) { const mean = zoneMean(z); let m = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > m) m = d; }); return m; }
+    function zoneFlatness(z) { const mean = zoneMean(z); let s = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > FLAT_TOL) { const e = d - FLAT_TOL; s += e * e * CELL_AREA; } }); return s; }
+    function zoneExcessAbove(arr, z, thr) { let s = 0; zoneEach(z, (idx) => { const e = arr[idx] - thr; if (e > 0) s += e * CELL_AREA; }); return s; }   // 掘り取り[LV5]：閾値より上に残っている土の量（=残っている山）。穴(閾値以下)は数えない＝バックホウ向き。
+    function totalWater() { let s = 0; for (let idx = 0; idx < N; idx++) s += waterD[idx]; return s * CELL_AREA; }
+
+    // ===================== レベル地形生成 =====================
+    function genDrain(L) { // L0 / L3: 調整池（作業場を排水+整地, ため池に貯水）
+      clearWater();
+      const A = L.A, B = L.B, bcx = worldX((B.i0 + B.i1) / 2), bcz = worldZ((B.j0 + B.j1) / 2), sc = L.bumpScale;
+      const bumps = [
+        { x: -3.5 + rnd2(2), z: 5.5 + rnd2(1.5), h: 1.3 * sc, s: 1.2 },
+        { x: 3.0 + rnd2(2), z: 7.5 + rnd2(1.5), h: 1.2 * sc, s: 1.2 },
+        { x: -1.0 + rnd2(2), z: 9.0 + rnd2(1.5), h: 1.1 * sc, s: 1.1 },
+        { x: 3.5 + rnd2(2), z: 4.5 + rnd2(1.5), h: 1.0 * sc, s: 1.1 }
+      ];
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
+        let h = rnd2(0.1);
+        h -= gauss(x, z, bcx, bcz, 3.4, 2.6);   // ため池の深い穴
+        h += gauss(x, z, 0, 0, 1.2, 2.2);        // 土手
+        if (inRect(i, j, A)) { const t = (j - A.j0) / (A.j1 - A.j0); h = -0.7 + 0.4 * t + rnd2(0.08); for (let b = 0; b < bumps.length; b++) h += gauss(x, z, bumps[b].x, bumps[b].z, bumps[b].h, bumps[b].s); }
+        heights[idx] = clamp(h);
+      }
+      zoneEach(A, (idx) => { const d = L.wl - heights[idx]; if (d > 0) waterD[idx] = d; });
+    }
+    function genFlow(L) { // L1: 通水（奥の水を尾根を掘って手前へ流す）
+      clearWater();
+      const S = L.S, D = L.B, scz = worldZ((S.j0 + S.j1) / 2), dcz = worldZ((D.j0 + D.j1) / 2);
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        let h = rnd2(0.1);
+        h -= gauss(x, z, 0, scz, 1.6, 3.0);   // 奥の水たまり（上流）
+        h += gauss(x, z, 0, 0, 2.0, 1.8);      // 中央の尾根（掘る対象）
+        h -= gauss(x, z, 0, dcz, 2.6, 3.0);    // 手前の窪み（下流・より深い）
+        heights[idx] = clamp(h);
+      }
+      zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
+    }
+    function genDam(L) { // L2: ため池づくり（盛土で堤防+水路で引き込み）
+      clearWater();
+      const S = L.S, P = L.B;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.1);
+        if (i < 10 || i > 26) h = 0.7 + rnd2(0.1);        // 左右の壁（水路を挟む）
+        else if (j >= S.j0 && j <= S.j1) h = -1.5 + rnd2(0.1); // 奥の水たまり（水源）
+        else if (j >= 10 && j <= 14) h = 0.8 + rnd2(0.1);  // 水源とため池の間の土手（掘る）
+        else if (j >= P.j0 && j <= P.j1) h = -0.8 + rnd2(0.1); // ため池の底（浅い窪み）
+        else if (j >= 27 && j <= 28) h = -0.6 + rnd2(0.05);  // すき間（堤防で盛る対象＝ここから漏れる）
+        else if (j >= 29) h = -2.5 + rnd2(0.1);            // 手前の落ち先（漏れた水が溜まる）
+        else h = rnd2(0.1);
+        heights[idx] = clamp(h);
+      }
+      zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
+    }
+    function genSub(L) { // L5: 水中工事（水没した底の土の山を水中バックホウで掘り下げて平らに）
+      clearWater();
+      const A = L.A, m1 = L.m1, m2 = L.m2;
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
+        let h = rnd2(0.1);
+        if (inRect(i, j, A)) { h = -1.8 + rnd2(0.1); h += gauss(x, z, m1[0], m1[1], 0.9, 1.7) + gauss(x, z, m2[0], m2[1], 0.8, 1.6); } // 深い底＋水中の山
+        heights[idx] = clamp(h);
+      }
+      zoneEach(A, (idx) => { const d = 0.0 - heights[idx]; if (d > 0) waterD[idx] = d; }); // 水面0=深い水(普通のブルは入れない)
+    }
+
+    // ===================== レベル定義 =====================
+    const LEVEL_DEFS = [
+      { type: 'drain', name: '調整池', mainLabel: 'ため池', A: rect(8, 28, 22, 33), B: rect(9, 27, 4, 15),
+        wl: -0.05, bumpScale: 1.0, drainWin: 0.85, maxDev: 0.7, tFrac: 0.5, startZ: 6.3,
+        goal: '調整池の工事：①手前の<b>作業場</b>の水を奥へ流して乾かし平らに ②奥の<b>ため池</b>に水をためる',
+        hint: '緑の枠＝作業場・青の枠＝ため池。土手に<b>水路を掘って排水</b>し、作業場を乾かして平らに',
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genDrain },
+      { type: 'fill', name: '通水（川を通す）', mainLabel: '通水', S: rect(10, 26, 3, 11), B: rect(10, 26, 25, 33),
+        tFrac: 0.5, startZ: 4,
+        goal: '通水の工事：中央の<b>高い尾根を掘って水路</b>を作り、奥の水を手前の<b>下流（緑の枠）</b>へ流そう',
+        hint: '青の枠（奥）＝水源・緑の枠（手前）＝下流。中央の尾根を掘って水路を作り、水を手前へ通そう',
+        markers: [['S', 0x2f7fd6], ['B', 0x2faa55]], gen: genFlow },
+      { type: 'fill', name: 'ため池づくり', mainLabel: 'ため池', S: rect(10, 26, 3, 9), B: rect(10, 26, 15, 26),
+        tFrac: 0.25, startZ: 0,
+        goal: 'ため池づくり：手前の<b>すき間を盛土でせき止め</b>（堤防）、奥から<b>水路を掘って水を引き込み</b>、ため池に貯めよう',
+        hint: '青の枠＝水源・緑の枠＝ため池。まず手前のすき間を<b>盛土でふさぎ</b>、奥の土手を掘って水を引き込む',
+        markers: [['S', 0x2f7fd6], ['B', 0x2faa55]], gen: genDam },
+      { type: 'drain', name: '調整池（難）', mainLabel: 'ため池', A: rect(8, 28, 22, 33), B: rect(9, 27, 4, 15),
+        wl: 0.12, bumpScale: 1.5, drainWin: 0.9, maxDev: 0.6, tFrac: 0.6, startZ: 6.3,
+        goal: '調整池（難しい版）：水多め・目標厳しめ。作業場をしっかり排水＆平らに＋ため池に多く貯める',
+        hint: 'レベル1と同じ要領。水が多く目標も厳しめ。排水路をしっかり掘って排水＆整地',
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genDrain },
+      { type: 'level', name: '水中工事', mainLabel: '', A: rect(9, 27, 9, 27), m1: [-3, 1], m2: [3, -2],
+        maxDev: 0.5, tFrac: 0, startZ: 0, subFloor: -1.8, clearTol: 0.3,
+        goal: '水中工事：水没した底の<b>土の山</b>を、<b>水中バックホウ</b>で<b>掘り取って撤去</b>しよう（普通のブルは深い水に入れない→🛒で購入を）',
+        hint: '深い水で普通のブルは入れない。🛒で水中バックホウを買い、機械チェンジして水中の<b>山を掘り取る</b>（穴ができてもOK）',
+        markers: [['A', 0x9b59b6]], gen: genSub }
+    ];
+    const NLV = LEVEL_DEFS.length;
+
+    // ===================== 描画層 =====================
+    const app = document.getElementById("app");
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0xbfe3f2, 1);
+    app.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0xbfe3f2, 42, 95);
+    const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 500);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(-6, 12, 7); scene.add(sun);
+
+    const positions = new Float32Array(N * 3), colors = new Float32Array(N * 3), indices = [];
+    for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) { const a = j * V + i, b = j * V + (i + 1), c = (j + 1) * V + i, d = (j + 1) * V + (i + 1); indices.push(a, c, b, b, c, d); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geo.setIndex(indices);
+    const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
+    scene.add(ground);
+    const cLow = new THREE.Color(0x6f9a4d), cMid = new THREE.Color(0xb08245), cHigh = new THREE.Color(0x6e4a23), cWet = new THREE.Color(0x4a5f3a), tmpC = new THREE.Color();
+    function colorFor(h, wet, out) {
+      const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
+      if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
+      if (wet) out.lerp(cWet, 0.32); return out;
+    }
+    let normalsDone = false;
+    function syncGeometry() {
+      for (let idx = 0; idx < N; idx++) {
+        positions[idx * 3] = vx[idx]; positions[idx * 3 + 1] = heights[idx]; positions[idx * 3 + 2] = vz[idx];
+        colorFor(heights[idx], waterD[idx] > WATER_EPS, tmpC); colors[idx * 3] = tmpC.r; colors[idx * 3 + 1] = tmpC.g; colors[idx * 3 + 2] = tmpC.b;
+      }
+      geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
+      if (!normalsDone) { geo.computeVertexNormals(); normalsDone = true; }
+      geo.computeBoundingSphere();
+    }
+
+    // 水メッシュ
+    const wPos = new Float32Array(N * 3);
+    const wGeo = new THREE.BufferGeometry();
+    wGeo.setAttribute("position", new THREE.BufferAttribute(wPos, 3));
+    wGeo.setIndex(indices.slice());
+    const water = new THREE.Mesh(wGeo, new THREE.MeshStandardMaterial({ color: 0x2f7fd6, transparent: true, opacity: 0.72, roughness: 0.2, metalness: 0.05, depthWrite: false }));
+    water.renderOrder = 2; water.frustumCulled = false; scene.add(water);
+    let wt = 0, wframe = 0;
+    function syncWater(dt) {
+      wt += dt; wframe++;
+      for (let idx = 0; idx < N; idx++) {
+        wPos[idx * 3] = vx[idx]; wPos[idx * 3 + 2] = vz[idx];
+        const d = waterD[idx];
+        let show = false;
+        if (d > RENDER_EPS) {
+          if (heights[idx] < SHALLOW_GROUND || d > PLAIN_MIN) show = true; // 窪み or 本物の池の深さ
+          else { // 浅くても「高い縁に囲まれて溜まっている水」(低地に貯まる水)は描く＝水位上昇が見える／囲い無しの平地こぼれ筋は描かない
+            const ii = idx % V, jj = (idx / V) | 0, surf = heights[idx] + d; let rim = -1e9;
+            if (ii > 0 && heights[idx - 1] > rim) rim = heights[idx - 1];
+            if (ii < GRID && heights[idx + 1] > rim) rim = heights[idx + 1];
+            if (jj > 0 && heights[idx - V] > rim) rim = heights[idx - V];
+            if (jj < GRID && heights[idx + V] > rim) rim = heights[idx + V];
+            if (rim > surf + 0.1) show = true; // 隣に水面より高い縁=囲われて溜まっている
+          }
+        }
+        if (show) {
+          const flow = Math.abs(fR[idx] - fL[idx]) + Math.abs(fB[idx] - fT[idx]);
+          const amp = 0.02 + (flow < 0.12 ? flow : 0.12) * 0.5;
+          const ripple = Math.sin(wt * 2.6 + vx[idx] * 0.7 + vz[idx] * 0.7) * (d > 0.05 ? amp : amp * d / 0.05);
+          wPos[idx * 3 + 1] = heights[idx] + d + ripple;
+        } else { wPos[idx * 3 + 1] = heights[idx] - 0.05; }
+      }
+      wGeo.attributes.position.needsUpdate = true;
+      if (wframe % 2 === 0) wGeo.computeVertexNormals();
+    }
+
+    // 水シミュ（仮想パイプ法・浅水＋慣性・総量保存）
+    function simWater(dt) {
+      const dtG = dt * GF, inv = dt / CELL_AREA;
+      for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
+        const c = j * V + i, surfC = heights[c] + waterD[c];
+        let l = (i > 0) ? (fL[c] + dtG * (surfC - (heights[c - 1] + waterD[c - 1]))) : 0; if (l < 0) l = 0; else l *= FLUX_DAMP;
+        let r = (i < GRID) ? (fR[c] + dtG * (surfC - (heights[c + 1] + waterD[c + 1]))) : 0; if (r < 0) r = 0; else r *= FLUX_DAMP;
+        let t = (j > 0) ? (fT[c] + dtG * (surfC - (heights[c - V] + waterD[c - V]))) : 0; if (t < 0) t = 0; else t *= FLUX_DAMP;
+        let b = (j < GRID) ? (fB[c] + dtG * (surfC - (heights[c + V] + waterD[c + V]))) : 0; if (b < 0) b = 0; else b *= FLUX_DAMP;
+        const out = (l + r + t + b) * dt;
+        if (out > 1e-9) { const avail = waterD[c] * CELL_AREA; if (out > avail) { const K = avail / out; l *= K; r *= K; t *= K; b *= K; } }
+        fL[c] = l; fR[c] = r; fT[c] = t; fB[c] = b;
+      }
+      for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
+        const c = j * V + i; let inflow = 0;
+        if (i > 0) inflow += fR[c - 1]; if (i < GRID) inflow += fL[c + 1]; if (j > 0) inflow += fB[c - V]; if (j < GRID) inflow += fT[c + V];
+        const nw = waterD[c] + (inflow - (fL[c] + fR[c] + fT[c] + fB[c])) * inv; waterD[c] = nw > 0 ? nw : 0;
+      }
+    }
+    function sampleWater(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return waterD[j * V + i]; }
+    function canStand(x, z) { return WATER_CAN_ENTER || sampleWater(x, z) <= ENTER_WATER_MAX; }
+    function findDryStart() { // スタートが深い水中なら、近くの立てる場所(乾き/浅瀬)へ寄せる（はまり防止）
+      if (canStand(game.mx, game.mz)) return;
+      const half = WORLD / 2 - 0.5;
+      for (let r = 1; r <= 20; r++) for (let a = 0; a < 12; a++) {
+        const ang = a / 12 * Math.PI * 2, x = game.mx + Math.cos(ang) * r * 0.6, z = game.mz + Math.sin(ang) * r * 0.6;
+        if (Math.abs(x) > half || Math.abs(z) > half) continue;
+        if (canStand(x, z)) { game.mx = x; game.mz = z; return; }
+      }
+    }
+
+    // ゾーン旗・枠
+    const markerGroup = new THREE.Group(); scene.add(markerGroup);
+    function rebuildMarkers(list) {
+      for (let k = markerGroup.children.length - 1; k >= 0; k--) { const c = markerGroup.children[k]; markerGroup.remove(c); if (c.geometry) c.geometry.dispose(); }
+      list.forEach(function (m) {
+        const z = LV[m[0]], colorHex = m[1]; if (!z) return;
+        const x0 = worldX(z.i0), x1 = worldX(z.i1), z0 = worldZ(z.j0), z1 = worldZ(z.j1), col = new THREE.Color(colorHex);
+        const pts = [new THREE.Vector3(x0, 0.3, z0), new THREE.Vector3(x1, 0.3, z0), new THREE.Vector3(x1, 0.3, z1), new THREE.Vector3(x0, 0.3, z1), new THREE.Vector3(x0, 0.3, z0)];
+        markerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: colorHex })));
+        const poleMat = new THREE.MeshStandardMaterial({ color: colorHex, flatShading: true, roughness: 0.6 });
+        const flagMat = new THREE.MeshStandardMaterial({ color: colorHex, flatShading: true, roughness: 0.6, emissive: col.clone().multiplyScalar(0.25) });
+        [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].forEach(function (c) {
+          const pole = new THREE.Mesh(new THREE.BoxGeometry(0.16, 4.0, 0.16), poleMat); pole.position.set(c[0], 1.0, c[1]); markerGroup.add(pole);
+          const flag = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.06), flagMat); flag.position.set(c[0] + 0.45, 2.7, c[1]); markerGroup.add(flag);
+        });
+      });
+    }
+
+    // 重機
+    const dozer = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf0c020, flatShading: true, roughness: 0.7 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x333333, flatShading: true, roughness: 0.9 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a3a44, flatShading: true, roughness: 0.25, metalness: 0.15 }); // 窓ガラス
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x6a7075, flatShading: true, roughness: 0.55, metalness: 0.2 }); // 鋼（刃・爪・バケット）
+    const warnMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, flatShading: true, roughness: 0.5 }); // 回転灯
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.9, 2.2), bodyMat); body.position.y = 0.95; dozer.add(body);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.9), bodyMat); cabin.position.set(0, 1.6, -0.2); dozer.add(cabin);
+    // キャビンの窓（前・左右）＋排気筒＋回転灯＝全機種共通の機械ディテール
+    const winF = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.42, 0.06), glassMat); winF.position.set(0, 1.66, 0.28); dozer.add(winF);
+    const winL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 0.62), glassMat); winL.position.set(-0.53, 1.66, -0.2); dozer.add(winL);
+    const winR = winL.clone(); winR.position.x = 0.53; dozer.add(winR);
+    const pipe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.6, 0.12), darkMat); pipe.position.set(0.5, 1.55, 0.62); dozer.add(pipe);
+    const beacon = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), warnMat); beacon.position.set(-0.3, 2.04, -0.2); dozer.add(beacon);
+    // 排土板（ブル/ミニ）＝機体色の板＋下端の鋼の刃＋左右の袖＋押しアーム（blade子＝表示連動・digアニメで一緒に動く）
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 0.18), bodyMat); const BLADE_Y = 0.6; blade.position.set(0, BLADE_Y, 1.45); dozer.add(blade);
+    const bladeEdge = new THREE.Mesh(new THREE.BoxGeometry(2.04, 0.18, 0.26), steelMat); bladeEdge.position.set(0, -0.42, 0.03); blade.add(bladeEdge);
+    const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.8, 0.42), bodyMat); wingL.position.set(-1.0, 0, 0.18); wingL.rotation.y = -0.5; blade.add(wingL);
+    const wingR = wingL.clone(); wingR.position.x = 1.0; wingR.rotation.y = 0.5; blade.add(wingR);
+    const pushL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 1.1), darkMat); pushL.position.set(-0.6, -0.1, -0.6); pushL.rotation.x = 0.2; blade.add(pushL);
+    const pushR = pushL.clone(); pushR.position.x = 0.6; blade.add(pushR);
+    const trackL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 2.4), darkMat); trackL.position.set(-0.8, 0.4, 0); dozer.add(trackL);
+    const trackR = trackL.clone(); trackR.position.x = 0.8; dozer.add(trackR);
+    // ===== アタッチメント（重機の種類で見た目を出し分け）。既定は非表示→applyMachineで該当だけ表示 =====
+    const armG = new THREE.Group(); // バックホウ：腕（ブーム＋スティック＋すくい角バケット＋爪3本）
+    const boom = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 1.7), bodyMat); boom.position.set(0, 1.2, 0.85); boom.rotation.x = 0.55; armG.add(boom);
+    const stick = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 1.05), darkMat); stick.position.set(0, 0.6, 1.75); stick.rotation.x = -0.45; armG.add(stick);
+    const armBkt = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.5, 0.5), steelMat); armBkt.position.set(0, 0.3, 2.12); armBkt.rotation.x = 0.5; armG.add(armBkt);
+    for (let ti = 0; ti < 3; ti++) { const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.12), steelMat); tooth.position.set(-0.24 + ti * 0.24, 0.22, 2.42); armG.add(tooth); }
+    armG.visible = false; dozer.add(armG);
+    const loaderG = new THREE.Group(); // ホイールローダー：左右アーム＋ワイドなすくい角バケット＋底刃＋爪5本
+    const lArmL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 1.5), darkMat); lArmL.position.set(-0.55, 0.7, 1.0); lArmL.rotation.x = 0.32; loaderG.add(lArmL);
+    const lArmR = lArmL.clone(); lArmR.position.x = 0.55; loaderG.add(lArmR);
+    const scoop = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.5, 0.55), steelMat); scoop.position.set(0, 0.34, 1.95); scoop.rotation.x = 0.25; loaderG.add(scoop);
+    const scoopFloor = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.12, 0.5), steelMat); scoopFloor.position.set(0, 0.12, 2.16); loaderG.add(scoopFloor);
+    for (let ti = 0; ti < 5; ti++) { const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.14), steelMat); tooth.position.set(-0.76 + ti * 0.38, 0.08, 2.4); loaderG.add(tooth); }
+    loaderG.visible = false; dozer.add(loaderG);
+    const dumpG = new THREE.Group(); // 運搬機：開いた荷台（床＋前あおり高/後あおり低＋左右側壁）
+    const dFloor = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 1.7), darkMat); dFloor.position.set(0, 1.02, -0.55); dumpG.add(dFloor);
+    const dFront = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 0.12), bodyMat); dFront.position.set(0, 1.32, 0.25); dumpG.add(dFront);
+    const dBack = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.34, 0.12), bodyMat); dBack.position.set(0, 1.21, -1.4); dumpG.add(dBack);
+    const dSideL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 1.7), bodyMat); dSideL.position.set(-0.79, 1.27, -0.55); dumpG.add(dSideL);
+    const dSideR = dSideL.clone(); dSideR.position.x = 0.79; dumpG.add(dSideR);
+    dumpG.visible = false; dozer.add(dumpG);
+    scene.add(dozer);
+
+    // 粒子
+    function makeParticles(n, size, color, opacity) {
+      const pos = new Float32Array(n * 3), vel = new Float32Array(n * 3), life = new Float32Array(n);
+      for (let k = 0; k < n; k++) pos[k * 3 + 1] = -999;
+      const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size, transparent: true, opacity, depthWrite: false })); scene.add(pts);
+      return { pos, vel, life, g, cur: 0, n };
+    }
+    const dust = makeParticles(90, 0.34, 0xbfa478, 0.85), chunk = makeParticles(40, 0.75, 0x8a6234, 0.95), splash = makeParticles(50, 0.4, 0x9fd0ff, 0.9);
+    function emit(p, x, y, z, up, spread) { const k = p.cur; p.cur = (p.cur + 1) % p.n; p.pos[k * 3] = x + rnd2(spread); p.pos[k * 3 + 1] = y + 0.2; p.pos[k * 3 + 2] = z + rnd2(spread); p.vel[k * 3] = rnd2(spread * 2.2); p.vel[k * 3 + 1] = up * (0.7 + Math.random() * 0.8); p.vel[k * 3 + 2] = rnd2(spread * 2.2); p.life[k] = 0.45 + Math.random() * 0.4; }
+    function updateParticles(p, dt, grav) { let live = false; for (let k = 0; k < p.n; k++) { if (p.life[k] > 0) { live = true; p.life[k] -= dt; p.vel[k * 3 + 1] -= grav * dt; p.pos[k * 3] += p.vel[k * 3] * dt; p.pos[k * 3 + 1] += p.vel[k * 3 + 1] * dt; p.pos[k * 3 + 2] += p.vel[k * 3 + 2] * dt; if (p.life[k] <= 0) p.pos[k * 3 + 1] = -999; } } if (live) p.g.attributes.position.needsUpdate = true; }
+    let digPulse = 0, bladePhase = 0, lastChunk = 0;
+    function digFx(strong) {
+      const fx = game.mx + Math.sin(game.myaw) * 1.4, fz = game.mz + Math.cos(game.myaw) * 1.4, gy = sampleHeight(fx, fz), wet = sampleWater(fx, fz) > WATER_EPS, nDust = strong ? 4 : 2;
+      for (let i = 0; i < nDust; i++) emit(wet ? splash : dust, fx, gy, fz, 3.0, 1.3);
+      if (strong && !wet) { const now = performance.now(); if (now - lastChunk > 70) { lastChunk = now; for (let i = 0; i < 2; i++) emit(chunk, fx, gy, fz, 4.2, 0.8); } }
+      digPulse = strong ? 0.16 : 0.10; shake = Math.min(strong ? 0.05 : 0.04, shake + (strong ? 0.02 : 0.015)); // 整地中の揺れを控えめに(上限0.16→0.05)
+    }
+
+    // ===================== サウンド（手続き生成・WebAudio／音声ファイル不要） =====================
+    // AudioContextは初回ユーザー操作でだけ生成/resume（モバイル自動再生ポリシー対策）。ノードは使い回し（毎フレーム生成しない）。失敗時は全メソッドが無害なno-op。
+    const SND = (function () {
+      const MUTE_KEY = 'doboku_mute_v1';
+      let ctx = null, master = null, ready = false, started = false;
+      let muted = false; try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch (_) {}
+      let engOsc = null, engGain = null, engLP = null, engVibOsc = null, engVibGain = null;
+      let digBus = null, digGain = null, lastDig = 0;
+      function makeNoiseBuffer() {
+        const len = (ctx.sampleRate * 0.5) | 0, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.6;
+        return buf;
+      }
+      function build() {
+        master = ctx.createGain(); master.gain.value = muted ? 0 : 0.5; master.connect(ctx.destination);
+        engGain = ctx.createGain(); engGain.gain.value = 0.0;
+        engLP = ctx.createBiquadFilter(); engLP.type = 'lowpass'; engLP.frequency.value = 420; engLP.Q.value = 0.7;
+        engOsc = ctx.createOscillator(); engOsc.type = 'sawtooth'; engOsc.frequency.value = 48;
+        engVibGain = ctx.createGain(); engVibGain.gain.value = 6;
+        engVibOsc = ctx.createOscillator(); engVibOsc.type = 'sine'; engVibOsc.frequency.value = 7;
+        engVibOsc.connect(engVibGain); engVibGain.connect(engOsc.frequency);
+        engOsc.connect(engLP); engLP.connect(engGain); engGain.connect(master);
+        engOsc.start(); engVibOsc.start();
+        const nz = ctx.createBufferSource(); nz.buffer = makeNoiseBuffer(); nz.loop = true;
+        digBus = ctx.createBiquadFilter(); digBus.type = 'bandpass'; digBus.frequency.value = 900; digBus.Q.value = 0.8;
+        digGain = ctx.createGain(); digGain.gain.value = 0.0;
+        nz.connect(digBus); digBus.connect(digGain); digGain.connect(master);
+        nz.start();
+        ready = true;
+      }
+      function ensure() {
+        if (started) { if (ctx && ctx.state === 'suspended') ctx.resume(); return; }
+        started = true;
+        try { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; ctx = new AC(); build(); if (ctx.state === 'suspended') ctx.resume(); } catch (_) { ready = false; }
+      }
+      // 単発音用（buy/win/click のみ＝離散イベント限定。毎フレーム呼ぶな）
+      function beep(freq, t0, dur, vol, type) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type || 'triangle'; o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + dur + 0.02);
+      }
+      return {
+        unlock: function () { ensure(); },
+        isMuted: function () { return muted; },
+        toggleMute: function () { muted = !muted; try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (_) {} if (ready) master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.02); return muted; },
+        engine: function (moving) {
+          if (!ready || muted) return;
+          const now = ctx.currentTime;
+          engGain.gain.setTargetAtTime(moving ? 0.16 : 0.05, now, 0.08);
+          engOsc.frequency.setTargetAtTime(moving ? 70 : 46, now, 0.12);
+          engLP.frequency.setTargetAtTime(moving ? 620 : 380, now, 0.12);
+        },
+        dig: function (strong) {
+          if (!ready || muted) return;
+          const now = ctx.currentTime; if (now - lastDig < 0.08) return; lastDig = now;
+          digBus.frequency.setTargetAtTime(strong ? 760 : 1050, now, 0.02);
+          digGain.gain.cancelScheduledValues(now); digGain.gain.setValueAtTime(strong ? 0.22 : 0.13, now);
+          digGain.gain.exponentialRampToValueAtTime(0.0008, now + (strong ? 0.16 : 0.10));
+        },
+        click: function () { if (!ready || muted) return; beep(880, ctx.currentTime, 0.05, 0.18, 'square'); },
+        buy: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(660, t, 0.08, 0.2, 'triangle'); beep(990, t + 0.07, 0.1, 0.2, 'triangle'); },
+        win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); }
+      };
+    })();
+
+    // ===================== 入力 =====================
+    const keys = { up: false, down: false, left: false, right: false };
+    let acting = false;
+    const clearKeys = () => { keys.up = keys.down = keys.left = keys.right = false; acting = false; document.querySelectorAll(".dbtn").forEach((b) => b.classList.remove("on")); const a = document.getElementById("act"); if (a) a.classList.remove("on"); };
+    document.querySelectorAll(".dbtn").forEach((b) => {
+      const dir = b.getAttribute("data-dir"); const ptrs = new Set();
+      const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && b.setPointerCapture) { try { b.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); keys[dir] = true; b.classList.add("on"); hideHint(); };
+      const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { keys[dir] = false; b.classList.remove("on"); } };
+      b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("pointerleave", off);
+    });
+    const KEYMAP = { ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" };
+    window.addEventListener("keydown", (e) => { if (e.code === "Space") { acting = true; const a = document.getElementById("act"); if (a) a.classList.add("on"); e.preventDefault(); hideHint(); return; } const d = KEYMAP[e.code]; if (d) { keys[d] = true; e.preventDefault(); hideHint(); } });
+    window.addEventListener("keyup", (e) => { if (e.code === "Space") { acting = false; const a = document.getElementById("act"); if (a) a.classList.remove("on"); return; } const d = KEYMAP[e.code]; if (d) keys[d] = false; });
+    window.addEventListener("blur", clearKeys); window.addEventListener("pagehide", clearKeys);
+    const el = renderer.domElement;
+    let lookId = null, lookX = 0, lookY = 0;
+    el.addEventListener("pointerdown", (e) => { if (lookId !== null) return; lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {} });
+    el.addEventListener("pointermove", (e) => { if (e.pointerId !== lookId) return; e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; });
+    const endLook = (e) => { if (e.pointerId === lookId) lookId = null; };
+    el.addEventListener("pointerup", endLook); el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
+    window.addEventListener("touchmove", (e) => { if (lookId !== null) e.preventDefault(); }, { passive: false });
+    let hintTimer = setTimeout(hideHint, 12000);
+    function hideHint() { const h = document.getElementById("hint"); if (h) h.style.opacity = "0"; clearTimeout(hintTimer); }
+    function setHint(txt) { const h = document.getElementById("hint"); if (h) { h.innerHTML = txt; h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 12000); } }
+
+    // ===================== 整地（押し均し・体積保存） =====================
+    let lastVib = 0, shake = 0;
+    function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
+    function gradePush(dt) {
+      const M = effectiveStats(curM()), RAD = M.digRadius; // 強化倍率を反映した実効ステータス
+      const fx = game.mx + Math.sin(game.myaw) * 1.2, fz = game.mz + Math.cos(game.myaw) * 1.2;
+      let blade = game.blade, cutVol = 0, changed = false;
+      for (let idx = 0; idx < N; idx++) {
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist >= RAD) continue;
+        if (passTag[idx] !== pushId) { passTag[idx] = pushId; passRef[idx] = heights[idx]; }
+        let step = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
+        if (waterD[idx] > WATER_EPS && !M.underwaterFull) step *= UNDERWATER_DIG_MULT; // 水中バックホウは水中も普通速度
+        const h = heights[idx], cutFloor = Math.max(cutHeight, passRef[idx] - M.layer), fillCeil = Math.min(cutHeight, passRef[idx] + M.layer);
+        if (h > cutFloor + 0.01) { const cut = Math.min(h - cutFloor, step); if (cut > 0) { heights[idx] = h - cut; blade += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; } }
+        else if (h < fillCeil - 0.01 && blade > 0) { const fill = Math.min(fillCeil - h, step, blade / CELL_AREA); if (fill > 0) { heights[idx] = h + fill; blade -= fill * CELL_AREA; changed = true; } }
+      }
+      game.blade = Math.max(0, blade); game.totalDug += cutVol;
+      if (cutVol > 0) game.cum.dugAll += cutVol; // 累計掘削（レベルをまたいで保持＝実績用）
+      if (changed) { digFx(true); SND.dig(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); }
+    }
+
+    // ===================== バックホウ系：本物のバケット掘削[本体移植 2026-06-25] =====================
+    // machineKind=='backhoe' の重機は、押し均しでなく「掘る↔下ろす」でバケットに土を溜めて運ぶ。
+    // 容量=その重機の bladeCap（買い替え/強化で増える）／掘る速さ=digRate／範囲=digRadius／足元基準の段切り上限(BH_MAX_CUT/FILL)。
+    let bhMode = null, prevActing = false, bhDigAmt = 0, bhDumpAmt = 0, bhPhase = 0;
+    function bhReach(M) { return Math.max(1.8, M.digRadius + 0.5); }   // 腕の届く距離（機体ごと）
+    function backhoeDig(dt) {
+      const M = effectiveStats(curM()), reach = bhReach(M), RAD = M.digRadius, cap = M.bladeCap;
+      const fx = game.mx + Math.sin(game.myaw) * reach, fz = game.mz + Math.cos(game.myaw) * reach;
+      const floor = Math.max(MIN_H, sampleHeight(game.mx, game.mz) - BH_MAX_CUT);   // 足元基準の掘り下げ上限
+      let bucket = game.bucket, cutVol = 0, changed = false;
+      for (let idx = 0; idx < N; idx++) {
+        const room = cap - bucket; if (room <= 0.0001) break;
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz); if (dist >= RAD) continue;
+        const h = heights[idx]; if (h <= floor + 0.001) continue;
+        let step = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
+        if (waterD[idx] > WATER_EPS && !M.underwaterFull) step *= UNDERWATER_DIG_MULT;   // 水中は遅い（水中バックホウは普通速度）
+        const cut = Math.min(h - floor, step, room / CELL_AREA);
+        if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
+      }
+      game.bucket = Math.min(cap, bucket); game.totalDug += cutVol; if (cutVol > 0) game.cum.dugAll += cutVol;
+      if (changed) { digFx(true); SND.dig(true); const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(8); } shake = Math.min(0.10, shake + 0.025); syncGeometry(); }
+      return changed;
+    }
+    function backhoeDump(dt) {
+      if (game.bucket <= 0.0001) return false;
+      const M = effectiveStats(curM()), reach = bhReach(M), RAD = M.digRadius;
+      const fx = game.mx + Math.sin(game.myaw) * reach, fz = game.mz + Math.cos(game.myaw) * reach;
+      const ceil = Math.min(MAX_H, sampleHeight(game.mx, game.mz) + BH_MAX_FILL);   // 足元基準の積み上げ上限
+      let bucket = game.bucket, changed = false;
+      for (let idx = 0; idx < N; idx++) {
+        if (bucket <= 0.0001) break;
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz); if (dist >= RAD) continue;
+        const h = heights[idx]; if (h >= ceil - 0.001) continue;
+        const give = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
+        const add = Math.min(give, ceil - h, bucket / CELL_AREA);
+        if (add > 0) { heights[idx] = h + add; bucket -= add * CELL_AREA; changed = true; }
+      }
+      game.bucket = Math.max(0, bucket);
+      if (changed) { const gy = sampleHeight(fx, fz); for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 2.0, 1.0); SND.dig(false); const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(7); } shake = Math.min(0.08, shake + 0.02); syncGeometry(); }
+      return changed;
+    }
+    // 腕アニメ：dig=ブーム下げ＋往復すくい／dump=バケットを前に傾けて流す／null=待機へ戻る。armG の boom/stick/armBkt を回す。
+    function animateArm(dt, action) {
+      const digging = action === 'dig', dumping = action === 'dump';
+      bhDigAmt = Math.max(0, Math.min(1, bhDigAmt + (digging ? dt * 5 : -dt * 5)));
+      bhDumpAmt = Math.max(0, Math.min(1, bhDumpAmt + (dumping ? dt * 5 : -dt * 5)));
+      bhPhase += dt * ((digging || dumping) ? 9 : 3);
+      const scoop = Math.sin(bhPhase) * 0.3 * bhDigAmt;
+      boom.rotation.x = 0.55 + 0.35 * bhDigAmt + scoop * 0.4 - 0.15 * bhDumpAmt;     // 既定0.55
+      stick.rotation.x = -0.45 - 0.4 * bhDigAmt - scoop + 0.3 * bhDumpAmt;            // 既定-0.45
+      armBkt.rotation.x = 0.5 + 0.25 * Math.sin(bhPhase) * bhDigAmt - 0.95 * bhDumpAmt; // 既定0.5
+    }
+
+    function updateDozer(dt) {
+      const F = [-Math.sin(camYaw), -Math.cos(camYaw)], R = [-F[1], F[0]];
+      let mxv = 0, mzv = 0;
+      if (keys.up) { mxv += F[0]; mzv += F[1]; } if (keys.down) { mxv -= F[0]; mzv -= F[1]; }
+      if (keys.right) { mxv += R[0]; mzv += R[1]; } if (keys.left) { mxv -= R[0]; mzv -= R[1]; }
+      let moving = false; const len = Math.sqrt(mxv * mxv + mzv * mzv);
+      if (len > 0.0001) {
+        const M = effectiveStats(curM()); mxv /= len; mzv /= len; // 強化倍率を反映（移動速さ）
+        const step = M.moveSpeed * (game.blade > M.bladeCap ? 0.55 : 1) * dt, half = WORLD / 2 - 0.5; // 容量超え＝重くて遅い
+        const cx = Math.max(-half, Math.min(half, game.mx + mxv * step)), cz = Math.max(-half, Math.min(half, game.mz + mzv * step));
+        let applied = false;
+        if (canStand(cx, cz)) { game.mx = cx; game.mz = cz; applied = true; }
+        else if (canStand(cx, game.mz)) { game.mx = cx; applied = true; }
+        else if (canStand(game.mx, cz)) { game.mz = cz; applied = true; }
+        game.myaw = Math.atan2(mxv, mzv); moving = applied;
+      }
+      const gy = sampleHeight(game.mx, game.mz); dozer.position.set(game.mx, gy, game.mz); dozer.rotation.y = game.myaw;
+      // 重機の種類で動きを振り分け[本体移植]：バックホウ系=本物バケット掘削（掘る↔下ろす）／その他=押し均し（water-proto従来）
+      const isBH = machineKind(curM()) === 'backhoe';
+      if (isBH) {
+        if (acting && !prevActing) { bhMode = (game.bucket < 0.05) ? 'dig' : 'dump'; updateActLabel(); }   // 押し始めに固定（空→掘る/土あり→下ろす）
+        else if (!acting && bhMode !== null) { bhMode = null; updateActLabel(); }
+        const cap = effectiveStats(curM()).bladeCap; let action = null;
+        if (acting && !game.won && bhMode === 'dig' && game.bucket < cap) { backhoeDig(dt); action = 'dig'; }
+        else if (acting && !game.won && bhMode === 'dump' && game.bucket > 0.0001) { backhoeDump(dt); action = 'dump'; }
+        animateArm(dt, action); pushing = false;
+      } else {
+        if (acting && moving && !game.won) {
+          if (!pushing) { pushing = true; pushId++; cutHeight = sampleHeight(game.mx, game.mz); strokeX = game.mx; strokeZ = game.mz; }
+          else { const ddx = game.mx - strokeX, ddz = game.mz - strokeZ; if (ddx * ddx + ddz * ddz >= STROKE_DIST * STROKE_DIST) { pushId++; strokeX = game.mx; strokeZ = game.mz; } }
+          gradePush(dt);
+        } else pushing = false;
+        animateArm(dt, null);   // 非バックホウ時は腕を待機（armG非表示なので無害）
+      }
+      prevActing = acting;
+      if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
+      else { blade.position.y = BLADE_Y; blade.rotation.x = 0; }
+    }
+    function sampleHeight(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return heights[j * V + i]; }
+    function updateCamera() {
+      const aspect = window.innerWidth / Math.max(1, window.innerHeight), f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = CAM_DIST * f, horiz = dist * Math.cos(camPitch);
+      let sx = 0, sy = 0; if (shake > 0.001) { sx = rnd2(shake); sy = rnd2(shake); }
+      camera.position.set(game.mx + horiz * Math.sin(camYaw) + sx, dist * Math.sin(camPitch) + sy, game.mz + horiz * Math.cos(camYaw)); camera.lookAt(game.mx, 1, game.mz);
+    }
+
+    // ===================== HUD・クリア判定・レベル進行 =====================
+    const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge");
+    const workBadge = document.getElementById("b-work"), basinBadge = document.getElementById("b-main"), barEl = document.querySelector("#bar > i"), machineBtn = document.getElementById("machineBtn");
+    function drainOf(z, w0) { return w0 > 0 ? Math.max(0, Math.min(1, 1 - zoneVol(z) / w0)) : 0; }
+    function levelDone() {
+      if (LV.type === 'drain') return drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev && zoneVol(LV.B) >= LV.tB;
+      if (LV.type === 'level') return LV.A0exc > 0 ? (zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol) <= 0.05 * LV.A0exc) : true;   // 掘り取り＝残っている山が初期の5%以下[本体移植・バックホウ向き]
+      return zoneVol(LV.B) >= LV.tB;
+    }
+    function refreshHUD() {
+      totalEl.textContent = totalWater().toFixed(0); moneyEl.textContent = game.money;
+      const M = curM(); const carry = (machineKind(M) === 'backhoe') ? game.bucket : game.blade; bladeEl.textContent = carry.toFixed(1); bladeCapEl.textContent = M.bladeCap; bladeBadge.classList.toggle("over", carry > M.bladeCap + 0.01);   // バックホウはバケット/ブルはブレードの土[本体移植]
+      let overall = 0;
+      if (LV.type === 'level') {
+        const ex = zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol);   // 掘り取り[本体移植]：残っている山の量→進捗
+        const fp = LV.A0exc > 0 ? Math.max(0, Math.min(1, 1 - ex / LV.A0exc)) : 1;
+        workEl.textContent = Math.round(fp * 100); overall = fp;
+        workBadge.classList.toggle("done", LV.A0exc > 0 ? (ex <= 0.05 * LV.A0exc) : true);
+      } else {
+        basinEl.textContent = zoneVol(LV.B).toFixed(0); basinTEl.textContent = LV.tB.toFixed(0);
+        let main = LV.tB > 0 ? Math.min(1, zoneVol(LV.B) / LV.tB) : 0; overall = main;
+        if (LV.type === 'drain') {
+          const dr = Math.min(1, drainOf(LV.A, LV.A0water) / LV.drainWin), fl = Math.max(0, Math.min(1, 1 - zoneFlatness(LV.A) / LV.A0flat)), wf = Math.min(dr, fl);
+          workEl.textContent = Math.round(wf * 100); overall = Math.min(wf, main);
+          workBadge.classList.toggle("done", drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev);
+        }
+        basinBadge.classList.toggle("done", zoneVol(LV.B) >= LV.tB);
+      }
+      barEl.style.width = (overall * 100).toFixed(0) + "%";
+    }
+    function checkWin() { if (game.won) return; if (levelDone()) { game.won = true; game.cum.cleared++; checkAchievements(); showWin(); } }
+    function showWin() {
+      const last = curLevel >= NLV - 1;
+      game.money += CLEAR_REWARD; refreshHUD(); save();
+      document.getElementById("win-title").textContent = LV.name + " 完成！";
+      document.getElementById("win-text").textContent = "報酬 +" + CLEAR_REWARD + "万円（所持金 " + game.money + "万円）" + (last ? " ／ 全レベルクリア！" : "");
+      document.getElementById("again").textContent = last ? "もう一度（レベル1へ）" : "次のレベルへ ▶";
+      document.getElementById("win").classList.add("show"); tryVibrate(40); SND.win();
+      clearTimeout(winTimer); winTimer = setTimeout(nextLevel, 2000);
+    }
+    function nextLevel() { clearTimeout(winTimer); document.getElementById("win").classList.remove("show"); loadLevel((curLevel + 1) % NLV); }
+
+    function loadLevel(n, saved) {
+      clearTimeout(winTimer); curLevel = ((n % NLV) + NLV) % NLV; game.level = curLevel;
+      const D = LEVEL_DEFS[curLevel]; LV = {}; for (const k in D) LV[k] = D[k];
+      if (saved) { heights.set(saved.h); baseHeights.set(saved.b); clearWater(); waterD.set(saved.w); LV.A0water = saved.a0; LV.A0flat = saved.af; LV.tB = saved.tB; }
+      else { D.gen(LV); baseHeights.set(heights); LV.A0water = LV.type === 'drain' ? Math.max(0.001, zoneVol(LV.A)) : 0; LV.A0flat = (LV.type === 'drain' || LV.type === 'level') ? Math.max(1, zoneFlatness(LV.A)) : 1; LV.tB = LV.tFrac * totalWater(); }
+      LV.A0exc = (LV.type === 'level') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.subFloor + LV.clearTol)) : 0;   // 掘り取り[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
+      game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null;
+      applyMachine();
+      if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
+      else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
+      lvnumEl.textContent = (curLevel + 1);
+      workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : '作業場';
+      document.getElementById("goalLabel").innerHTML = LV.goal;
+      document.getElementById("mainLabel").textContent = LV.mainLabel;
+      document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level') ? '' : 'none';
+      document.getElementById("b-main").style.display = LV.type === 'level' ? 'none' : '';
+      document.getElementById("win").classList.remove("show");
+      rebuildMarkers(LV.markers); setHint(LV.hint);
+      syncGeometry(); syncWater(0); refreshHUD(); save();
+    }
+
+    // ボタン
+    const actBtn = document.getElementById("act");
+    (function () {
+      const ptrs = new Set();
+      const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && actBtn.setPointerCapture) { try { actBtn.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); acting = true; actBtn.classList.add("on"); hideHint(); };
+      const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { acting = false; actBtn.classList.remove("on"); } };
+      actBtn.addEventListener("pointerdown", on); actBtn.addEventListener("pointerup", off); actBtn.addEventListener("pointercancel", off); actBtn.addEventListener("pointerleave", off);
+    })();
+    document.getElementById("reset").addEventListener("click", () => { if (window.confirm("このレベルを最初からやり直しますか？")) loadLevel(curLevel); });
+    (function () { const mb = document.getElementById('mute'); function paint() { mb.textContent = SND.isMuted() ? '🔇' : '🔊'; mb.classList.toggle('off', SND.isMuted()); } mb.addEventListener('click', function () { SND.unlock(); SND.toggleMute(); paint(); }); paint(); })();
+    document.getElementById("again").addEventListener("click", nextLevel);
+    // 重機の見た目データ（種類＝アタッチメント／大きさ）。idで明示・未登録は能力テキスト＋値段から自動推定
+    const VKIND = { dozer: 'dozer', bigdozer: 'dozer', d11: 'dozer', mini: 'mini', kx12: 'backhoe', sub: 'backhoe', digger: 'backhoe', sk200: 'backhoe', skaqua: 'backhoe', lsamp: 'backhoe', sh77: 'loader', l90: 'loader', hauler: 'hauler', a60: 'hauler', ym30: 'backhoe', ymb7: 'backhoe', igx250: 'hauler', igxmax: 'hauler' };
+    const VSCALE = { dozer: 1.0, bigdozer: 1.32, d11: 1.6, mini: 0.72, kx12: 0.82, sub: 1.0, digger: 1.16, sk200: 1.0, skaqua: 1.28, lsamp: 0.92, sh77: 1.1, l90: 1.06, hauler: 1.22, a60: 1.38, ym30: 0.8, ymb7: 1.18, igx250: 1.1, igxmax: 1.42 };
+    function machineKind(M) {
+      if (VKIND[M.id]) return VKIND[M.id];
+      const a = M.ability || '';
+      if (/ローダー/.test(a)) return 'loader';
+      if (/運搬/.test(a)) return 'hauler';
+      if (/ミニ/.test(a)) return 'mini';
+      if (/バックホウ|掘削|水中/.test(a)) return 'backhoe';
+      return 'dozer';
+    }
+    function machineScale(M) { return VSCALE[M.id] || Math.max(0.75, Math.min(1.6, 0.9 + (M.price || 0) / 1000)); }
+    function applyMachine() { // 今の重機の効果と見た目を反映
+      const M = curM();
+      WATER_CAN_ENTER = M.canEnterWater;
+      bodyMat.color.set(M.color);
+      const k = machineKind(M); // 種類でアタッチメントを出し分け
+      dozer.scale.setScalar(machineScale(M)); // 大きさを重機ごとに変える
+      blade.visible = (k === 'dozer' || k === 'mini');
+      armG.visible = (k === 'backhoe');
+      loaderG.visible = (k === 'loader');
+      dumpG.visible = (k === 'hauler');
+      machineBtn.style.display = game.owned.length > 1 ? 'flex' : 'none'; // 2台以上持っていれば切替ボタン表示
+      machineBtn.classList.toggle('sub', M.canEnterWater);
+      machineBtn.childNodes[0].nodeValue = M.icon + ' ' + M.name;
+      updateActLabel();   // 操作ボタンの文字（ブル=ならす／バックホウ=掘る/下ろす）[本体移植]
+    }
+    // 操作ボタンの文字を重機の種類で切替[本体移植]：ブル系=ならす／バックホウ系=空なら掘る・土ありなら下ろす。
+    let _actLabelCur = '';
+    function updateActLabel() {
+      const ab = document.getElementById('act'); if (!ab) return;
+      let html;
+      if (machineKind(curM()) !== 'backhoe') html = 'ならす<span>押す</span>';
+      else { let lbl; if (bhMode === 'dig') lbl = '掘る'; else if (bhMode === 'dump') lbl = '下ろす'; else lbl = (game.bucket > 0.05) ? '下ろす' : '掘る'; html = lbl + '<span>押す</span>'; }
+      if (html !== _actLabelCur) { _actLabelCur = html; ab.innerHTML = html; }
+    }
+    function ownsMachine(id) { return game.owned.indexOf(id) >= 0; }
+    function setMachine(id) { if (!ownsMachine(id)) return; game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); save(); }
+    // ===== 重機レベルアップ＆実績バッジ =====
+    function buyUpgrade(id) {
+      if (game.owned.indexOf(id) < 0) return;
+      const M = machineById(id), lv = upgLv(id);
+      if (lv >= UPG_MAX) return;
+      const cost = upgCost(M, lv);
+      if (game.money < cost) return;
+      game.money -= cost; game.upg[id] = lv + 1;
+      if (id === game.machine) applyMachine(); // 現行機なら整合（見た目は不変）
+      checkAchievements(); refreshHUD(); save(); renderGarage(); SND.buy(); tryVibrate(20);
+    }
+    let achQueue = [], achToastTimer = 0;
+    function checkAchievements(silent) { // 解禁チェックは「変化イベント時のみ」呼ぶ（毎フレーム禁止）。silent=移行時など静かに解禁
+      for (let k = 0; k < ACHIEVEMENTS.length; k++) {
+        const a = ACHIEVEMENTS[k];
+        if (game.unlockedAch[a.id]) continue;
+        if (a.cond(game)) { game.unlockedAch[a.id] = true; if (!silent) achQueue.push(a); }
+      }
+      if (!silent && achQueue.length) { save(); pumpAchToast(); }
+    }
+    function pumpAchToast() {
+      const el = document.getElementById("achToast"); if (!el) return;
+      if (el.classList.contains("show") || achQueue.length === 0) return;
+      const a = achQueue.shift();
+      el.innerHTML = '🏅 実績解禁！ ' + a.icon + ' <b>' + a.name + '</b>';
+      el.classList.add("show"); tryVibrate(30);
+      clearTimeout(achToastTimer);
+      achToastTimer = setTimeout(function () { el.classList.remove("show"); setTimeout(pumpAchToast, 450); }, 2200);
+    }
+    function renderBadges() {
+      let html = '';
+      for (let k = 0; k < ACHIEVEMENTS.length; k++) {
+        const a = ACHIEVEMENTS[k], got = !!game.unlockedAch[a.id];
+        html += '<div class="b-item' + (got ? '' : ' locked') + '"><div class="b-ic">' + a.icon + '</div><b>' + a.name + '</b><small>' + a.desc + '</small></div>';
+      }
+      document.getElementById("b-list").innerHTML = html;
+      const n = Object.keys(game.unlockedAch).length, h2 = document.querySelector("#badges h2");
+      if (h2) h2.textContent = '🏅 実績バッジ (' + n + '/' + ACHIEVEMENTS.length + ')';
+    }
+    function sanitizeUpg(o) { const out = {}; for (const id in o) { if (game.owned.indexOf(id) < 0) continue; let lv = o[id] | 0; if (lv < 1) continue; if (lv > UPG_MAX) lv = UPG_MAX; out[id] = lv; } return out; }
+    const garage = document.getElementById("garage"), gList = document.getElementById("g-list");
+    function renderGarage() {
+      let html = '', lastMaker = '';
+      for (let k = 0; k < MACHINES.length; k++) {
+        const m = MACHINES[k];
+        if (m.maker !== lastMaker) { lastMaker = m.maker; const mk = makerById(m.maker); html += '<div class="g-maker">' + mk.dot + ' ' + mk.name + ' <small>' + mk.sub + '</small></div>'; }
+        const own = ownsMachine(m.id), cur = game.machine === m.id; let btn;
+        if (cur) btn = '<button class="g-btn used" disabled>使用中</button>';
+        else if (own) btn = '<button class="g-btn use" data-id="' + m.id + '">使う</button>';
+        else if (game.money >= m.price) btn = '<button class="g-btn buy" data-id="' + m.id + '">' + m.price + '万円 購入</button>';
+        else btn = '<button class="g-btn ng" disabled>' + m.price + '万円<br><small>あと' + (m.price - game.money) + '</small></button>';
+        let upgBtn = '', upgTag = '';
+        if (own) {
+          const lv = upgLv(m.id);
+          if (lv > 0) upgTag = ' <b style="color:#b8860b">+強化Lv' + lv + '</b>';
+          if (lv >= UPG_MAX) upgBtn = '<button class="g-btn maxed" disabled>強化MAX</button>';
+          else { const c = upgCost(m, lv); upgBtn = game.money >= c ? '<button class="g-btn upg" data-id="' + m.id + '">⬆強化 Lv' + lv + '→' + (lv + 1) + '<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
+        }
+        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³' + upgTag + '</small></div><div class="g-btns">' + btn + upgBtn + '</div></div>';
+      }
+      gList.innerHTML = html;
+    }
+    document.getElementById("shop").addEventListener("click", function () { renderGarage(); garage.classList.add("show"); SND.click(); });
+    document.getElementById("g-close").addEventListener("click", function () { garage.classList.remove("show"); SND.click(); });
+    gList.addEventListener("click", function (e) {
+      const b = e.target.closest ? e.target.closest('.g-btn') : null; if (!b || !b.dataset || !b.dataset.id) return;
+      const id = b.dataset.id, m = machineById(id);
+      if (b.classList.contains('use')) { setMachine(id); renderGarage(); SND.click(); }
+      else if (b.classList.contains('upg')) { buyUpgrade(id); }
+      else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); setMachine(id); renderGarage(); SND.buy(); tryVibrate(30); checkAchievements(); }
+    });
+    machineBtn.addEventListener("click", function () { if (game.owned.length <= 1) return; const i = game.owned.indexOf(game.machine); setMachine(game.owned[(i + 1) % game.owned.length]); SND.click(); });
+    const badgesEl = document.getElementById("badges");
+    document.getElementById("achBtn").addEventListener("click", function () { renderBadges(); badgesEl.classList.add("show"); SND.click(); });
+    document.getElementById("b-close").addEventListener("click", function () { badgesEl.classList.remove("show"); SND.click(); });
+
+    // 保存
+    const KEY = "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 6, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine, upg: game.upg, ach: game.unlockedAch, cum: game.cum, bucket: game.bucket })); } catch (e) {} }
+    function load() {
+      try {
+        let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
+        if (!raw) return false; const s = JSON.parse(raw);
+        if (!s || s.g !== GRID || !s.h || s.h.length !== N || s.level == null || s.level >= NLV) return false;
+        if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
+        game.money = s.money || 0;
+        game.owned = Array.isArray(s.owned) ? s.owned.slice() : ['dozer'].concat(s.hasSub ? ['sub'] : []); // 旧v4(hasSub)からも移行
+        if (game.owned.indexOf('dozer') < 0) game.owned.unshift('dozer');
+        game.machine = (s.machine && game.owned.indexOf(s.machine) >= 0) ? s.machine : 'dozer';
+        // --- v4→v5 マイグレーション（旧セーブは新フィールド欠落→安全デフォルト） ---
+        game.upg = (s.upg && typeof s.upg === 'object') ? sanitizeUpg(s.upg) : {};
+        game.unlockedAch = (s.ach && typeof s.ach === 'object') ? s.ach : {};
+        game.cum = (s.cum && typeof s.cum === 'object') ? { dugAll: +s.cum.dugAll || 0, cleared: (s.cum.cleared | 0) } : { dugAll: 0, cleared: 0 };
+        loadLevel(s.level, s);
+        checkAchievements(true); // 移行直後＝既に条件を満たす所有/メーカー系バッジを静かに解禁（トースト無し）
+        return true;
+      } catch (e) { return false; }
+    }
+
+    // リサイズ・ループ
+    let lastW = 0, lastH = 0, rotateTimer = 0;
+    function resize() { const w = window.innerWidth, h = window.innerHeight; if (w === 0 || h === 0) return; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); lastW = w; lastH = h; const rot = document.getElementById("rotate"); if (h > w + 40) { rot.classList.add("show"); clearTimeout(rotateTimer); rotateTimer = setTimeout(() => rot.classList.remove("show"), 3500); } else rot.classList.remove("show"); }
+    window.addEventListener("resize", resize); window.addEventListener("orientationchange", resize);
+    let last = performance.now(), running = true, hudAccum = 0, fpsEMA = 60;
+    function loop(now) {
+      if (document.hidden) { running = false; return; }
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      if (dt > 0) fpsEMA = fpsEMA * 0.92 + (1 / dt) * 0.08;
+      if (window.innerWidth !== lastW || window.innerHeight !== lastH) resize();
+      updateDozer(dt);
+      SND.engine(pushing || keys.up || keys.down || keys.left || keys.right); // エンジン音（動くと大きく）
+      const sub = dt / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); syncWater(dt);
+      updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0); updateParticles(splash, dt, 6.0);
+      if (shake > 0) shake = Math.max(0, shake - dt * 0.4);
+      hudAccum += dt; if (hudAccum > 0.15) { hudAccum = 0; refreshHUD(); checkWin(); }
+      updateCamera(); renderer.render(scene, camera); requestAnimationFrame(loop);
+    }
+    document.addEventListener("visibilitychange", () => { if (document.hidden) { clearKeys(); SND.engine(false); } else { SND.unlock(); if (!running) { running = true; last = performance.now(); requestAnimationFrame(loop); } } });
+    // 初回ユーザー操作で音を解錠（モバイル自動再生ポリシー。unlockはidempotent＝何度呼んでも安全）
+    ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) { window.addEventListener(ev, function () { SND.unlock(); }, { passive: true }); });
+
+    // 起動
+    if (!load()) loadLevel(0);
+    normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
+
+    // デバッグ用フック
+    if (/[?&]test\b/.test(location.search)) window.__t = {
+      game, keys, heights, waterD, simWater, syncWater, syncGeometry, gradePush, updateDozer, camera, sampleHeight, sampleWater,
+      totalWater, zoneVol, zoneMaxDev, zoneFlatness, levelDone, checkWin, loadLevel, refreshHUD, N, V, GRID,
+      getLevel: () => curLevel, getLV: () => LV, getFps: () => fpsEMA,
+      setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting,
+      setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, setGF: (v) => { GF = v; }, setDamp: (v) => { FLUX_DAMP = v; },
+      getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, getOwned: () => game.owned.slice(), getBlade: () => game.blade, curM: () => curM(), MACHINES: MACHINES, REWARD: CLEAR_REWARD,
+      getBucket: () => game.bucket, backhoeDig: (dt) => backhoeDig(dt || 0.05), backhoeDump: (dt) => backhoeDump(dt || 0.05), kindOf: (id) => machineKind(id ? machineById(id) : curM()), bhMode: () => bhMode,
+      soilTotal: () => { let s = 0; for (let i = 0; i < N; i++) s += heights[i]; return s * CELL_AREA + game.blade + game.bucket; },
+      setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, setBlade: (v) => { game.blade = v; }, setBucket: (v) => { game.bucket = v; },
+      buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
+      setMachine: (id) => { if (game.owned.indexOf(id) >= 0) { game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); } },
+      look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), blade: blade.visible, arm: armG.visible, loader: loaderG.visible, dump: dumpG.visible }),
+      getShake: () => shake,
+      getUpg: () => JSON.parse(JSON.stringify(game.upg)), getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
+      buyUpgrade: (id) => buyUpgrade(id), upgCostOf: (id) => upgCost(machineById(id), upgLv(id)), upgLvOf: (id) => upgLv(id),
+      effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), MAKERS: MAKERS,
+      fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
+      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
+    };
+  })();
+  </script>
+</body>
+</html>
