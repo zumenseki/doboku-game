@@ -478,44 +478,183 @@
     const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a3a44, flatShading: true, roughness: 0.25, metalness: 0.15 }); // 窓ガラス
     const steelMat = new THREE.MeshStandardMaterial({ color: 0x6a7075, flatShading: true, roughness: 0.55, metalness: 0.2 }); // 鋼（刃・爪・バケット）
     const warnMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, flatShading: true, roughness: 0.5 }); // 回転灯
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.9, 2.2), bodyMat); body.position.y = 0.95; dozer.add(body);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.9), bodyMat); cabin.position.set(0, 1.6, -0.2); dozer.add(cabin);
-    // キャビンの窓（前・左右）＋排気筒＋回転灯＝全機種共通の機械ディテール
-    const winF = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.42, 0.06), glassMat); winF.position.set(0, 1.66, 0.28); dozer.add(winF);
-    const winL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 0.62), glassMat); winL.position.set(-0.53, 1.66, -0.2); dozer.add(winL);
-    const winR = winL.clone(); winR.position.x = 0.53; dozer.add(winR);
-    const pipe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.6, 0.12), darkMat); pipe.position.set(0.5, 1.55, 0.62); dozer.add(pipe);
-    const beacon = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), warnMat); beacon.position.set(-0.3, 2.04, -0.2); dozer.add(beacon);
-    // 排土板（ブル/ミニ）＝機体色の板＋下端の鋼の刃＋左右の袖＋押しアーム（blade子＝表示連動・digアニメで一緒に動く）
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 0.18), bodyMat); const BLADE_Y = 0.6; blade.position.set(0, BLADE_Y, 1.45); dozer.add(blade);
-    const bladeEdge = new THREE.Mesh(new THREE.BoxGeometry(2.04, 0.18, 0.26), steelMat); bladeEdge.position.set(0, -0.42, 0.03); blade.add(bladeEdge);
-    const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.8, 0.42), bodyMat); wingL.position.set(-1.0, 0, 0.18); wingL.rotation.y = -0.5; blade.add(wingL);
-    const wingR = wingL.clone(); wingR.position.x = 1.0; wingR.rotation.y = 0.5; blade.add(wingR);
-    const pushL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 1.1), darkMat); pushL.position.set(-0.6, -0.1, -0.6); pushL.rotation.x = 0.2; blade.add(pushL);
-    const pushR = pushL.clone(); pushR.position.x = 0.6; blade.add(pushR);
-    const trackL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 2.4), darkMat); trackL.position.set(-0.8, 0.4, 0); dozer.add(trackL);
-    const trackR = trackL.clone(); trackR.position.x = 0.8; dozer.add(trackR);
-    // ===== アタッチメント（重機の種類で見た目を出し分け）。既定は非表示→applyMachineで該当だけ表示 =====
-    const armG = new THREE.Group(); // バックホウ：腕（ブーム＋スティック＋すくい角バケット＋爪3本）
-    const boom = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 1.7), bodyMat); boom.position.set(0, 1.2, 0.85); boom.rotation.x = 0.55; armG.add(boom);
-    const stick = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 1.05), darkMat); stick.position.set(0, 0.6, 1.75); stick.rotation.x = -0.45; armG.add(stick);
-    const armBkt = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.5, 0.5), steelMat); armBkt.position.set(0, 0.3, 2.12); armBkt.rotation.x = 0.5; armG.add(armBkt);
-    for (let ti = 0; ti < 3; ti++) { const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.12), steelMat); tooth.position.set(-0.24 + ti * 0.24, 0.22, 2.42); armG.add(tooth); }
-    armG.visible = false; dozer.add(armG);
-    const loaderG = new THREE.Group(); // ホイールローダー：左右アーム＋ワイドなすくい角バケット＋底刃＋爪5本
-    const lArmL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 1.5), darkMat); lArmL.position.set(-0.55, 0.7, 1.0); lArmL.rotation.x = 0.32; loaderG.add(lArmL);
-    const lArmR = lArmL.clone(); lArmR.position.x = 0.55; loaderG.add(lArmR);
-    const scoop = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.5, 0.55), steelMat); scoop.position.set(0, 0.34, 1.95); scoop.rotation.x = 0.25; loaderG.add(scoop);
-    const scoopFloor = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.12, 0.5), steelMat); scoopFloor.position.set(0, 0.12, 2.16); loaderG.add(scoopFloor);
-    for (let ti = 0; ti < 5; ti++) { const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.14), steelMat); tooth.position.set(-0.76 + ti * 0.38, 0.08, 2.4); loaderG.add(tooth); }
-    loaderG.visible = false; dozer.add(loaderG);
-    const dumpG = new THREE.Group(); // 運搬機：開いた荷台（床＋前あおり高/後あおり低＋左右側壁）
-    const dFloor = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 1.7), darkMat); dFloor.position.set(0, 1.02, -0.55); dumpG.add(dFloor);
-    const dFront = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 0.12), bodyMat); dFront.position.set(0, 1.32, 0.25); dumpG.add(dFront);
-    const dBack = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.34, 0.12), bodyMat); dBack.position.set(0, 1.21, -1.4); dumpG.add(dBack);
-    const dSideL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 1.7), bodyMat); dSideL.position.set(-0.79, 1.27, -0.55); dumpG.add(dSideL);
-    const dSideR = dSideL.clone(); dSideR.position.x = 0.79; dumpG.add(dSideR);
-    dumpG.visible = false; dozer.add(dumpG);
+    const makerAccent = { komashi: 0xffd23a, kuboki: 0x41c85a, hidachi: 0x2d9be8, caterpia: 0xff9b2e, koveriko: 0x8c65d8, borugo: 0xd84646, sumiken: 0xf4f4ef, yanama: 0x8a4d2d, isuzu2: 0x3c8cff };
+    const modelCache = {};
+    let activeModel = null, activeBlade = null, activeArm = null, activeLoader = null, activeDump = null, activeBeacon = null;
+
+    function accentColor(id) { return makerAccent[id] || 0xffffff; }
+    function mixHex(a, b, t) { const ca = new THREE.Color(a), cb = new THREE.Color(b); ca.lerp(cb, t); return ca.getHex(); }
+    function makeMat(color, rough, metal) { return new THREE.MeshStandardMaterial({ color: color, flatShading: true, roughness: rough == null ? 0.72 : rough, metalness: metal || 0 }); }
+    function machineMats(M) {
+      const main = M.color, accent = accentColor(M.maker);
+      return {
+        body: makeMat(main, 0.72, 0.02),
+        body2: makeMat(mixHex(main, 0xffffff, 0.18), 0.76, 0.01),
+        trim: makeMat(accent, 0.68, 0.02),
+        stripe: makeMat(mixHex(accent, 0x111111, 0.12), 0.74, 0.01),
+        dark: darkMat, glass: glassMat, steel: steelMat, warn: warnMat,
+        light: new THREE.MeshStandardMaterial({ color: 0xfff2a0, emissive: 0x332200, flatShading: true, roughness: 0.4 }),
+        water: new THREE.MeshStandardMaterial({ color: mixHex(accent, 0x58d8ff, 0.55), flatShading: true, roughness: 0.38, metalness: 0.08 })
+      };
+    }
+    function box(parent, mat, sx, sy, sz, x, y, z, rx, ry, rz) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+      m.position.set(x || 0, y || 0, z || 0); m.rotation.set(rx || 0, ry || 0, rz || 0); parent.add(m); return m;
+    }
+    function cyl(parent, mat, r, h, x, y, z, axis, rx, ry, rz, seg) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg || 10), mat);
+      m.position.set(x || 0, y || 0, z || 0);
+      if (axis === 'x') m.rotation.z = Math.PI / 2; else if (axis === 'z') m.rotation.x = Math.PI / 2;
+      m.rotation.x += rx || 0; m.rotation.y += ry || 0; m.rotation.z += rz || 0; parent.add(m); return m;
+    }
+    function cone(parent, mat, r, h, x, y, z, axis, rx, ry, rz, seg) {
+      const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg || 6), mat);
+      m.position.set(x || 0, y || 0, z || 0);
+      if (axis === 'x') m.rotation.z = -Math.PI / 2; else if (axis === 'z') m.rotation.x = Math.PI / 2;
+      m.rotation.x += rx || 0; m.rotation.y += ry || 0; m.rotation.z += rz || 0; parent.add(m); return m;
+    }
+    function addTracks(parent, mats, p) {
+      const sep = p.sep || 1.5, w = p.w || 0.44, h = p.h || 0.52, len = p.len || 2.25, y = p.y || 0.36, n = p.rollers || 4;
+      for (let side = -1; side <= 1; side += 2) {
+        const x = side * sep / 2;
+        box(parent, mats.dark, w, h, len, x, y, 0);
+        box(parent, mats.steel, w + 0.04, 0.08, len + 0.08, x, y - h / 2 - 0.02, 0);
+        box(parent, mats.steel, w + 0.03, 0.06, len + 0.04, x, y + h / 2 + 0.01, 0);
+        for (let i = 0; i < n; i++) {
+          const z = -len * 0.38 + (n === 1 ? 0 : i * len * 0.76 / (n - 1));
+          cyl(parent, mats.steel, 0.115, w + 0.08, x, y - 0.08, z, 'x', 0, 0, 0, 10);
+        }
+      }
+    }
+    function addWheels(parent, mats, p) {
+      const zs = p.zs || [-0.75, 0.8], sep = p.sep || 1.46, r = p.r || 0.34, w = p.w || 0.25;
+      for (let side = -1; side <= 1; side += 2) for (let i = 0; i < zs.length; i++) {
+        const x = side * sep / 2, z = zs[i];
+        cyl(parent, mats.dark, r, w, x, r + 0.05, z, 'x', 0, 0, 0, 12);
+        cyl(parent, mats.steel, r * 0.45, w + 0.03, x, r + 0.05, z, 'x', 0, 0, 0, 10);
+      }
+    }
+    function addCabin(parent, mats, p) {
+      const c = box(parent, mats.body2, p.w, p.h, p.d, p.x || 0, p.y, p.z || 0, p.rx || 0, p.ry || 0, p.rz || 0);
+      box(parent, mats.glass, p.w * 0.72, p.h * 0.46, 0.055, p.x || 0, p.y + p.h * 0.06, (p.z || 0) + p.d / 2 + 0.035, p.rx || 0, p.ry || 0, p.rz || 0);
+      box(parent, mats.glass, 0.055, p.h * 0.42, p.d * 0.58, (p.x || 0) - p.w / 2 - 0.03, p.y + p.h * 0.04, p.z || 0, p.rx || 0, p.ry || 0, p.rz || 0);
+      box(parent, mats.glass, 0.055, p.h * 0.42, p.d * 0.58, (p.x || 0) + p.w / 2 + 0.03, p.y + p.h * 0.04, p.z || 0, p.rx || 0, p.ry || 0, p.rz || 0);
+      box(parent, mats.trim, p.w * 0.86, 0.07, p.d * 0.8, p.x || 0, p.y + p.h / 2 + 0.055, p.z || 0);
+      const beacon = box(parent, mats.warn, 0.16, 0.14, 0.16, (p.x || 0) - p.w * 0.25, p.y + p.h / 2 + 0.18, p.z || 0);
+      return { cabin: c, beacon: beacon };
+    }
+    function addLights(parent, mats, y, z, span) { box(parent, mats.light, 0.14, 0.1, 0.06, -(span || 0.42), y, z); box(parent, mats.light, 0.14, 0.1, 0.06, span || 0.42, y, z); }
+    function addExhaust(parent, mats, x, y, z, h, twin) { cyl(parent, mats.dark, 0.05, h || 0.58, x, y, z, 'y', 0, 0, 0, 8); box(parent, mats.steel, 0.16, 0.07, 0.12, x, y + (h || 0.58) / 2 + 0.03, z + 0.02); if (twin) addExhaust(parent, mats, -x, y, z, h, false); }
+    function addMakerStripe(parent, mats, x, y, z, len) { box(parent, mats.trim, 0.055, 0.12, len || 1.0, x, y, z, 0, 0, 0.08); }
+    function addWave(parent, mats, side, y, z) { for (let i = 0; i < 3; i++) box(parent, mats.water, 0.055, 0.055, 0.34, side * 0.72, y + i * 0.08, z + i * 0.16, 0.4, 0, 0.35); }
+    function addRipper(parent, mats, count, width, z) {
+      box(parent, mats.dark, width, 0.11, 0.12, 0, 0.75, z || -1.25);
+      for (let i = 0; i < count; i++) { const x = count === 1 ? 0 : -width * 0.35 + i * width * 0.7 / (count - 1); cone(parent, mats.steel, 0.08, 0.42, x, 0.5, (z || -1.25) - 0.05, 'y', Math.PI, 0, 0, 5); }
+    }
+    function countMeshes(obj) { let n = 0; if (!obj) return 0; obj.traverse(function (c) { if (c.isMesh) n++; }); return n; }
+    function resetBladePart(b) { if (!b) return; b.position.y = b.userData.baseY == null ? b.position.y : b.userData.baseY; b.rotation.x = b.userData.baseRx || 0; }
+    function resetArmPose(A) { if (!A) return; if (A.boom) A.boom.rotation.x = A.boomBase; if (A.stick) A.stick.rotation.x = A.stickBase; if (A.bucket) A.bucket.rotation.x = A.bucketBase; }
+
+    const MODEL_STYLE = {
+      dozer: { trackLen: 2.35, trackSep: 1.55, body: [1.45, 0.74, 1.55], bodyY: 0.9, cab: [0.92, 0.68, 0.78, 0, 1.48, -0.28], bladeW: 2.2, bladeH: 0.8, bladeZ: 1.45, rollers: 4, pipes: 1, ripper: 0 },
+      bigdozer: { trackLen: 2.65, trackSep: 1.7, body: [1.62, 0.82, 1.78], bodyY: 0.94, cab: [1.02, 0.72, 0.85, 0, 1.58, -0.32], bladeW: 2.75, bladeH: 0.9, bladeZ: 1.58, rollers: 5, pipes: 2, ripper: 3, warning: true },
+      d11: { trackLen: 2.9, trackSep: 1.85, body: [1.82, 0.92, 1.92], bodyY: 1.02, cab: [1.12, 0.82, 0.92, 0, 1.72, -0.34], bladeW: 3.25, bladeH: 1.0, bladeZ: 1.72, rollers: 6, pipes: 2, ripper: 4, warning: true, crown: true },
+      mini: { trackLen: 1.55, trackSep: 1.05, trackW: 0.26, body: [1.0, 0.52, 1.05], bodyY: 0.68, cab: [0.66, 0.52, 0.56, 0, 1.12, -0.18], bladeW: 1.45, bladeH: 0.46, bladeZ: 1.02, rollers: 3, pipes: 1, cute: true },
+      kx12: { trackLen: 1.75, trackSep: 1.16, body: [1.12, 0.55, 1.1], bodyY: 0.78, cab: [0.66, 0.58, 0.58, -0.22, 1.22, -0.2], boomL: 1.22, stickL: 0.82, bucketW: 0.54, bucketZ: 1.82, rollers: 3, round: true },
+      sub: { trackLen: 2.18, trackSep: 1.42, body: [1.34, 0.62, 1.32], bodyY: 0.86, cab: [0.82, 0.7, 0.72, -0.18, 1.42, -0.25], boomL: 1.55, stickL: 0.98, bucketW: 0.68, bucketZ: 2.08, rollers: 4, snorkel: 1.28, cover: true, waterMark: true },
+      digger: { trackLen: 2.45, trackSep: 1.55, body: [1.5, 0.68, 1.45], bodyY: 0.92, cab: [0.92, 0.72, 0.78, -0.24, 1.52, -0.22], boomL: 1.9, stickL: 1.18, bucketW: 0.86, bucketZ: 2.42, rollers: 5, heavy: true },
+      sk200: { trackLen: 2.25, trackSep: 1.46, body: [1.42, 0.63, 1.36], bodyY: 0.88, cab: [0.82, 0.66, 0.72, -0.22, 1.42, -0.22], boomL: 1.6, stickL: 1.0, bucketW: 0.7, bucketZ: 2.15, rollers: 4, counter: true },
+      skaqua: { trackLen: 2.48, trackSep: 1.62, body: [1.58, 0.7, 1.5], bodyY: 0.94, cab: [0.92, 0.76, 0.8, -0.24, 1.58, -0.25], boomL: 1.82, stickL: 1.12, bucketW: 0.96, bucketZ: 2.36, rollers: 5, snorkel: 1.55, cover: true, waterMark: true, heavy: true },
+      ym30: { trackLen: 1.86, trackSep: 1.22, body: [1.18, 0.56, 1.12], bodyY: 0.8, cab: [0.72, 0.6, 0.62, -0.2, 1.26, -0.18], boomL: 1.28, stickL: 0.86, bucketW: 0.56, bucketZ: 1.9, rollers: 3, round: true, quick: true },
+      ymb7: { trackLen: 2.42, trackSep: 1.56, body: [1.54, 0.7, 1.48], bodyY: 0.92, cab: [0.9, 0.72, 0.78, -0.25, 1.54, -0.2], boomL: 1.88, stickL: 1.14, bucketW: 0.9, bucketZ: 2.42, rollers: 5, heavy: true, counter: true },
+      l90: { wheels: true, wheelZ: [-0.82, 0.82], body: [1.38, 0.62, 1.18], cab: [0.82, 0.68, 0.76, 0, 1.44, -0.54], bucketW: 2.0, bucketZ: 1.78, joint: true },
+      sh77: { tracks: true, trackLen: 2.1, trackSep: 1.36, body: [1.28, 0.58, 1.18], cab: [0.78, 0.64, 0.68, 0, 1.36, -0.42], bucketW: 1.75, bucketZ: 1.62, balanced: true },
+      lsamp: { wheels: true, wheelZ: [-0.78, 0.68], floats: true, snorkel: 0.85, body: [1.34, 0.56, 1.18], cab: [0.78, 0.62, 0.68, 0, 1.36, -0.42], bucketW: 1.72, bucketZ: 1.58 },
+      hauler: { tracks: true, trackLen: 2.45, trackSep: 1.62, body: [1.42, 0.58, 1.18], cab: [0.74, 0.64, 0.66, 0.42, 1.34, 0.62], bedW: 1.62, bedL: 1.58, bedZ: -0.48, open: true, rollers: 5 },
+      a60: { wheels: true, wheelZ: [-1.05, -0.15, 0.82], body: [1.35, 0.56, 1.0], cab: [0.72, 0.64, 0.7, 0.38, 1.34, 0.7], bedW: 1.75, bedL: 1.78, bedZ: -0.66, joint: true, huge: true },
+      igx250: { wheels: true, wheelZ: [-0.9, 0.1, 0.86], body: [1.22, 0.52, 0.86], cab: [0.78, 0.72, 0.78, 0, 1.28, 0.88], bedW: 1.44, bedL: 1.5, bedZ: -0.52, road: true, plate: true },
+      igxmax: { wheels: true, wheelZ: [-1.18, -0.52, 0.18, 0.88, 1.28], body: [1.42, 0.58, 0.98], cab: [0.9, 0.82, 0.9, 0, 1.42, 0.96], bedW: 1.78, bedL: 1.92, bedZ: -0.68, road: true, plate: true, huge: true, grill: true }
+    };
+
+    function buildDozerModel(M, mats, p) {
+      const g = new THREE.Group(); g.userData.kind = machineKind(M);
+      addTracks(g, mats, { len: p.trackLen, sep: p.trackSep, w: p.trackW || 0.42, rollers: p.rollers });
+      box(g, mats.body, p.body[0], p.body[1], p.body[2], 0, p.bodyY, 0.02);
+      box(g, mats.body2, p.body[0] * 0.72, 0.28, p.body[2] * 0.72, 0, p.bodyY + p.body[1] * 0.45, 0.12);
+      const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
+      addExhaust(g, mats, 0.52, 1.38, 0.45, p.pipes === 2 ? 0.78 : 0.58, p.pipes === 2);
+      addLights(g, mats, 1.12, 0.83, p.cute ? 0.28 : 0.46); addMakerStripe(g, mats, -0.78, 1.0, 0.05, 1.0); addMakerStripe(g, mats, 0.78, 1.0, 0.05, 1.0);
+      const bladeG = new THREE.Group(); bladeG.position.set(0, 0.62, p.bladeZ); bladeG.userData.baseY = bladeG.position.y; bladeG.userData.baseRx = 0; g.add(bladeG);
+      box(bladeG, mats.body, p.bladeW, p.bladeH, 0.18, 0, 0, 0);
+      box(bladeG, mats.steel, p.bladeW + 0.06, 0.16, 0.26, 0, -p.bladeH * 0.54, 0.04);
+      box(bladeG, mats.body2, 0.18, p.bladeH, 0.42, -p.bladeW / 2, 0, 0.16, 0, -0.46, 0); box(bladeG, mats.body2, 0.18, p.bladeH, 0.42, p.bladeW / 2, 0, 0.16, 0, 0.46, 0);
+      box(bladeG, mats.dark, 0.12, 0.12, 1.0, -0.55, -0.12, -0.58, 0.18, 0, 0); box(bladeG, mats.dark, 0.12, 0.12, 1.0, 0.55, -0.12, -0.58, 0.18, 0, 0);
+      if (p.warning) for (let i = 0; i < 5; i++) box(bladeG, mats.dark, 0.08, p.bladeH * 0.9, 0.03, -p.bladeW * 0.35 + i * p.bladeW * 0.18, 0, 0.12, 0, 0, -0.45);
+      if (p.cute) { cyl(g, mats.light, 0.08, 0.06, -0.28, 0.94, 0.72, 'z', 0, 0, 0, 10); cyl(g, mats.light, 0.08, 0.06, 0.28, 0.94, 0.72, 'z', 0, 0, 0, 10); }
+      if (p.ripper) addRipper(g, mats, p.ripper, p.ripper >= 4 ? 1.55 : 1.22, -1.25);
+      if (p.crown) box(g, mats.dark, 1.05, 0.12, 0.12, 0, 2.2, -0.35);
+      g.userData.blade = bladeG; return g;
+    }
+    function buildBackhoeModel(M, mats, p) {
+      const g = new THREE.Group(); g.userData.kind = 'backhoe';
+      addTracks(g, mats, { len: p.trackLen, sep: p.trackSep, rollers: p.rollers });
+      cyl(g, mats.dark, 0.58, 0.18, 0, 0.72, 0.02, 'y', 0, 0, 0, 14);
+      box(g, mats.body, p.body[0], p.body[1], p.body[2], 0, p.bodyY, -0.08);
+      if (p.round) cyl(g, mats.body2, 0.55, 0.42, 0, p.bodyY + 0.08, -0.62, 'z', 0, 0, 0, 12); else box(g, p.counter ? mats.dark : mats.body2, p.body[0] * 0.72, p.body[1] * 0.75, 0.38, 0, p.bodyY + 0.06, -0.72);
+      const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
+      addLights(g, mats, 1.12, 0.62, 0.35); addMakerStripe(g, mats, 0.72, 1.0, -0.18, 0.7);
+      const boomBase = p.heavy ? 0.5 : 0.56, stickBase = p.heavy ? -0.42 : -0.48, bucketBase = 0.52;
+      const bw = p.heavy ? 0.34 : 0.26, sw = p.heavy ? 0.26 : 0.2;
+      const boom = box(g, mats.body, bw, bw, p.boomL, 0, 1.26, 0.72, boomBase, 0, 0);
+      const stick = box(g, mats.dark, sw, sw, p.stickL, 0, 0.72, 1.45, stickBase, 0, 0);
+      const bucket = new THREE.Group(); bucket.position.set(0, 0.42, p.bucketZ); bucket.rotation.x = bucketBase; g.add(bucket);
+      box(bucket, mats.steel, p.bucketW, 0.42, 0.48, 0, 0, 0);
+      box(bucket, mats.dark, p.bucketW, 0.08, 0.52, 0, -0.18, 0.08);
+      const teeth = p.heavy ? 5 : 3; for (let i = 0; i < teeth; i++) box(bucket, mats.steel, 0.09, 0.12, 0.16, -p.bucketW * 0.36 + i * p.bucketW * 0.72 / Math.max(1, teeth - 1), -0.22, 0.34);
+      cyl(g, mats.steel, 0.035, 0.92, -0.22, 1.05, 1.0, 'z', 0.38, 0, 0, 8); cyl(g, mats.steel, 0.03, 0.78, 0.22, 0.78, 1.62, 'z', -0.28, 0, 0, 8);
+      if (p.snorkel) { cyl(g, mats.dark, 0.055, p.snorkel, 0.52, 1.45 + p.snorkel * 0.5, -0.58, 'y', 0, 0, 0, 8); box(g, mats.water, 0.24, 0.08, 0.18, 0.52, 1.45 + p.snorkel, -0.5); }
+      if (p.cover) { box(g, mats.water, 1.0, 0.08, 0.88, 0, 1.23, -0.1); box(g, mats.water, 1.52, 0.12, 0.14, 0, 0.7, 0.94); }
+      if (p.waterMark) { addWave(g, mats, -1, 1.02, -0.35); addWave(g, mats, 1, 1.02, -0.35); }
+      g.userData.arm = { boom: boom, stick: stick, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase }; return g;
+    }
+    function buildLoaderModel(M, mats, p) {
+      const g = new THREE.Group(); g.userData.kind = 'loader';
+      if (p.tracks) addTracks(g, mats, { len: p.trackLen, sep: p.trackSep, rollers: 4 }); else addWheels(g, mats, { zs: p.wheelZ, sep: p.floats ? 1.62 : 1.48, r: p.floats ? 0.3 : 0.36, w: 0.26 });
+      if (p.floats) { box(g, mats.water, 0.24, 0.28, 1.92, -0.96, 0.55, -0.05); box(g, mats.water, 0.24, 0.28, 1.92, 0.96, 0.55, -0.05); }
+      box(g, mats.body, p.body[0], p.body[1], p.body[2], 0, 0.88, -0.15); box(g, mats.body2, p.body[0] * 0.88, 0.46, 0.82, 0, 0.92, 0.58);
+      if (p.joint) cyl(g, mats.dark, 0.16, 0.34, 0, 0.82, 0.12, 'y', 0, 0, 0, 10);
+      const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
+      addLights(g, mats, 1.14, 0.98, 0.42); addMakerStripe(g, mats, -0.74, 1.03, -0.16, 0.82); addMakerStripe(g, mats, 0.74, 1.03, -0.16, 0.82);
+      const loader = new THREE.Group(); g.add(loader);
+      box(loader, mats.dark, 0.13, 0.13, 1.32, -0.54, 0.78, 0.95, 0.28, 0, 0); box(loader, mats.dark, 0.13, 0.13, 1.32, 0.54, 0.78, 0.95, 0.28, 0, 0);
+      const bucket = new THREE.Group(); bucket.position.set(0, 0.35, p.bucketZ); bucket.rotation.x = 0.25; loader.add(bucket);
+      box(bucket, mats.steel, p.bucketW, 0.46, 0.52, 0, 0, 0); box(bucket, mats.dark, p.bucketW, 0.1, 0.54, 0, -0.23, 0.12);
+      for (let i = 0; i < 5; i++) box(bucket, mats.steel, 0.1, 0.1, 0.16, -p.bucketW * 0.38 + i * p.bucketW * 0.19, -0.27, 0.34);
+      if (p.snorkel) { cyl(g, mats.dark, 0.05, p.snorkel, 0.48, 1.34 + p.snorkel * 0.5, -0.52, 'y', 0, 0, 0, 8); box(g, mats.water, 0.2, 0.07, 0.16, 0.48, 1.34 + p.snorkel, -0.44); addWave(g, mats, 1, 0.92, -0.45); }
+      g.userData.loader = loader; return g;
+    }
+    function buildHaulerModel(M, mats, p) {
+      const g = new THREE.Group(); g.userData.kind = 'hauler';
+      if (p.tracks) addTracks(g, mats, { len: p.trackLen, sep: p.trackSep, rollers: p.rollers }); else addWheels(g, mats, { zs: p.wheelZ, sep: p.huge ? 1.62 : 1.46, r: p.huge ? 0.34 : 0.31, w: 0.25 });
+      box(g, p.road ? mats.dark : mats.body, p.body[0], p.body[1], p.body[2], 0, 0.86, 0.58);
+      const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
+      if (p.joint) cyl(g, mats.dark, 0.18, 0.36, 0, 0.78, 0.08, 'y', 0, 0, 0, 10);
+      const bed = new THREE.Group(); bed.position.set(0, 0, 0); bed.rotation.x = p.open ? -0.06 : -0.03; g.add(bed);
+      box(bed, mats.body2, p.bedW, 0.14, p.bedL, 0, 1.04, p.bedZ);
+      box(bed, mats.body, p.bedW, 0.52, 0.12, 0, 1.3, p.bedZ + p.bedL / 2);
+      box(bed, mats.body, p.bedW, 0.36, 0.12, 0, 1.2, p.bedZ - p.bedL / 2);
+      box(bed, mats.body, 0.12, 0.46, p.bedL, -p.bedW / 2, 1.24, p.bedZ); box(bed, mats.body, 0.12, 0.46, p.bedL, p.bedW / 2, 1.24, p.bedZ);
+      if (p.grill) { for (let i = 0; i < 4; i++) box(g, mats.steel, 0.72, 0.04, 0.05, 0, 1.08 + i * 0.1, 1.45); }
+      if (p.plate) box(g, mats.light, 0.36, 0.1, 0.04, 0, 0.88, 1.45);
+      addLights(g, mats, 1.12, 1.34, 0.42); addMakerStripe(g, mats, -0.76, 1.08, -0.34, 1.0);
+      g.userData.dump = bed; return g;
+    }
+    function buildMachineModel(M) {
+      const mats = machineMats(M), p = MODEL_STYLE[M.id] || MODEL_STYLE.dozer, k = machineKind(M);
+      let g; if (k === 'backhoe') g = buildBackhoeModel(M, mats, p); else if (k === 'loader') g = buildLoaderModel(M, mats, p); else if (k === 'hauler') g = buildHaulerModel(M, mats, p); else g = buildDozerModel(M, mats, p);
+      g.userData.id = M.id; g.userData.maker = M.maker; g.userData.meshCount = countMeshes(g); return g;
+    }
+    function getMachineModel(M) { if (!modelCache[M.id]) modelCache[M.id] = buildMachineModel(M); return modelCache[M.id]; }
     scene.add(dozer);
     // ブレード前の「押した土の山」[本体移植 2026-06-25]：ブル系で持っている土(game.blade)に応じて前に盛り上がる茶色の山。見た目専用（体積は地面/blade側で管理＝二重計上しない）。
     const bladePile = new THREE.Mesh(new THREE.ConeGeometry(1.1, 1, 7), new THREE.MeshStandardMaterial({ color: 0x8a6234, flatShading: true, roughness: 1 }));
@@ -547,7 +686,7 @@
       let ctx = null, master = null, ready = false, started = false;
       let muted = false; try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch (_) {}
       let engOsc = null, engGain = null, engLP = null, engVibOsc = null, engVibGain = null;
-      let trackGain = null, trackBP = null, trackLFO = null, trackLFOGain = null, trackWarbleOsc = null, trackWarbleGain = null; // キャタピラ（履帯）のキュラキュラ音
+      let trackGain = null, trackBP = null, trackLFO = null, trackLFOGain = null, trackWarbleOsc = null, trackWarbleGain = null, squeakOsc = null; // キャタピラ（履帯）のキュラキュラ音
       let digBus = null, digGain = null, lastDig = 0;
       function makeNoiseBuffer() {
         const len = (ctx.sampleRate * 0.5) | 0, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
@@ -569,19 +708,19 @@
         digGain = ctx.createGain(); digGain.gain.value = 0.0;
         nz.connect(digBus); digBus.connect(digGain); digGain.connect(master);
         nz.start();
-        // キャタピラ（履帯）音：ノイズを四角波LFOで規則的に刻む＝カラカラカラ。移動中だけ鳴り、速いほど刻みが速い。
-        const tnz = ctx.createBufferSource(); tnz.buffer = makeNoiseBuffer(); tnz.loop = true;
-        trackBP = ctx.createBiquadFilter(); trackBP.type = 'bandpass'; trackBP.frequency.value = 2900; trackBP.Q.value = 7.5; // 高めの鋭い共鳴＝金属がキュッと鳴くキュラキュラ
+        // キャタピラ（履帯）のキュラキュラ音＝高い金属の鳴き。のこぎり波(倍音が多く金属的)を帯域通過で整え、四角波LFOで規則的に刻み、ピッチを揺らして「キュラ」に。ノイズ方式は絞ると小さく低音に埋もれたため、はっきり聞こえるオシレータ方式へ変更。移動中だけ鳴り、速いほど刻みが速い。
+        squeakOsc = ctx.createOscillator(); squeakOsc.type = 'sawtooth'; squeakOsc.frequency.value = 2100;
+        trackBP = ctx.createBiquadFilter(); trackBP.type = 'bandpass'; trackBP.frequency.value = 2100; trackBP.Q.value = 3.0; // 鳴きの帯域（オシレータに追従）
         trackGain = ctx.createGain(); trackGain.gain.value = 0.0;       // 履帯音量（停止中は0）
         trackLFO = ctx.createOscillator(); trackLFO.type = 'square'; trackLFO.frequency.value = 8; // 刻みの速さ（キュラ・キュラ・キュラの間隔）
         trackLFOGain = ctx.createGain(); trackLFOGain.gain.value = 0.0; // 刻みの深さ（gainと同値で 0↔2x の鳴き分け）
         trackLFO.connect(trackLFOGain); trackLFOGain.connect(trackGain.gain);
-        // キュラの「ラ」＝鳴きのピッチ揺れ（共鳴周波数をゆっくり上下させて squeak らしく）
-        trackWarbleOsc = ctx.createOscillator(); trackWarbleOsc.type = 'sine'; trackWarbleOsc.frequency.value = 5.5;
-        trackWarbleGain = ctx.createGain(); trackWarbleGain.gain.value = 700;
-        trackWarbleOsc.connect(trackWarbleGain); trackWarbleGain.connect(trackBP.frequency);
-        tnz.connect(trackBP); trackBP.connect(trackGain); trackGain.connect(master);
-        trackLFO.start(); trackWarbleOsc.start(); tnz.start();
+        // キュラの「ラ」＝鳴きのピッチ揺れ（オシレータと帯域を一緒に上下）
+        trackWarbleOsc = ctx.createOscillator(); trackWarbleOsc.type = 'sine'; trackWarbleOsc.frequency.value = 6;
+        trackWarbleGain = ctx.createGain(); trackWarbleGain.gain.value = 450;
+        trackWarbleOsc.connect(trackWarbleGain); trackWarbleGain.connect(squeakOsc.frequency); trackWarbleGain.connect(trackBP.frequency);
+        squeakOsc.connect(trackBP); trackBP.connect(trackGain); trackGain.connect(master);
+        squeakOsc.start(); trackLFO.start(); trackWarbleOsc.start();
         ready = true;
       }
       function ensure() {
@@ -604,12 +743,12 @@
         engine: function (moving) {
           if (!ready || muted) return;
           const now = ctx.currentTime;
-          // エンジンは控えめな低い土台音に（一定の「ブー」を弱める）
-          engGain.gain.setTargetAtTime(moving ? 0.075 : 0.035, now, 0.08);
-          engOsc.frequency.setTargetAtTime(moving ? 58 : 44, now, 0.12);
-          engLP.frequency.setTargetAtTime(moving ? 360 : 280, now, 0.12);
-          // キャタピラのガラガラ＝走行音の主役。移動中だけ刻む・速いほど速い刻み。
-          const base = moving ? 0.10 : 0.0;
+          // エンジンは控えめな低い土台音に（一定の「ブー」を弱める・キュラキュラを邪魔しないようさらに下げる）
+          engGain.gain.setTargetAtTime(moving ? 0.055 : 0.03, now, 0.08);
+          engOsc.frequency.setTargetAtTime(moving ? 56 : 44, now, 0.12);
+          engLP.frequency.setTargetAtTime(moving ? 340 : 270, now, 0.12);
+          // キャタピラのキュラキュラ＝走行音の主役。はっきり聞こえる音量に。移動中だけ刻む・速いほど速い刻み。
+          const base = moving ? 0.16 : 0.0;
           trackGain.gain.setTargetAtTime(base, now, 0.05);
           trackLFOGain.gain.setTargetAtTime(base, now, 0.05);
           trackLFO.frequency.setTargetAtTime(moving ? 8.5 : 5, now, 0.1); // 動くほど速いキュラキュラ
@@ -745,16 +884,17 @@
       if (changed) { const gy = sampleHeight(fx, fz); for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 2.0, 1.0); SND.dig(false); const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(7); } shake = Math.min(0.08, shake + 0.02); syncGeometry(); }
       return changed;
     }
-    // 腕アニメ：dig=ブーム下げ＋往復すくい／dump=バケットを前に傾けて流す／null=待機へ戻る。armG の boom/stick/armBkt を回す。
+    // 腕アニメ：選択中のバックホウが持つ腕部品を動かす。
     function animateArm(dt, action) {
       const digging = action === 'dig', dumping = action === 'dump';
       bhDigAmt = Math.max(0, Math.min(1, bhDigAmt + (digging ? dt * 5 : -dt * 5)));
       bhDumpAmt = Math.max(0, Math.min(1, bhDumpAmt + (dumping ? dt * 5 : -dt * 5)));
       bhPhase += dt * ((digging || dumping) ? 9 : 3);
+      const A = activeArm; if (!A || !A.boom || !A.stick || !A.bucket) return;
       const scoop = Math.sin(bhPhase) * 0.3 * bhDigAmt;
-      boom.rotation.x = 0.55 + 0.35 * bhDigAmt + scoop * 0.4 - 0.15 * bhDumpAmt;     // 既定0.55
-      stick.rotation.x = -0.45 - 0.4 * bhDigAmt - scoop + 0.3 * bhDumpAmt;            // 既定-0.45
-      armBkt.rotation.x = 0.5 + 0.25 * Math.sin(bhPhase) * bhDigAmt - 0.95 * bhDumpAmt; // 既定0.5
+      A.boom.rotation.x = A.boomBase + 0.35 * bhDigAmt + scoop * 0.4 - 0.15 * bhDumpAmt;
+      A.stick.rotation.x = A.stickBase - 0.4 * bhDigAmt - scoop + 0.3 * bhDumpAmt;
+      A.bucket.rotation.x = A.bucketBase + 0.25 * Math.sin(bhPhase) * bhDigAmt - 0.95 * bhDumpAmt;
     }
 
     function updateDozer(dt) {
@@ -798,11 +938,13 @@
         } else if (!acting && moving && !game.won && game.blade > 0.01) {
           pushing = false; bladeUnload(dt);   // ならすを離して進む＝持ってる土を前に置いていく（本物ブル）
         } else pushing = false;
-        animateArm(dt, null);   // 非バックホウ時は腕を待機（armG非表示なので無害）
+        animateArm(dt, null);   // 非バックホウ時は腕を待機（表示中の腕がないので無害）
       }
       prevActing = acting;
-      if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
-      else { blade.position.y = BLADE_Y; blade.rotation.x = 0; }
+      if (digPulse > 0) {
+        digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32;
+        if (activeBlade) { const by = activeBlade.userData.baseY == null ? 0.62 : activeBlade.userData.baseY; activeBlade.position.y = by - 0.18 - Math.sin(bladePhase) * 0.06; activeBlade.rotation.x = (activeBlade.userData.baseRx || 0) + Math.sin(bladePhase) * 0.22; }
+      } else if (activeBlade) resetBladePart(activeBlade);
     }
     function sampleHeight(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return heights[j * V + i]; }
     function updateCamera() {
@@ -886,7 +1028,7 @@
     (function () { const mb = document.getElementById('mute'); function paint() { mb.textContent = SND.isMuted() ? '🔇' : '🔊'; mb.classList.toggle('off', SND.isMuted()); } mb.addEventListener('click', function () { SND.unlock(); SND.toggleMute(); paint(); }); paint(); })();
     document.getElementById("again").addEventListener("click", nextLevel);
     // 重機の見た目データ（種類＝アタッチメント／大きさ）。idで明示・未登録は能力テキスト＋値段から自動推定
-    const VKIND = { dozer: 'dozer', bigdozer: 'dozer', d11: 'dozer', mini: 'mini', kx12: 'backhoe', sub: 'backhoe', digger: 'backhoe', sk200: 'backhoe', skaqua: 'backhoe', lsamp: 'backhoe', sh77: 'loader', l90: 'loader', hauler: 'hauler', a60: 'hauler', ym30: 'backhoe', ymb7: 'backhoe', igx250: 'hauler', igxmax: 'hauler' };
+    const VKIND = { dozer: 'dozer', bigdozer: 'dozer', d11: 'dozer', mini: 'mini', kx12: 'backhoe', sub: 'backhoe', digger: 'backhoe', sk200: 'backhoe', skaqua: 'backhoe', lsamp: 'loader', sh77: 'loader', l90: 'loader', hauler: 'hauler', a60: 'hauler', ym30: 'backhoe', ymb7: 'backhoe', igx250: 'hauler', igxmax: 'hauler' };
     const VSCALE = { dozer: 1.0, bigdozer: 1.32, d11: 1.6, mini: 0.72, kx12: 0.82, sub: 1.0, digger: 1.16, sk200: 1.0, skaqua: 1.28, lsamp: 0.92, sh77: 1.1, l90: 1.06, hauler: 1.22, a60: 1.38, ym30: 0.8, ymb7: 1.18, igx250: 1.1, igxmax: 1.42 };
     function machineKind(M) {
       if (VKIND[M.id]) return VKIND[M.id];
@@ -901,13 +1043,16 @@
     function applyMachine() { // 今の重機の効果と見た目を反映
       const M = curM();
       WATER_CAN_ENTER = M.canEnterWater;
-      bodyMat.color.set(M.color);
-      const k = machineKind(M); // 種類でアタッチメントを出し分け
-      dozer.scale.setScalar(machineScale(M)); // 大きさを重機ごとに変える
-      blade.visible = (k === 'dozer' || k === 'mini');
-      armG.visible = (k === 'backhoe');
-      loaderG.visible = (k === 'loader');
-      dumpG.visible = (k === 'hauler');
+      if (activeBlade) resetBladePart(activeBlade); if (activeArm) resetArmPose(activeArm);
+      const model = getMachineModel(M);
+      if (activeModel !== model) { if (activeModel) dozer.remove(activeModel); dozer.add(model); activeModel = model; }
+      activeBlade = model.userData.blade || null;
+      activeArm = model.userData.arm || null;
+      activeLoader = model.userData.loader || null;
+      activeDump = model.userData.dump || null;
+      activeBeacon = model.userData.beacon || null;
+      if (activeBlade) resetBladePart(activeBlade); if (activeArm) resetArmPose(activeArm);
+      dozer.scale.setScalar(machineScale(M));
       machineBtn.style.display = game.owned.length > 1 ? 'flex' : 'none'; // 2台以上持っていれば切替ボタン表示
       machineBtn.classList.toggle('sub', M.canEnterWater);
       machineBtn.childNodes[0].nodeValue = M.icon + ' ' + M.name;
@@ -1061,8 +1206,11 @@
       soilTotal: () => { let s = 0; for (let i = 0; i < N; i++) s += heights[i]; return s * CELL_AREA + game.blade + game.bucket; },
       setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, setBlade: (v) => { game.blade = v; }, setBucket: (v) => { game.bucket = v; },
       buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
-      setMachine: (id) => { if (game.owned.indexOf(id) >= 0) { game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); } },
-      look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), blade: blade.visible, arm: armG.visible, loader: loaderG.visible, dump: dumpG.visible }),
+      setMachine: (id) => { if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); },
+      look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), id: curM().id, meshCount: activeModel ? countMeshes(activeModel) : 0, blade: !!activeBlade, arm: !!activeArm, loader: !!activeLoader, dump: !!activeDump }),
+      partPose: () => ({ bladeY: activeBlade ? +activeBlade.position.y.toFixed(4) : null, bladeRx: activeBlade ? +activeBlade.rotation.x.toFixed(4) : null, boomRx: activeArm ? +activeArm.boom.rotation.x.toFixed(4) : null, stickRx: activeArm ? +activeArm.stick.rotation.x.toFixed(4) : null, bucketRx: activeArm ? +activeArm.bucket.rotation.x.toFixed(4) : null }),
+      pulseBlade: () => { digFx(true); updateDozer(0.016); return window.__t.partPose(); },
+      armStep: (action, dt) => { animateArm(dt || 0.05, action || null); return window.__t.partPose(); },
       getShake: () => shake,
       getUpg: () => JSON.parse(JSON.stringify(game.upg)), getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
       buyUpgrade: (id) => buyUpgrade(id), upgCostOf: (id) => upgCost(machineById(id), upgLv(id)), upgLvOf: (id) => upgLv(id),
