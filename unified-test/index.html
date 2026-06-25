@@ -773,7 +773,7 @@
     const el = renderer.domElement;
     let lookId = null, lookX = 0, lookY = 0;
     el.addEventListener("pointerdown", (e) => { if (lookId !== null) return; lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {} });
-    el.addEventListener("pointermove", (e) => { if (e.pointerId !== lookId) return; e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; });
+    el.addEventListener("pointermove", (e) => { if (e.pointerId !== lookId) return; e.preventDefault(); camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }); // 横回転は重機の向きに自動追従（迷子防止）。上下ドラッグで見下ろし角だけ調整
     const endLook = (e) => { if (e.pointerId === lookId) lookId = null; };
     el.addEventListener("pointerup", endLook); el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
     window.addEventListener("touchmove", (e) => { if (lookId !== null) e.preventDefault(); }, { passive: false });
@@ -874,37 +874,39 @@
       if (changed) { const gy = sampleHeight(fx, fz); for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 2.0, 1.0); SND.dig(false); const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(7); } shake = Math.min(0.08, shake + 0.02); syncGeometry(); }
       return changed;
     }
-    // 腕アニメ：選択中のバックホウが持つ腕部品を動かす。
+    // 腕アニメ：掘る時は重い上下ストローク、下ろす時と待機は従来姿勢へ戻す。
     function animateArm(dt, action) {
       const digging = action === 'dig', dumping = action === 'dump';
       bhDigAmt = Math.max(0, Math.min(1, bhDigAmt + (digging ? dt * 5 : -dt * 5)));
       bhDumpAmt = Math.max(0, Math.min(1, bhDumpAmt + (dumping ? dt * 5 : -dt * 5)));
-      bhPhase += dt * ((digging || dumping) ? 9 : 3);
+      bhPhase += dt * ((digging || dumping) ? 5.5 : 3);
       const A = activeArm; if (!A || !A.boom || !A.stick || !A.bucket) return;
-      const scoop = Math.sin(bhPhase) * 0.3 * bhDigAmt;
-      A.boom.rotation.x = A.boomBase + 0.35 * bhDigAmt + scoop * 0.4 - 0.15 * bhDumpAmt;
-      A.stick.rotation.x = A.stickBase - 0.4 * bhDigAmt - scoop + 0.3 * bhDumpAmt;
-      A.bucket.rotation.x = A.bucketBase + 0.25 * Math.sin(bhPhase) * bhDigAmt - 0.95 * bhDumpAmt;
+      const cyc = Math.sin(bhPhase);                         // -1=持ち上げ、+1=下ろし
+      const scoopCurl = Math.max(0, Math.sin(bhPhase - 0.9)); // 腕が下りた少し後に掬う
+      A.boom.rotation.x = A.boomBase + bhDigAmt * (0.28 + 0.42 * cyc) - 0.18 * bhDumpAmt;
+      A.stick.rotation.x = A.stickBase - bhDigAmt * (0.22 + 0.30 * cyc) + 0.32 * bhDumpAmt;
+      A.bucket.rotation.x = A.bucketBase + bhDigAmt * (0.18 + 0.55 * scoopCurl) - 1.0 * bhDumpAmt;
     }
 
     function updateDozer(dt) {
-      const F = [-Math.sin(camYaw), -Math.cos(camYaw)], R = [-F[1], F[0]];
-      let mxv = 0, mzv = 0;
-      if (keys.up) { mxv += F[0]; mzv += F[1]; } if (keys.down) { mxv -= F[0]; mzv -= F[1]; }
-      if (keys.right) { mxv += R[0]; mzv += R[1]; } if (keys.left) { mxv -= R[0]; mzv -= R[1]; }
-      let moving = false; const len = Math.sqrt(mxv * mxv + mzv * mzv);
-      if (len > 0.0001) {
-        const M = effectiveStats(curM()); mxv /= len; mzv /= len; // 強化倍率を反映（移動速さ）
+      // 実際の重機式の操作：左右＝その場で旋回（向きを変える）／上＝前進・下＝後退（向いてる方向のまま）
+      const TURN = 1.8; // 旋回速度(rad/s)
+      if (keys.left) game.myaw -= TURN * dt;
+      if (keys.right) game.myaw += TURN * dt;
+      let moving = false; const reversing = keys.down && !keys.up; const drive = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
+      if (drive !== 0) {
+        const M = effectiveStats(curM()); // 強化倍率を反映（移動速さ）
         const carryW = (machineKind(curM()) !== 'backhoe' && game.blade > 0.01) ? Math.max(0.35, 1 - game.blade / M.bladeCap) : 1; // 土を持つほど重い（本物ブル・積むほど遅い）
-        const step = M.moveSpeed * carryW * dt, half = WORLD / 2 - 0.5;
-        const cx = Math.max(-half, Math.min(half, game.mx + mxv * step)), cz = Math.max(-half, Math.min(half, game.mz + mzv * step));
-        let applied = false;
-        if (canStand(cx, cz)) { game.mx = cx; game.mz = cz; applied = true; }
-        else if (canStand(cx, game.mz)) { game.mx = cx; applied = true; }
-        else if (canStand(game.mx, cz)) { game.mz = cz; applied = true; }
-        game.myaw = Math.atan2(mxv, mzv); moving = applied;
+        const fwd = [Math.sin(game.myaw), Math.cos(game.myaw)]; // 機体の前方向
+        const step = M.moveSpeed * carryW * (reversing ? 0.7 : 1) * dt * drive, half = WORLD / 2 - 0.5; // 後退は少し遅め＝実機っぽく
+        const cx = Math.max(-half, Math.min(half, game.mx + fwd[0] * step)), cz = Math.max(-half, Math.min(half, game.mz + fwd[1] * step));
+        if (canStand(cx, cz)) { game.mx = cx; game.mz = cz; moving = true; }
+        else if (canStand(cx, game.mz)) { game.mx = cx; moving = true; }
+        else if (canStand(game.mx, cz)) { game.mz = cz; moving = true; }
       }
       const gy = sampleHeight(game.mx, game.mz); dozer.position.set(game.mx, gy, game.mz); dozer.rotation.y = game.myaw;
+      // カメラを重機の後ろへ自動追従（前が常に画面の上＝迷わない）。最短角度でスムーズに。
+      { let tg = game.myaw + Math.PI, dd = tg - camYaw; while (dd > Math.PI) dd -= 2 * Math.PI; while (dd < -Math.PI) dd += 2 * Math.PI; camYaw += dd * Math.min(1, dt * 8); }
       // ブレード前の土の山[本体移植]：ブル系で持ってる土に応じて前に盛り上がる。バックホウ系は非表示。
       if (machineKind(curM()) !== 'backhoe' && game.blade > 0.15) {
         const cap = curM().bladeCap, pf = Math.min(1, game.blade / cap), sc = machineScale(curM());
@@ -922,11 +924,11 @@
         else if (acting && !game.won && bhMode === 'dump' && game.bucket > 0.0001) { backhoeDump(dt); action = 'dump'; }
         animateArm(dt, action); pushing = false;
       } else {
-        if (acting && moving && !game.won) {
-          if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); } // 押し始めの足元の高さを基準に固定（本物ブル）
+        if (acting && moving && !reversing && !game.won) {
+          if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); } // 押し始めの足元の高さを基準に固定（本物ブル・前進時のみ整地）
           gradePush(dt);
-        } else if (!acting && moving && !game.won && game.blade > 0.01) {
-          pushing = false; bladeUnload(dt);   // ならすを離して進む＝持ってる土を前に置いていく（本物ブル）
+        } else if (!acting && moving && !reversing && !game.won && game.blade > 0.01) {
+          pushing = false; bladeUnload(dt);   // ならすを離して前進＝持ってる土を前に置いていく（本物ブル）
         } else pushing = false;
         animateArm(dt, null);   // 非バックホウ時は腕を待機（表示中の腕がないので無害）
       }
