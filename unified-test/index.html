@@ -547,6 +547,7 @@
       let ctx = null, master = null, ready = false, started = false;
       let muted = false; try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch (_) {}
       let engOsc = null, engGain = null, engLP = null, engVibOsc = null, engVibGain = null;
+      let trackGain = null, trackBP = null, trackLFO = null, trackLFOGain = null; // キャタピラ（履帯）のガラガラ音
       let digBus = null, digGain = null, lastDig = 0;
       function makeNoiseBuffer() {
         const len = (ctx.sampleRate * 0.5) | 0, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
@@ -568,6 +569,15 @@
         digGain = ctx.createGain(); digGain.gain.value = 0.0;
         nz.connect(digBus); digBus.connect(digGain); digGain.connect(master);
         nz.start();
+        // キャタピラ（履帯）音：ノイズを四角波LFOで規則的に刻む＝カラカラカラ。移動中だけ鳴り、速いほど刻みが速い。
+        const tnz = ctx.createBufferSource(); tnz.buffer = makeNoiseBuffer(); tnz.loop = true;
+        trackBP = ctx.createBiquadFilter(); trackBP.type = 'bandpass'; trackBP.frequency.value = 1300; trackBP.Q.value = 1.3; // 金属っぽいガラ付き
+        trackGain = ctx.createGain(); trackGain.gain.value = 0.0;       // 履帯音量（停止中は0）
+        trackLFO = ctx.createOscillator(); trackLFO.type = 'square'; trackLFO.frequency.value = 10; // 刻みの速さ（履板が当たる間隔）
+        trackLFOGain = ctx.createGain(); trackLFOGain.gain.value = 0.0; // 刻みの深さ（gainと同値で 0↔2x のカチカチに）
+        trackLFO.connect(trackLFOGain); trackLFOGain.connect(trackGain.gain);
+        tnz.connect(trackBP); trackBP.connect(trackGain); trackGain.connect(master);
+        trackLFO.start(); tnz.start();
         ready = true;
       }
       function ensure() {
@@ -590,9 +600,15 @@
         engine: function (moving) {
           if (!ready || muted) return;
           const now = ctx.currentTime;
-          engGain.gain.setTargetAtTime(moving ? 0.16 : 0.05, now, 0.08);
-          engOsc.frequency.setTargetAtTime(moving ? 70 : 46, now, 0.12);
-          engLP.frequency.setTargetAtTime(moving ? 620 : 380, now, 0.12);
+          // エンジンは控えめな低い土台音に（一定の「ブー」を弱める）
+          engGain.gain.setTargetAtTime(moving ? 0.075 : 0.035, now, 0.08);
+          engOsc.frequency.setTargetAtTime(moving ? 58 : 44, now, 0.12);
+          engLP.frequency.setTargetAtTime(moving ? 360 : 280, now, 0.12);
+          // キャタピラのガラガラ＝走行音の主役。移動中だけ刻む・速いほど速い刻み。
+          const base = moving ? 0.12 : 0.0;
+          trackGain.gain.setTargetAtTime(base, now, 0.05);
+          trackLFOGain.gain.setTargetAtTime(base, now, 0.05);
+          trackLFO.frequency.setTargetAtTime(moving ? 11 : 6, now, 0.1);
         },
         dig: function (strong) {
           if (!ready || muted) return;
