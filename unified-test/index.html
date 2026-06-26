@@ -376,10 +376,19 @@
       if (wet) out.lerp(cWet, 0.32); return out;
     }
     let normalsDone = false;
+    // 土の粒状感[見た目専用]：頂点ごとの安定したランダム濃淡（初期化1回）。地面が一様な単色に見えるのを防ぐ。
+    const grain = new Float32Array(N); for (let gk = 0; gk < N; gk++) grain[gk] = Math.random() * 2 - 1;
     function syncGeometry() {
       for (let idx = 0; idx < N; idx++) {
         positions[idx * 3] = vx[idx]; positions[idx * 3 + 1] = heights[idx]; positions[idx * 3 + 2] = vz[idx];
-        colorFor(heights[idx], waterD[idx] > WATER_EPS, tmpC); colors[idx * 3] = tmpC.r; colors[idx * 3 + 1] = tmpC.g; colors[idx * 3 + 2] = tmpC.b;
+        const wet = waterD[idx] > WATER_EPS;
+        colorFor(heights[idx], wet, tmpC);
+        // 斜面の急さ（隣マスとの高低差）→急なほど暗く＝掘った断面・法面・盛り土が「土っぽい」陰影に。粒状の濃淡も加算。
+        const gi = idx % V, gj = (idx / V) | 0;
+        const hl = heights[gi > 0 ? idx - 1 : idx], hr = heights[gi < GRID ? idx + 1 : idx], hd = heights[gj > 0 ? idx - V : idx], hu = heights[gj < GRID ? idx + V : idx];
+        const slope = (Math.abs(hl - hr) + Math.abs(hd - hu)) * 0.5;
+        const mul = Math.max(0.5, 1 - Math.min(0.3, slope * 0.16) + grain[idx] * (wet ? 0.02 : 0.05));
+        colors[idx * 3] = Math.min(1, tmpC.r * mul); colors[idx * 3 + 1] = Math.min(1, tmpC.g * mul); colors[idx * 3 + 2] = Math.min(1, tmpC.b * mul);
       }
       geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
       if (!normalsDone) { geo.computeVertexNormals(); normalsDone = true; }
@@ -657,18 +666,21 @@
     function getMachineModel(M) { if (!modelCache[M.id]) modelCache[M.id] = buildMachineModel(M); return modelCache[M.id]; }
     scene.add(dozer);
     // ブレード前の「押した土の山」[本体移植 2026-06-25]：ブル系で持っている土(game.blade)に応じて前に盛り上がる茶色の山。見た目専用（体積は地面/blade側で管理＝二重計上しない）。
-    const bladePile = new THREE.Mesh(new THREE.ConeGeometry(1.1, 1, 7), new THREE.MeshStandardMaterial({ color: 0x8a6234, flatShading: true, roughness: 1 }));
+    const pileGeo = new THREE.ConeGeometry(1.1, 1, 9);
+    { const pa = pileGeo.attributes.position; for (let pk = 0; pk < pa.count; pk++) { const py = pa.getY(pk); if (py < 0.4) { pa.setX(pk, pa.getX(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setZ(pk, pa.getZ(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setY(pk, py + (Math.random() - 0.5) * 0.12); } } pileGeo.computeVertexNormals(); }  // 裾をデコボコに＝積んだ土塊っぽいシルエット（位置/拡縮は updateDozer 側で不変）
+    const bladePile = new THREE.Mesh(pileGeo, new THREE.MeshStandardMaterial({ color: 0x7d5320, flatShading: true, roughness: 1 }));
     bladePile.position.y = -999; scene.add(bladePile);
 
-    // 粒子
+    // 粒子（土ぼこり・土塊・水しぶき）。丸くフワッとした見た目にするため、手続き生成の放射状グラデ画像をスプライトに使う（外部ファイル不要）。
+    const dustSprite = (function () { const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'); const rg = x.createRadialGradient(16, 16, 0, 16, 16, 16); rg.addColorStop(0, 'rgba(255,255,255,1)'); rg.addColorStop(0.45, 'rgba(255,255,255,0.55)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = rg; x.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(c); })();
     function makeParticles(n, size, color, opacity) {
       const pos = new Float32Array(n * 3), vel = new Float32Array(n * 3), life = new Float32Array(n);
       for (let k = 0; k < n; k++) pos[k * 3 + 1] = -999;
       const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size, transparent: true, opacity, depthWrite: false })); scene.add(pts);
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size, map: dustSprite, transparent: true, opacity, depthWrite: false })); scene.add(pts);
       return { pos, vel, life, g, cur: 0, n };
     }
-    const dust = makeParticles(90, 0.34, 0xbfa478, 0.85), chunk = makeParticles(40, 0.75, 0x8a6234, 0.95), splash = makeParticles(50, 0.4, 0x9fd0ff, 0.9);
+    const dust = makeParticles(90, 0.42, 0xc4a36a, 0.8), chunk = makeParticles(40, 0.8, 0x6f4a22, 0.95), splash = makeParticles(50, 0.4, 0x9fd0ff, 0.9);
     function emit(p, x, y, z, up, spread) { const k = p.cur; p.cur = (p.cur + 1) % p.n; p.pos[k * 3] = x + rnd2(spread); p.pos[k * 3 + 1] = y + 0.2; p.pos[k * 3 + 2] = z + rnd2(spread); p.vel[k * 3] = rnd2(spread * 2.2); p.vel[k * 3 + 1] = up * (0.7 + Math.random() * 0.8); p.vel[k * 3 + 2] = rnd2(spread * 2.2); p.life[k] = 0.45 + Math.random() * 0.4; }
     function updateParticles(p, dt, grav) { let live = false; for (let k = 0; k < p.n; k++) { if (p.life[k] > 0) { live = true; p.life[k] -= dt; p.vel[k * 3 + 1] -= grav * dt; p.pos[k * 3] += p.vel[k * 3] * dt; p.pos[k * 3 + 1] += p.vel[k * 3 + 1] * dt; p.pos[k * 3 + 2] += p.vel[k * 3 + 2] * dt; if (p.life[k] <= 0) p.pos[k * 3 + 1] = -999; } } if (live) p.g.attributes.position.needsUpdate = true; }
     let digPulse = 0, bladePhase = 0, lastChunk = 0;
