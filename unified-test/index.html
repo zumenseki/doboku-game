@@ -925,8 +925,8 @@
         if (acting && moving && !reversing && !game.won) {
           if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); } // 押し始めの足元の高さを基準に固定（本物ブル・前進時のみ整地）
           gradePush(dt);
-        } else if (!acting && moving && !reversing && !game.won && game.blade > 0.01) {
-          pushing = false; bladeUnload(dt);   // ならすを離して前進＝持ってる土を前に置いていく（本物ブル）
+        } else if (!acting && moving && !game.won && game.blade > 0.01) {
+          pushing = false; bladeUnload(dt);   // ならすを離して移動中（前進でも後退でも）＝持ってる土を少しずつ前へ置く（本物ブル・親方FB）
         } else pushing = false;
         animateArm(dt, null);   // 非バックホウ時は腕を待機（表示中の腕がないので無害）
       }
