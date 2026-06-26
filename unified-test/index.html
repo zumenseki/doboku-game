@@ -620,11 +620,15 @@
       box(bucket, mats.steel, p.bucketW, 0.42, 0.48, 0, 0, 0);
       box(bucket, mats.dark, p.bucketW, 0.08, 0.52, 0, -0.18, 0.08);
       const teeth = p.heavy ? 5 : 3; for (let i = 0; i < teeth; i++) box(bucket, mats.steel, 0.09, 0.12, 0.16, -p.bucketW * 0.36 + i * p.bucketW * 0.72 / Math.max(1, teeth - 1), -0.22, 0.34);
+      // バケット内の土[親方FB バックホウが土を持ってるか分かるように]：game.bucket に応じて見える土の塊。bucket の子なので掘る/運ぶ/下ろすに完全追従。
+      const loadBase = { x: p.bucketW * 0.42, y: 0.2, z: 0.26 };
+      const load = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0x6e481f, flatShading: true, roughness: 1 }));
+      load.position.set(0, 0.04, 0.06); load.scale.set(loadBase.x, loadBase.y, loadBase.z); load.visible = false; bucket.add(load);
       cyl(g, mats.steel, 0.035, 0.92, -0.22, 1.05, 1.0, 'z', 0.38, 0, 0, 8); cyl(g, mats.steel, 0.03, 0.78, 0.22, 0.78, 1.62, 'z', -0.28, 0, 0, 8);
       if (p.snorkel) { cyl(g, mats.dark, 0.055, p.snorkel, 0.52, 1.45 + p.snorkel * 0.5, -0.58, 'y', 0, 0, 0, 8); box(g, mats.water, 0.24, 0.08, 0.18, 0.52, 1.45 + p.snorkel, -0.5); }
       if (p.cover) { box(g, mats.water, 1.0, 0.08, 0.88, 0, 1.23, -0.1); box(g, mats.water, 1.52, 0.12, 0.14, 0, 0.7, 0.94); }
       if (p.waterMark) { addWave(g, mats, -1, 1.02, -0.35); addWave(g, mats, 1, 1.02, -0.35); }
-      g.userData.arm = { boom: boom, stick: stick, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase }; return g;
+      g.userData.arm = { boom: boom, stick: stick, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase, load: load, loadBase: loadBase }; return g;
     }
     function buildLoaderModel(M, mats, p) {
       const g = new THREE.Group(); g.userData.kind = 'loader';
@@ -933,6 +937,7 @@
         if (acting && !game.won && bhMode === 'dig' && game.bucket < cap) { backhoeDig(dt); action = 'dig'; }
         else if (acting && !game.won && bhMode === 'dump' && game.bucket > 0.0001) { backhoeDump(dt); action = 'dump'; }
         animateArm(dt, action); pushing = false;
+        if (activeArm && activeArm.load) { const lb = activeArm.loadBase, pf = Math.min(1, game.bucket / cap), f = 0.5 + 0.55 * pf; activeArm.load.visible = game.bucket > 0.05; activeArm.load.scale.set(lb.x * f, lb.y * f, lb.z * f); }   // バケット内の土を量に応じて表示[親方FB]
       } else {
         if (acting && moving && !reversing && !game.won) {
           if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); } // 押し始めの足元の高さを基準に固定（本物ブル・前進時のみ整地）
@@ -1214,6 +1219,7 @@
       look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), id: curM().id, meshCount: activeModel ? countMeshes(activeModel) : 0, blade: !!activeBlade, arm: !!activeArm, loader: !!activeLoader, dump: !!activeDump }),
       bladePilePose: () => ({ y: +bladePile.position.y.toFixed(3), sx: +bladePile.scale.x.toFixed(3), sy: +bladePile.scale.y.toFixed(3), sz: +bladePile.scale.z.toFixed(3), visible: bladePile.position.y > -900, px: +bladePile.position.x.toFixed(2), pz: +bladePile.position.z.toFixed(2) }),
       partPose: () => ({ bladeY: activeBlade ? +activeBlade.position.y.toFixed(4) : null, bladeRx: activeBlade ? +activeBlade.rotation.x.toFixed(4) : null, boomRx: activeArm ? +activeArm.boom.rotation.x.toFixed(4) : null, stickRx: activeArm ? +activeArm.stick.rotation.x.toFixed(4) : null, bucketRx: activeArm ? +activeArm.bucket.rotation.x.toFixed(4) : null }),
+      bucketLoadPose: () => (activeArm && activeArm.load) ? ({ hasArm: true, visible: activeArm.load.visible, sx: +activeArm.load.scale.x.toFixed(3), sy: +activeArm.load.scale.y.toFixed(3) }) : ({ hasArm: false }),
       pulseBlade: () => { digFx(true); updateDozer(0.016); return window.__t.partPose(); },
       armStep: (action, dt) => { animateArm(dt || 0.05, action || null); return window.__t.partPose(); },
       getShake: () => shake,
