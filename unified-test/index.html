@@ -129,7 +129,7 @@
     const MOVE_SPEED = 7;
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
     const FLAT_TOL = 0.4;
-    const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
+    const CAM_DIST = 26, CAM_MIN = 12, CAM_MAX = 46, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
     // 水[追加]
     const WATER_EPS = 0.02, RENDER_EPS = 0.0015, SHALLOW_GROUND = -0.1, PLAIN_MIN = 0.08;
     let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
@@ -236,7 +236,7 @@
     const waterD = new Float32Array(N);
     const fL = new Float32Array(N), fR = new Float32Array(N), fT = new Float32Array(N), fB = new Float32Array(N);
     const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 } };
-    let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
+    let camYaw = 0, camPitch = 0.95, camDist = CAM_DIST, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
 
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) { const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD; }
@@ -788,11 +788,24 @@
     window.addEventListener("blur", clearKeys); window.addEventListener("pagehide", clearKeys);
     const el = renderer.domElement;
     let lookId = null, lookX = 0, lookY = 0;
-    el.addEventListener("pointerdown", (e) => { if (lookId !== null) return; lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {} });
-    el.addEventListener("pointermove", (e) => { if (e.pointerId !== lookId) return; e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }); // カメラは手動（ドラッグで左右回転＋上下見下ろし・自動追従なし）
-    const endLook = (e) => { if (e.pointerId === lookId) lookId = null; };
+    const camPtrs = new Map(); let pinchDist = 0;   // canvas上のポインタ追跡（1本=回転/見下ろし・2本=ピンチでズーム）
+    const clampDist = (v) => Math.max(CAM_MIN, Math.min(CAM_MAX, v));
+    const camTwoDist = () => { const a = [...camPtrs.values()]; if (a.length < 2) return 0; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
+    el.addEventListener("pointerdown", (e) => {
+      camPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      if (camPtrs.size === 1) { lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; }
+      else if (camPtrs.size === 2) { lookId = null; pinchDist = camTwoDist(); }   // 2本指=ピンチ開始（回転を止めてズーム）
+    });
+    el.addEventListener("pointermove", (e) => {
+      const p = camPtrs.get(e.pointerId); if (!p) return; p.x = e.clientX; p.y = e.clientY;
+      if (camPtrs.size >= 2) { e.preventDefault(); const d = camTwoDist(); if (pinchDist > 0 && d > 0) camDist = clampDist(camDist - (d - pinchDist) * 0.06); pinchDist = d; }   // 指を広げる=寄る/狭める=引く
+      else if (e.pointerId === lookId) { e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }   // カメラ手動（1本指ドラッグで左右回転＋上下見下ろし）
+    });
+    const endLook = (e) => { camPtrs.delete(e.pointerId); pinchDist = 0; if (e.pointerId === lookId) lookId = null; if (camPtrs.size === 1) { const id = camPtrs.keys().next().value, q = camPtrs.get(id); lookId = id; lookX = q.x; lookY = q.y; } };   // 2本→1本に戻ったら残り1本で回転継続
     el.addEventListener("pointerup", endLook); el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
-    window.addEventListener("touchmove", (e) => { if (lookId !== null) e.preventDefault(); }, { passive: false });
+    el.addEventListener("wheel", (e) => { e.preventDefault(); camDist = clampDist(camDist + e.deltaY * 0.03); }, { passive: false });   // PC=ホイールでズーム（上=寄る/下=引く）
+    window.addEventListener("touchmove", (e) => { if (lookId !== null || camPtrs.size >= 2) e.preventDefault(); }, { passive: false });
     let hintTimer = setTimeout(hideHint, 12000);
     function hideHint() { const h = document.getElementById("hint"); if (h) h.style.opacity = "0"; clearTimeout(hintTimer); }
     function setHint(txt) { const h = document.getElementById("hint"); if (h) { h.innerHTML = txt; h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 12000); } }
@@ -955,7 +968,7 @@
     }
     function sampleHeight(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return heights[j * V + i]; }
     function updateCamera() {
-      const aspect = window.innerWidth / Math.max(1, window.innerHeight), f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = CAM_DIST * f, horiz = dist * Math.cos(camPitch);
+      const aspect = window.innerWidth / Math.max(1, window.innerHeight), f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = camDist * f, horiz = dist * Math.cos(camPitch);
       let sx = 0, sy = 0; if (shake > 0.001) { sx = rnd2(shake); sy = rnd2(shake); }
       camera.position.set(game.mx + horiz * Math.sin(camYaw) + sx, dist * Math.sin(camPitch) + sy, game.mz + horiz * Math.cos(camYaw)); camera.lookAt(game.mx, 1, game.mz);
     }
@@ -1208,7 +1221,7 @@
       game, keys, heights, waterD, simWater, syncWater, syncGeometry, gradePush, updateDozer, camera, sampleHeight, sampleWater,
       totalWater, zoneVol, zoneMaxDev, zoneFlatness, levelDone, checkWin, loadLevel, refreshHUD, N, V, GRID,
       getLevel: () => curLevel, getLV: () => LV, getFps: () => fpsEMA,
-      setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting,
+      setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, getCamDist: () => camDist, setCamDist: (v) => { camDist = Math.max(CAM_MIN, Math.min(CAM_MAX, v)); }, CAM_MIN: CAM_MIN, CAM_MAX: CAM_MAX, setActing: (v) => { acting = v; }, getActing: () => acting,
       setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, setGF: (v) => { GF = v; }, setDamp: (v) => { FLUX_DAMP = v; },
       getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, getOwned: () => game.owned.slice(), getBlade: () => game.blade, curM: () => curM(), MACHINES: MACHINES, REWARD: CLEAR_REWARD,
       getBucket: () => game.bucket, backhoeDig: (dt) => backhoeDig(dt || 0.05), backhoeDump: (dt) => backhoeDump(dt || 0.05), kindOf: (id) => machineKind(id ? machineById(id) : curM()), bhMode: () => bhMode,
