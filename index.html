@@ -3,286 +3,351 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>土木ゲーム 第1弾 試作</title>
+<title>土木ゲーム 水の試作（4レベル）</title>
 <style>
-  :root {
-    --dig: #e07a1c;     /* 削る＝オレンジ */
-    --fill: #2faa55;    /* 盛る＝みどり */
-    --ink: #20303a;
-    --panel: rgba(255,255,255,0.82);
-  }
+  :root { --dig:#e07a1c; --fill:#2faa55; --ink:#20303a; --panel:rgba(255,255,255,0.82); --water:#2f7fd6; }
   * { box-sizing: border-box; }
   html, body {
-    margin: 0; padding: 0; width: 100%; height: 100%;
-    overflow: hidden; background: #bfe3f2;
-    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
-    -webkit-user-select: none; user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: none; overscroll-behavior: none;
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#bfe3f2;
+    font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; touch-action:none; overscroll-behavior:none;
   }
-  #app { position: fixed; inset: 0; }
-  canvas { display: block; touch-action: none; }
-
-  /* 上部：削った土の量 */
-  #hud-top {
-    position: fixed; top: env(safe-area-inset-top, 8px); left: 0; right: 0;
-    display: flex; justify-content: center; gap: 10px; pointer-events: none; padding: 8px env(safe-area-inset-right,8px) 0 env(safe-area-inset-left,8px);
-  }
-  .badge {
-    background: var(--panel); color: var(--ink); border-radius: 14px;
-    padding: 7px 14px; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,.15);
-    font-variant-numeric: tabular-nums;
-  }
-  .badge small { font-weight: 700; opacity: .7; font-size: .72em; }
-  #dug.pop { animation: pop .28s ease; }
-  @keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.28)} 100%{transform:scale(1)} }
-  #carry-badge.full { animation: fullflash .5s ease; background: #ffe08a; }
-  #bucket-badge.full { animation: fullflash .5s ease; background: #ffe08a; }
-  @keyframes fullflash { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
-
-  /* 目標バー */
-  #goal {
-    position: fixed; top: calc(env(safe-area-inset-top,8px) + 52px); left: 50%; transform: translateX(-50%);
-    width: min(64vw, 320px); background: var(--panel); border-radius: 12px; padding: 7px 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,.15); pointer-events: none; max-width: calc(100vw - 24px);
-  }
-  #goal .label { font-size: 12px; font-weight: 700; color: var(--ink); opacity: .8; margin-bottom: 4px; }
-  #bar { height: 9px; background: #d6dee2; border-radius: 6px; overflow: hidden; }
-  #bar > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg,#e0a020,#2faa55); transition: width .15s ease; }
-  #score-line { font-size: 12px; font-weight: 800; color: var(--ink); margin-top: 5px; text-align: center; font-variant-numeric: tabular-nums; }
-  #score-line b { font-size: 15px; }
-  #score.pop { animation: pop .28s ease; }
-
-  /* 完成ボタン（合格点で出現） */
-  #finish {
-    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom,0px) + 26px); transform: translateX(-50%);
-    display: none; background: var(--fill); color: #fff; border: none; border-radius: 16px;
-    padding: 13px 26px; font-weight: 900; font-size: 16px; box-shadow: 0 5px 16px rgba(0,0,0,.3); cursor: pointer; z-index: 5;
-  }
-  #finish.ready { display: block; animation: pop .3s ease; }
-  #finish:active { transform: translateX(-50%) scale(.96); }
-  #win .stars { font-size: 30px; letter-spacing: 4px; color: #ffd34d; }
-
-  /* 左下：FPS風 方向パッド */
-  #dpad {
-    position: fixed; left: calc(env(safe-area-inset-left,0px) + 16px); bottom: calc(env(safe-area-inset-bottom,0px) + 18px);
-    display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 6px; z-index: 4;
-  }
-  .dbtn {
-    border: none; border-radius: 14px; background: var(--panel); color: var(--ink); font-size: 24px; font-weight: 900;
-    box-shadow: 0 3px 10px rgba(0,0,0,.2); display: flex; align-items: center; justify-content: center; touch-action: none;
-  }
-  .dbtn:active, .dbtn.on { background: #cfe0ea; transform: scale(.94); }
-  #d-up { grid-area: 1 / 2 / 2 / 3; }
-  #d-left { grid-area: 2 / 1 / 3 / 2; }
-  #d-right { grid-area: 2 / 3 / 3 / 4; }
-  #d-down { grid-area: 3 / 2 / 4 / 3; }
-
-  /* 右下：動作ボタン（押している間だけ 削る/盛る） */
-  #act {
-    position: fixed; right: calc(env(safe-area-inset-right,0px) + 18px); bottom: calc(env(safe-area-inset-bottom,0px) + 22px);
-    width: 96px; height: 96px; border-radius: 50%; border: none; color: #fff; font-weight: 900; font-size: 21px;
-    background: var(--dig); box-shadow: 0 6px 16px rgba(0,0,0,.28); cursor: pointer; line-height: 1.1; z-index: 4;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; touch-action: none;
-  }
-  #act span { font-size: 11px; font-weight: 700; opacity: .9; }
-  #act.on { transform: scale(.93); filter: brightness(1.12); }
-
-  /* 右上：リセット */
-  #reset {
-    position: fixed; right: calc(env(safe-area-inset-right,0px) + 14px); top: calc(env(safe-area-inset-top,0px) + 12px);
-    background: var(--panel); color: var(--ink); border: none; border-radius: 12px; padding: 10px 13px;
-    font-weight: 800; box-shadow: 0 3px 10px rgba(0,0,0,.18); cursor: pointer; z-index: 4; font-size: 13px;
-  }
-  #reset:active { transform: scale(.95); }
-
-  /* 左上：機械チェンジ */
-  #machine {
-    position: fixed; left: calc(env(safe-area-inset-left,0px) + 14px); top: calc(env(safe-area-inset-top,0px) + 12px);
-    background: var(--panel); color: var(--ink); border: none; border-radius: 12px; padding: 8px 13px;
-    font-weight: 900; box-shadow: 0 3px 10px rgba(0,0,0,.18); cursor: pointer; z-index: 4; font-size: 14px;
-    display: flex; flex-direction: column; align-items: center; line-height: 1.15; gap: 1px;
-  }
-  #machine span { font-size: 10px; font-weight: 700; opacity: .65; }
-  #machine:active { transform: scale(.95); }
-
-  /* 中央フラッシュ（モード切替） */
-  #flash {
-    position: fixed; left: 50%; top: 44%; transform: translate(-50%,-50%);
-    font-weight: 900; font-size: 40px; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,.4);
-    opacity: 0; pointer-events: none; z-index: 4;
-  }
-  #flash.show { animation: flash .7s ease; }
-  @keyframes flash { 0%{opacity:0; transform:translate(-50%,-40%) scale(.8)} 25%{opacity:1} 100%{opacity:0; transform:translate(-50%,-55%) scale(1.1)} }
-
-  /* ヒント */
-  #hint {
-    position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%);
-    background: rgba(0,0,0,.55); color: #fff; padding: 9px 16px; border-radius: 18px; font-weight: 700; font-size: 13px;
-    pointer-events: none; transition: opacity .5s ease; text-align: center; max-width: 86vw; line-height: 1.6;
-  }
-
-  /* 完成オーバーレイ */
-  #win {
-    position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
-    background: rgba(10,30,40,.55); color: #fff; text-align: center; z-index: 8; gap: 14px;
-  }
-  #win.show { display: flex; animation: fade .4s ease; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; touch-action:none; }
+  #hud-top { position:fixed; top:env(safe-area-inset-top,8px); left:0; right:0; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; pointer-events:none; padding:8px env(safe-area-inset-right,8px) 0 env(safe-area-inset-left,8px); }
+  .badge { background:var(--panel); color:var(--ink); border-radius:14px; padding:7px 13px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.15); font-variant-numeric:tabular-nums; }
+  .badge small { font-weight:700; opacity:.7; font-size:.72em; }
+  #b-work .v { color:var(--fill); }
+  #b-main .v { color:var(--water); }
+  #total-badge { opacity:.92; } #total-badge .v { color:var(--water); }
+  #money-badge .v { color:#b8860b; }
+  #blade-badge .v { color:#7a5a2a; } #blade-badge.over { background:#ffd6d6; }
+  .badge.done { background:#cdeccd; }
+  #garage { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #garage.show { display:flex; animation:fade .3s ease; }
+  .g-box { background:#fff; border-radius:16px; padding:16px; width:min(94vw,440px); max-height:84vh; overflow:auto; box-shadow:0 8px 30px rgba(0,0,0,.4); }
+  .g-box h2 { margin:0 0 10px; font-size:18px; color:var(--ink); }
+  .g-maker { font-weight:800; font-size:13px; color:var(--ink); margin:11px 2px 5px; padding-bottom:3px; border-bottom:2px solid #dde4e8; }
+  .g-maker:first-child { margin-top:0; }
+  .g-maker small { opacity:.6; font-weight:700; font-size:11px; }
+  .g-card { display:flex; align-items:center; gap:10px; padding:9px; border-radius:12px; background:#f2f5f7; margin-bottom:8px; }
+  .g-card.cur { background:#e2f0e2; box-shadow:inset 0 0 0 2px #9ccf9c; }
+  .g-ic { font-size:30px; line-height:1; }
+  .g-info { flex:1; color:var(--ink); min-width:0; }
+  .g-info b { font-size:14px; } .g-info small { display:block; opacity:.72; font-size:11px; line-height:1.4; }
+  .g-btn { border:none; border-radius:10px; padding:9px 12px; font-weight:800; font-size:13px; cursor:pointer; white-space:nowrap; text-align:center; }
+  .g-btn small { font-size:10px; opacity:.85; font-weight:700; }
+  .g-btn.buy { background:var(--fill); color:#fff; } .g-btn.use { background:var(--water); color:#fff; }
+  .g-btn.used { background:#cdeccd; color:var(--ink); } .g-btn.ng { background:#e6e6e6; color:#999; }
+  #g-close { margin-top:4px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
+  #shop { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #machineBtn { position:fixed; left:calc(env(safe-area-inset-left,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:8px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; display:flex; flex-direction:column; align-items:center; line-height:1.1; }
+  #machineBtn span { font-size:9px; opacity:.7; margin-top:1px; }
+  #machineBtn.sub { background:#cfe6f6; }
+  #shop:active, #machineBtn:active { transform:scale(.95); }
+  #lv-badge { background:rgba(32,48,58,.82); color:#fff; }
+  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 52px); left:50%; transform:translateX(-50%); width:min(82vw,380px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); }
+  #goal .label { font-size:12px; font-weight:700; color:var(--ink); opacity:.85; margin-bottom:4px; line-height:1.45; }
+  #bar { height:9px; background:#d6dee2; border-radius:6px; overflow:hidden; }
+  #bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#7db5ec,#2f7fd6); transition:width .2s ease; }
+  #dpad { position:fixed; left:calc(env(safe-area-inset-left,0px) + 16px); bottom:calc(env(safe-area-inset-bottom,0px) + 18px); display:grid; grid-template-columns:repeat(3,56px); grid-template-rows:repeat(3,56px); gap:6px; z-index:4; }
+  .dbtn { border:none; border-radius:14px; background:var(--panel); color:var(--ink); font-size:24px; font-weight:900; box-shadow:0 3px 10px rgba(0,0,0,.2); display:flex; align-items:center; justify-content:center; touch-action:none; }
+  .dbtn:active, .dbtn.on { background:#cfe0ea; transform:scale(.94); }
+  #d-up { grid-area:1/2/2/3; } #d-left { grid-area:2/1/3/2; } #d-right { grid-area:2/3/3/4; } #d-down { grid-area:3/2/4/3; }
+  #act { position:fixed; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 22px); width:96px; height:96px; border-radius:50%; border:none; color:#fff; font-weight:900; font-size:21px; background:var(--dig); box-shadow:0 6px 16px rgba(0,0,0,.28); cursor:pointer; line-height:1.1; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; touch-action:none; }
+  #act span { font-size:11px; font-weight:700; opacity:.9; }
+  #act.on { transform:scale(.93); filter:brightness(1.12); }
+  #reset { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 12px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:10px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #reset:active { transform:scale(.95); }
+  #hint { position:fixed; left:50%; bottom:96px; transform:translateX(-50%); background:rgba(0,0,0,.55); color:#fff; padding:9px 16px; border-radius:18px; font-weight:700; font-size:13px; pointer-events:none; transition:opacity .5s ease; text-align:center; max-width:86vw; line-height:1.6; }
+  #win { position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; background:rgba(10,30,40,.55); color:#fff; text-align:center; z-index:8; gap:14px; }
+  #win.show { display:flex; animation:fade .4s ease; }
   @keyframes fade { from{opacity:0} to{opacity:1} }
-  #win h1 { font-size: 44px; margin: 0; text-shadow: 0 3px 16px rgba(0,0,0,.5); }
-  #win p { margin: 0; font-size: 18px; font-weight: 700; }
-  #again {
-    margin-top: 6px; background: var(--fill); color: #fff; border: none; border-radius: 14px;
-    padding: 14px 30px; font-weight: 900; font-size: 18px; cursor: pointer; box-shadow: 0 6px 16px rgba(0,0,0,.3);
-  }
-
-  /* 縦持ち案内（小さいトースト・画面は隠さない） */
-  #rotate {
-    position: fixed; top: calc(env(safe-area-inset-top,8px) + 96px); left: 50%; transform: translateX(-50%);
-    background: rgba(0,0,0,.6); color: #fff; padding: 8px 14px; border-radius: 16px; font-weight: 700; font-size: 13px;
-    pointer-events: none; opacity: 0; transition: opacity .4s ease; z-index: 6; white-space: nowrap;
-  }
-  #rotate.show { opacity: 1; }
+  #win h1 { font-size:42px; margin:0; text-shadow:0 3px 16px rgba(0,0,0,.5); }
+  #win p { margin:0; font-size:17px; font-weight:700; }
+  #again { margin-top:6px; background:var(--water); color:#fff; border:none; border-radius:14px; padding:14px 30px; font-weight:900; font-size:18px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,.3); }
+  #rotate { position:fixed; top:calc(env(safe-area-inset-top,8px) + 96px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,.6); color:#fff; padding:8px 14px; border-radius:16px; font-weight:700; font-size:13px; pointer-events:none; opacity:0; transition:opacity .4s ease; z-index:6; white-space:nowrap; }
+  #rotate.show { opacity:1; }
+  #mute { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 92px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:16px; line-height:1; }
+  #achBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 132px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #mute:active, #achBtn:active { transform:scale(.95); } #mute.off { opacity:.55; }
+  .g-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
+  .g-btn.upg { background:#e89a2a; color:#fff; } .g-btn.maxed { background:#f0d8a0; color:#7a5a10; }
+  #badges { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #badges.show { display:flex; animation:fade .3s ease; }
+  .b-box { background:#fff; border-radius:16px; padding:16px; width:min(94vw,440px); max-height:84vh; overflow:auto; box-shadow:0 8px 30px rgba(0,0,0,.4); }
+  .b-box h2 { margin:0 0 10px; font-size:18px; color:var(--ink); }
+  #b-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
+  .b-item { background:#f2f5f7; border-radius:12px; padding:10px; text-align:center; color:var(--ink); }
+  .b-item.locked { opacity:.45; filter:grayscale(1); }
+  .b-item .b-ic { font-size:30px; line-height:1.2; } .b-item b { display:block; font-size:13px; margin-top:2px; } .b-item small { display:block; font-size:10px; opacity:.7; line-height:1.3; }
+  #b-close { margin-top:10px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
+  #achToast { position:fixed; left:50%; top:calc(env(safe-area-inset-top,8px) + 150px); transform:translateX(-50%); background:rgba(184,134,11,.96); color:#fff; padding:10px 18px; border-radius:18px; font-weight:800; font-size:14px; box-shadow:0 4px 14px rgba(0,0,0,.3); opacity:0; transition:opacity .4s ease; pointer-events:none; z-index:7; text-align:center; white-space:nowrap; }
+  #achToast.show { opacity:1; }
 </style>
 </head>
 <body>
   <div id="app"></div>
-
   <div id="hud-top">
-    <div class="badge"><span id="dug">0.0</span> <small>m³ 削った土</small></div>
-    <div class="badge" id="carry-badge"><span id="carry">0.0</span> <small>m³ 今押してる土</small></div>
-    <div class="badge" id="bucket-badge" style="display:none"><span id="bucket-hud">0.0</span> <small>/ 10 m³ バケット</small></div>
+    <div class="badge" id="lv-badge">LV<span id="lvnum">1</span></div>
+    <div class="badge" id="b-work">🏗 <span id="workLabel">作業場</span> <span class="v" id="work">0</span><small>%</small></div>
+    <div class="badge" id="b-main">💧 <span id="mainLabel">ため池</span> <span class="v" id="basin">0</span><small>/<span id="basinT">0</span> m³</small></div>
+    <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
+    <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
+    <div class="badge" id="blade-badge">🪣 <span class="v" id="blade">0</span><small>/<span id="bladeCap">12</span> m³</small></div>
   </div>
-
-  <div id="goal">
-    <div class="label">目標：お手本(緑の面)の高さに仕上げる　<span style="color:#c0392b">赤=削る</span>／<span style="color:#2a6db0">青=盛る</span>／<span style="color:#2faa55">緑=OK</span></div>
-    <div id="bar"><i></i></div>
-    <div id="score-line">出来形 <b id="score">0</b> 点　／　目標まで最大 <b id="rem">0</b> cm</div>
-  </div>
-
-  <!-- 左下：方向パッド -->
+  <div id="goal"><div class="label" id="goalLabel">…</div><div id="bar"><i></i></div></div>
   <div id="dpad">
     <button class="dbtn" id="d-up" data-dir="up" aria-label="前">▲</button>
     <button class="dbtn" id="d-left" data-dir="left" aria-label="左">◀</button>
     <button class="dbtn" id="d-right" data-dir="right" aria-label="右">▶</button>
     <button class="dbtn" id="d-down" data-dir="down" aria-label="後">▼</button>
   </div>
-
   <button id="act">ならす<span>押す</span></button>
-  <button id="reset">やり直し</button>
-  <button id="machine">🚜 ブル<span>タップで切替</span></button>
-  <button id="finish">この出来で完成</button>
-
-  <div id="flash"></div>
-  <div id="hint">お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に</div>
+  <button id="reset">最初から</button>
+  <button id="shop">🛒 ショップ</button>
+  <button id="machineBtn" style="display:none">🚜 ブル<span>切替</span></button>
+  <button id="mute" aria-label="音">🔊</button>
+  <button id="achBtn">🏅 実績</button>
+  <div id="hint">…</div>
   <div id="rotate">📱 横向きがおすすめ</div>
-
-  <div id="win">
-    <h1>完成！</h1>
-    <div class="stars" id="win-stars">★★★</div>
-    <p id="win-text">整地おつかれさま</p>
-    <button id="again">次の現場へ</button>
-  </div>
+  <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
+  <div id="badges"><div class="b-box"><h2>🏅 実績バッジ</h2><div id="b-list"></div><button id="b-close">とじる</button></div></div>
+  <div id="achToast"></div>
+  <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
   "use strict";
   (function () {
-    if (!window.THREE) { document.body.innerHTML = "<p style='color:#fff;padding:20px'>3D部品(Three.js)の読み込みに失敗しました。ネット接続を確認してください。</p>"; return; }
+    if (!window.THREE) { document.body.innerHTML = "<p style='color:#fff;padding:20px'>3D部品(Three.js)の読み込みに失敗しました。</p>"; return; }
 
     // ===================== 設定 =====================
-    const GRID = 24, WORLD = 24, V = GRID + 1;
+    const GRID = 36, WORLD = 24, V = GRID + 1, N = V * V;
     const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
-    const BLADE_PILE_H = 0.7, BLADE_CAP = 12, STALL_FRAC = 0.35, PILE_R = 1.6;  // ブル押し[親方FB・ハイブリッド]：あふれ地面の頭打ち高さ/ブレードが持てる土量(m³)/満杯時の速度割合(35%=重いが運べる)/あふれを残す半径（重さ・容量は親方の体感で調整可）
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
-    const BH_REACH = 2.1, BH_DIG_R = 1.7, BH_DIG_RATE = 13, BUCKET_CAP = 10, BH_DUMP_RATE = 16;  // バックホウ[F2]：腕の届く距離/掘る半径/掘る速さ/バケット上限/降ろす速さ
-    const FLAT_TOL = 0.3, PASS_SCORE = 70, STAR2 = 85, STAR3 = 95, FINISH_MAXDEV = 0.5, FINISH_MAXDEV_DIG = 1.5;
+    const FLAT_TOL = 0.4;
     const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
+    // 水[追加]
+    const WATER_EPS = 0.02, RENDER_EPS = 0.0015, SHALLOW_GROUND = -0.1, PLAIN_MIN = 0.08;
+    let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
+    const ENTER_WATER_MAX = 0.7, UNDERWATER_DIG_MULT = 0.5; let WATER_CAN_ENTER = false;
+    // バックホウ本物掘削[本体移植 2026-06-25]：掘り下げ/積み上げを「今いる場所(足元)の高さ」から一定で頭打ち（段切り＝降りればさらに深く/積んだ上に乗ればさらに高く）。容量=その重機のバケット(bladeCap)・掘る速さ=digRate・範囲=digRadius。
+    const BH_MAX_CUT = 3.0, BH_MAX_FILL = 2.5;
+    const CLEAR_REWARD = 100; // 万円（クリア報酬）
+    // 重機レベルアップ（強化）テーブル＝digRate/digRadius/moveSpeed の倍率（index=Lv, Lv0=未強化）
+    const UPG_MAX = 5;
+    const UPG_RATE = [1.0, 1.18, 1.36, 1.55, 1.75, 2.0];   // 掘る速さ
+    const UPG_RAD  = [1.0, 1.06, 1.12, 1.18, 1.24, 1.30];  // 削る幅（広げ過ぎ注意で控えめ）
+    const UPG_SPD  = [1.0, 1.08, 1.16, 1.24, 1.32, 1.40];  // 移動速さ
+    function upgCost(M, lv) { // 現Lv(0..UPG_MAX-1)→lv+1 の費用(万円)。値段帯で段階化
+      const p = M.price || 0;
+      const base = p < 200 ? 40 : (p < 400 ? 70 : (p < 600 ? 110 : 160));
+      return base * (lv + 1);
+    }
+    // 重機ラインナップ（メーカー別・もじり名＝架空。値段は強い/大きいほど高い）。
+    const MAKERS = [
+      { id: 'komashi', name: 'コマシ', sub: '(コマツ風)', dot: '🟡' },
+      { id: 'kuboki', name: 'クボキ', sub: '(クボタ風)', dot: '🟢' },
+      { id: 'hidachi', name: 'ヒダチ', sub: '(日立建機風)', dot: '🔵' },
+      { id: 'caterpia', name: 'キャタピア', sub: '(Cat風)', dot: '🟠' },
+      { id: 'koveriko', name: 'コベリコ', sub: '(コベルコ風)', dot: '🟣' },
+      { id: 'borugo', name: 'ボルゴ', sub: '(ボルボ風)', dot: '🔴' },
+      { id: 'sumiken', name: 'スミケン', sub: '(住友建機風)', dot: '⚪' },
+      { id: 'yanama', name: 'ヤナマ', sub: '(ヤンマー風)', dot: '🟤' },
+      { id: 'isuzu2', name: 'イスズ', sub: '(いすゞ風)', dot: '🔷' }
+    ];
+    function makerById(id) { for (let k = 0; k < MAKERS.length; k++) if (MAKERS[k].id === id) return MAKERS[k]; return MAKERS[0]; }
+    const MACHINES = [
+      { id: 'dozer', maker: 'komashi', name: 'コマシ D-51', icon: '🚜', price: 0, ability: '標準のブルドーザー',
+        digRadius: 2.2, digRate: 18, layer: 0.8, moveSpeed: 7, bladeCap: 12, color: 0xf0c020, canEnterWater: false, underwaterFull: false },
+      { id: 'bigdozer', maker: 'komashi', name: 'コマシ D-155', icon: '🏗️', price: 400, ability: '大型ブル・削る幅がとても広い＋整地が速い（移動は遅め）',
+        digRadius: 3.2, digRate: 22, layer: 0.8, moveSpeed: 5.5, bladeCap: 20, color: 0x8a9a3a, canEnterWater: false, underwaterFull: false },
+      { id: 'mini', maker: 'kuboki', name: 'クボキ U-08', icon: '🛺', price: 150, ability: '高速ミニ・移動がとても速い＋小回り（幅/容量は小さめ）',
+        digRadius: 1.5, digRate: 16, layer: 0.8, moveSpeed: 11, bladeCap: 8, color: 0x88dd44, canEnterWater: false, underwaterFull: false },
+      { id: 'kx12', maker: 'kuboki', name: 'クボキ KX-12', icon: '🛠️', price: 220, ability: 'ミニ掘削・小型で機敏＋そこそこ深く掘れる',
+        digRadius: 1.6, digRate: 18, layer: 1.1, moveSpeed: 9, bladeCap: 10, color: 0x70c860, canEnterWater: false, underwaterFull: false },
+      { id: 'sub', maker: 'hidachi', name: 'ヒダチ ZX-AQUA', icon: '🤿', price: 300, ability: '水中バックホウ・深い水に入れる＋水中も普通に掘れる',
+        digRadius: 2.2, digRate: 18, layer: 0.8, moveSpeed: 6, bladeCap: 12, color: 0x3aa0e0, canEnterWater: true, underwaterFull: true },
+      { id: 'digger', maker: 'hidachi', name: 'ヒダチ EX-450', icon: '⛏️', price: 450, ability: '強力掘削・1押しで深く掘れる＋掘る速さUP（幅は狭め）',
+        digRadius: 1.8, digRate: 24, layer: 1.4, moveSpeed: 6.5, bladeCap: 18, color: 0x808890, canEnterWater: false, underwaterFull: false },
+      { id: 'hauler', maker: 'caterpia', name: 'キャタピア 963', icon: '🚛', price: 500, ability: '大容量運搬・土をたくさん運べる＋削る幅が広い（移動やや遅め）',
+        digRadius: 2.8, digRate: 18, layer: 0.8, moveSpeed: 6, bladeCap: 30, color: 0xe07a3a, canEnterWater: false, underwaterFull: false },
+      { id: 'd11', maker: 'caterpia', name: 'キャタピア D-11改', icon: '🦏', price: 800, ability: '超大型ブル・最大の幅＋最大の容量（最高峰だが移動はとても遅い）',
+        digRadius: 3.6, digRate: 24, layer: 1.2, moveSpeed: 4.5, bladeCap: 40, color: 0xc25a20, canEnterWater: false, underwaterFull: false },
+      { id: 'sk200', maker: 'koveriko', name: 'コベリコ SK-200', icon: '🦾', price: 350, ability: '中型バックホウ・掘りも整地もそこそこのバランス掘削',
+        digRadius: 2.0, digRate: 20, layer: 1.2, moveSpeed: 6.5, bladeCap: 14, color: 0x9a5ad0, canEnterWater: false, underwaterFull: false },
+      { id: 'skaqua', maker: 'koveriko', name: 'コベリコ SK-AQUA改', icon: '🌊', price: 650, ability: '大型水中バックホウ・深い水で幅広に掘れる（水中の上位機）',
+        digRadius: 2.6, digRate: 20, layer: 1.0, moveSpeed: 5.5, bladeCap: 18, color: 0x6060c8, canEnterWater: true, underwaterFull: true },
+      { id: 'l90', maker: 'borugo', name: 'ボルゴ L-90', icon: '🚚', price: 380, ability: 'ホイールローダー・速く走って土を運ぶ＋そこそこ容量',
+        digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 9, bladeCap: 22, color: 0xd03838, canEnterWater: false, underwaterFull: false },
+      { id: 'a60', maker: 'borugo', name: 'ボルゴ A-60', icon: '🛻', price: 600, ability: '大型運搬機・最大級の容量で大量に運ぶ（移動は遅い）',
+        digRadius: 2.6, digRate: 18, layer: 0.8, moveSpeed: 5, bladeCap: 50, color: 0xa82828, canEnterWater: false, underwaterFull: false },
+      { id: 'sh77', maker: 'sumiken', name: 'スミケン SH-77', icon: '🔧', price: 550, ability: '万能オールラウンダー・幅/深さ/容量/速さが全部そこそこ',
+        digRadius: 2.5, digRate: 20, layer: 1.0, moveSpeed: 7, bladeCap: 22, color: 0xc8ccd0, canEnterWater: false, underwaterFull: false },
+      { id: 'lsamp', maker: 'sumiken', name: 'スミケン LS-AMP', icon: '🚙', price: 480, ability: '水陸両用・陸も深い水も入れる（水中の掘りは遅め）',
+        digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 6.5, bladeCap: 16, color: 0x40b0a0, canEnterWater: true, underwaterFull: false },
+      { id: 'ym30', maker: 'yanama', name: 'ヤナマ ViO-30', icon: '🌱', price: 260, ability: 'コンパクト掘削・後方小旋回でキビキビ＋そこそこ深く掘れる（幅は狭め）',
+        digRadius: 1.7, digRate: 19, layer: 1.2, moveSpeed: 9.5, bladeCap: 9, color: 0xc23838, canEnterWater: false, underwaterFull: false },
+      { id: 'ymb7', maker: 'yanama', name: 'ヤナマ B7-Sigma', icon: '🪨', price: 700, ability: 'パワー掘削機・深く速く掘れる＋大容量（幅はやや狭め・移動遅め）',
+        digRadius: 2.0, digRate: 26, layer: 1.5, moveSpeed: 5.5, bladeCap: 26, color: 0x9a2a2a, canEnterWater: false, underwaterFull: false },
+      { id: 'igx250', maker: 'isuzu2', name: 'イスズ GIGA-250', icon: '🛞', price: 250, ability: '小型運搬ダンプ・速く走って土を運ぶ＋積載そこそこ（掘りは浅め）',
+        digRadius: 2.2, digRate: 16, layer: 0.7, moveSpeed: 9.5, bladeCap: 24, color: 0x3a6fb0, canEnterWater: false, underwaterFull: false },
+      { id: 'igxmax', maker: 'isuzu2', name: 'イスズ GIGA-MAX', icon: '🚒', price: 720, ability: '大型運搬ダンプ・超大容量で大量に運ぶ＋削る幅広め（移動は遅い）',
+        digRadius: 3.0, digRate: 17, layer: 0.8, moveSpeed: 5, bladeCap: 46, color: 0x244f8a, canEnterWater: false, underwaterFull: false }
+    ];
+    function machineById(id) { for (let k = 0; k < MACHINES.length; k++) if (MACHINES[k].id === id) return MACHINES[k]; return MACHINES[0]; }
+    function curM() { return machineById(game.machine); }
+    // 重機の現強化Lv（0..UPG_MAX）。実効ステータス＝BASE×倍率（毎フレーム呼ばれるので使い回しオブジェクトで割当ゼロ）
+    function upgLv(id) { const v = game.upg[id]; return v ? (v > UPG_MAX ? UPG_MAX : v) : 0; }
+    const _eff = {};
+    function effectiveStats(M) {
+      const lv = upgLv(M.id);
+      _eff.digRadius = M.digRadius * UPG_RAD[lv];
+      _eff.digRate = M.digRate * UPG_RATE[lv];
+      _eff.moveSpeed = M.moveSpeed * UPG_SPD[lv];
+      _eff.layer = M.layer; _eff.bladeCap = M.bladeCap;        // 強化対象外（BASE透過）
+      _eff.underwaterFull = M.underwaterFull; _eff.id = M.id;
+      return _eff;
+    }
+    // 実績バッジ（cond は game を受け真偽。判定は購入/クリア/強化など「変化時のみ」呼ぶ＝毎フレーム禁止）
+    function distinctOwned() { return game.owned.length; }
+    function distinctMakers() { const s = {}; for (let k = 0; k < game.owned.length; k++) s[machineById(game.owned[k]).maker] = 1; return Object.keys(s).length; }
+    const ACHIEVEMENTS = [
+      { id: 'dig100',  icon: '⛏️', name: '見習いオペ',     desc: '累計100m³ 掘る',     cond: g => g.cum.dugAll >= 100 },
+      { id: 'dig1000', icon: '🏗️', name: '土工マイスター', desc: '累計1000m³ 掘る',    cond: g => g.cum.dugAll >= 1000 },
+      { id: 'dig5000', icon: '🌋', name: '大地の主',       desc: '累計5000m³ 掘る',    cond: g => g.cum.dugAll >= 5000 },
+      { id: 'clear1',  icon: '🚩', name: '初現場',         desc: '1レベルクリア',     cond: g => g.cum.cleared >= 1 },
+      { id: 'clear5',  icon: '🏆', name: '現場監督',       desc: '累計5レベルクリア', cond: g => g.cum.cleared >= 5 },
+      { id: 'clear15', icon: '👑', name: 'ベテラン所長',   desc: '累計15レベルクリア', cond: g => g.cum.cleared >= 15 },
+      { id: 'own3',    icon: '🚜', name: 'コレクター',     desc: '重機を3台所有',     cond: g => distinctOwned() >= 3 },
+      { id: 'own6',    icon: '🏭', name: '大車両基地',     desc: '重機を6台所有',     cond: g => distinctOwned() >= 6 },
+      { id: 'mk4',     icon: '🌐', name: 'メーカー通',     desc: '4メーカー集める',   cond: g => distinctMakers() >= 4 },
+      { id: 'mkAll',   icon: '💠', name: '全メーカー制覇', desc: '全メーカー集める',  cond: g => distinctMakers() >= MAKERS.length },
+      { id: 'maxupg',  icon: '⭐', name: 'フルチューン',   desc: '1台をLv5まで強化',  cond: g => { for (const k in g.upg) if (g.upg[k] >= UPG_MAX) return true; return false; } }
+    ];
 
-    // ===================== ルール層 =====================
-    const heights = new Float32Array(V * V);
-    const baseHeights = new Float32Array(V * V);
-    const targetH = new Float32Array(V * V);   // お題＝目標の高さ（マスごと）
-    const vx = new Float32Array(V * V), vz = new Float32Array(V * V);
-    const passRef = new Float32Array(V * V), passTag = new Int32Array(V * V); // この押しで初接触した高さ / 押しID（1段ずつ削るため）
-    const game = { blade: 0, bucket: 0, totalDug: 0, initErr: 1, targetLevel: 0, best: 0, mx: 0, mz: 6, myaw: Math.PI, won: false, soil0: 0 };
+    // ===================== データ =====================
+    const heights = new Float32Array(N), baseHeights = new Float32Array(N);
+    const vx = new Float32Array(N), vz = new Float32Array(N);
+    const passRef = new Float32Array(N), passTag = new Int32Array(N);
+    const waterD = new Float32Array(N);
+    const fL = new Float32Array(N), fR = new Float32Array(N), fT = new Float32Array(N), fB = new Float32Array(N);
+    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 } };
     let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
-    // 機械2台[F2]：ブル(dozer)とバックホウ(backhoe)。game.mx/mz/myaw は「選択中の機械」の現在位置を映す。切替時に flushActive で退避→新機械を読み込む。
-    const dozerState = { mx: 0, mz: 6, myaw: Math.PI };
-    const backhoeState = { mx: 5, mz: 6, myaw: Math.PI };
-    let active = "dozer";
-    let bhMode = null, prevActing = false, bhPhase = 0, bhDigAmt = 0, bhDumpAmt = 0;  // バックホウ：押し始めに固定する掘る/降ろすモード・うでアニメ状態[F2]
-    // バックホウ[F2-S5]：1回押すごとに「掘る/盛る」を1段(LAYER)までに制限（あり得ない高さの山・谷を防ぐ）。押し始めの高さを bhRef に記録し ±LAYER で頭打ち。離して押し直すと bhPushId が進み次の段へ。
-    const bhRef = new Float32Array(V * V), bhTag = new Int32Array(V * V); let bhPushId = 0;
-    function flushActive() { const s = (active === "dozer") ? dozerState : backhoeState; s.mx = game.mx; s.mz = game.mz; s.myaw = game.myaw; }
+    let curLevel = 0, LV = null, winTimer = 0;
 
-    for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) {
-      const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD;
-    }
+    for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) { const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD; }
     function gauss(x, z, cx, cz, h, s) { const d2 = (x - cx) * (x - cx) + (z - cz) * (z - cz); return h * Math.exp(-d2 / (2 * s * s)); }
-    function generateTerrain(scene) {
-      game.scene = (scene === "dig") ? "dig" : "flat";
-      if (game.scene === "dig") {
-        buildDigScene();
-        baseHeights.set(heights);
-      } else {
-        const hx = -4 + (Math.random() - 0.5) * 4, hz = -2 + (Math.random() - 0.5) * 4, hH = 3.6 + Math.random() * 1.2;
-        const px = 5 + (Math.random() - 0.5) * 3, pz = 5 + (Math.random() - 0.5) * 3;
-        for (let idx = 0; idx < V * V; idx++) {
-          const x = vx[idx], z = vz[idx];
-          let h = gauss(x, z, hx, hz, hH, 3.0) - gauss(x, z, px, pz, 1.8, 2.4) + (Math.random() - 0.5) * 0.15;
-          if (h < MIN_H) h = MIN_H; if (h > MAX_H) h = MAX_H;
-          heights[idx] = h;
-        }
-        baseHeights.set(heights); setTarget();
+    function rnd2(k) { return (Math.random() - 0.5) * k; }
+    function rect(i0, i1, j0, j1) { return { i0: i0, i1: i1, j0: j0, j1: j1 }; }
+    function inRect(i, j, z) { return i >= z.i0 && i <= z.i1 && j >= z.j0 && j <= z.j1; }
+    function worldX(i) { return (i / GRID - 0.5) * WORLD; }
+    function worldZ(j) { return (j / GRID - 0.5) * WORLD; }
+    function clamp(h) { return h < MIN_H ? MIN_H : (h > MAX_H ? MAX_H : h); }
+    function clearWater() { waterD.fill(0); fL.fill(0); fR.fill(0); fT.fill(0); fB.fill(0); }
+
+    // ===================== ゾーン計測（汎用） =====================
+    function zoneEach(z, cb) { for (let j = z.j0; j <= z.j1; j++) for (let i = z.i0; i <= z.i1; i++) cb(j * V + i); }
+    function zoneVol(z) { let s = 0; zoneEach(z, (idx) => { s += waterD[idx]; }); return s * CELL_AREA; }
+    function zoneMean(z) { let m = 0, n = 0; zoneEach(z, (idx) => { m += heights[idx]; n++; }); return n ? m / n : 0; }
+    function zoneMaxDev(z) { const mean = zoneMean(z); let m = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > m) m = d; }); return m; }
+    function zoneFlatness(z) { const mean = zoneMean(z); let s = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > FLAT_TOL) { const e = d - FLAT_TOL; s += e * e * CELL_AREA; } }); return s; }
+    function zoneExcessAbove(arr, z, thr) { let s = 0; zoneEach(z, (idx) => { const e = arr[idx] - thr; if (e > 0) s += e * CELL_AREA; }); return s; }   // 掘り取り[LV5]：閾値より上に残っている土の量（=残っている山）。穴(閾値以下)は数えない＝バックホウ向き。
+    function totalWater() { let s = 0; for (let idx = 0; idx < N; idx++) s += waterD[idx]; return s * CELL_AREA; }
+
+    // ===================== レベル地形生成 =====================
+    function genDrain(L) { // L0 / L3: 調整池（作業場を排水+整地, ため池に貯水）
+      clearWater();
+      const A = L.A, B = L.B, bcx = worldX((B.i0 + B.i1) / 2), bcz = worldZ((B.j0 + B.j1) / 2), sc = L.bumpScale;
+      const bumps = [
+        { x: -3.5 + rnd2(2), z: 5.5 + rnd2(1.5), h: 1.3 * sc, s: 1.2 },
+        { x: 3.0 + rnd2(2), z: 7.5 + rnd2(1.5), h: 1.2 * sc, s: 1.2 },
+        { x: -1.0 + rnd2(2), z: 9.0 + rnd2(1.5), h: 1.1 * sc, s: 1.1 },
+        { x: 3.5 + rnd2(2), z: 4.5 + rnd2(1.5), h: 1.0 * sc, s: 1.1 }
+      ];
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
+        let h = rnd2(0.1);
+        h -= gauss(x, z, bcx, bcz, 3.4, 2.6);   // ため池の深い穴
+        h += gauss(x, z, 0, 0, 1.2, 2.2);        // 土手
+        if (inRect(i, j, A)) { const t = (j - A.j0) / (A.j1 - A.j0); h = -0.7 + 0.4 * t + rnd2(0.08); for (let b = 0; b < bumps.length; b++) h += gauss(x, z, bumps[b].x, bumps[b].z, bumps[b].h, bumps[b].s); }
+        heights[idx] = clamp(h);
       }
-      game.initErr = Math.max(1, targetError()); game.soil0 = currentSoil(); updateGhost(); setSceneHint();
+      zoneEach(A, (idx) => { const d = L.wl - heights[idx]; if (d > 0) waterD[idx] = d; });
     }
-    // 掘る現場[F2-S4]：初期=平ら(h0)／目標=手前に池(掘る)＋奥に盛り場(盛る)。掘る量＝盛る量で体積中立＝必ず達成可能。
-    function buildDigScene() {
-      const h0 = 1.0;
-      for (let idx = 0; idx < V * V; idx++) { heights[idx] = h0; targetH[idx] = h0; }
-      // 池[S5]：底は平ら(バックホウで掘りやすい＝段で揃えられる)＋縁だけ斜面。底の高さ＝h0-pitDepth。
-      const pitCx = 0, pitCz = 3.5, pitR = 4.2, pitFlat = 2.6, pitDepth = 2.2;
-      let removed = 0;
-      for (let idx = 0; idx < V * V; idx++) {
-        const d = Math.sqrt((vx[idx] - pitCx) * (vx[idx] - pitCx) + (vz[idx] - pitCz) * (vz[idx] - pitCz));
-        if (d < pitR) {
-          let drop;
-          if (d <= pitFlat) drop = pitDepth;                                            // 平らな底
-          else { const t = (d - pitFlat) / (pitR - pitFlat); drop = pitDepth * 0.5 * (1 + Math.cos(Math.PI * t)); } // 縁の斜面
-          targetH[idx] -= drop; removed += drop;
-        }
+    function genFlow(L) { // L1: 通水（奥の水を尾根を掘って手前へ流す）
+      clearWater();
+      const S = L.S, D = L.B, scz = worldZ((S.j0 + S.j1) / 2), dcz = worldZ((D.j0 + D.j1) / 2);
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        let h = rnd2(0.1);
+        h -= gauss(x, z, 0, scz, 1.6, 3.0);   // 奥の水たまり（上流）
+        h += gauss(x, z, 0, 0, 2.0, 1.8);      // 中央の尾根（掘る対象）
+        h -= gauss(x, z, 0, dcz, 2.6, 3.0);    // 手前の窪み（下流・より深い）
+        heights[idx] = clamp(h);
       }
-      // 盛り場[S5]：平らな台地(フラットトップ)＝バックホウで降ろして埋めやすい。中心 pileFlat は一定の高さ、縁だけ斜面。掘った体積(removed)をそのまま分配＝体積中立。
-      const pileCx = 0, pileCz = -5, pileFlat = 3.0, pileR = 4.6; let wsum = 0; const w = new Float32Array(V * V);
-      for (let idx = 0; idx < V * V; idx++) {
-        const d = Math.sqrt((vx[idx] - pileCx) * (vx[idx] - pileCx) + (vz[idx] - pileCz) * (vz[idx] - pileCz));
-        if (d <= pileFlat) { w[idx] = 1; wsum += 1; }                                                  // 平らな天端
-        else if (d < pileR) { const tt = (d - pileFlat) / (pileR - pileFlat); const f = 0.5 * (1 + Math.cos(Math.PI * tt)); w[idx] = f; wsum += f; }  // 縁の斜面
-      }
-      if (wsum > 0) for (let idx = 0; idx < V * V; idx++) if (w[idx] > 0) targetH[idx] += removed * w[idx] / wsum;
-      for (let idx = 0; idx < V * V; idx++) { if (targetH[idx] < MIN_H) targetH[idx] = MIN_H; if (targetH[idx] > MAX_H) targetH[idx] = MAX_H; }
-      game.targetLevel = h0;
+      zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
     }
-    // お題（目標の高さ）＝この現場の平均高さに広く平らに（宅地造成）。押し均しの体積保存で達成可能。
-    function setTarget() { let mean = 0; for (let idx = 0; idx < V * V; idx++) mean += baseHeights[idx]; game.targetLevel = mean / (V * V); for (let idx = 0; idx < V * V; idx++) targetH[idx] = game.targetLevel; }
-    // 体積検算[F2]：地面の総土量＋ブレードの土＋バケットの土＝一定（土が湧く/消える不具合を検出する用）。
-    function currentSoil() { let s = 0; for (let idx = 0; idx < V * V; idx++) s += heights[idx]; return s * CELL_AREA + game.blade + (game.bucket || 0); }
-    // 減点対象のズレ[S5]：掘る現場はラフ運用＝「盛り場(目標が地盤h0より高い)は盛り足りない分／池(h0より低い)は掘り足りない分」だけ減点し、掘りすぎ・盛りすぎは不問(0)。平ら地(目標≒h0)と平ら現場は従来どおり両方向きっちり(絶対差)。
-    function devAt(idx, arr) { arr = arr || heights; const diff = arr[idx] - targetH[idx]; if (game.scene === "dig") { const tl = game.targetLevel; if (targetH[idx] > tl + 0.05) return Math.max(0, -diff); if (targetH[idx] < tl - 0.05) return Math.max(0, diff); } return Math.abs(diff); }
-    // 目標とのズレの合計（許容±FLAT_TOL超過分だけ）。0に近いほど図面どおり。最外周マスは除外（角の理不尽防止）。
-    function targetError(arr) { arr = arr || heights; let s = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = devAt(idx, arr); if (d > FLAT_TOL) s += (d - FLAT_TOL) * CELL_AREA; } return s; }
-    // 目標までの最大のズレ（cm表示用・最外周除外・盛り場の盛りすぎは除外）
-    function maxTargetDev() { let m = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = devAt(idx); if (d > m) m = d; } return m; }
-    // 完成判定の最大ズレしきい値[S5]：掘る現場は緩め(盛りラフ運用)・平ら現場は従来どおり厳しめ。
-    function finishMaxDev() { return game.scene === "dig" ? FINISH_MAXDEV_DIG : FINISH_MAXDEV; }
-    // 削った土の量(m³)[親方FB]＝元の地面より下げた分の正味。転がる山を毎コマ数え直して暴走するのを防ぐため、累積でなく現在の掘り下げ量で表示。
-    function digVolume() { let s = 0; for (let idx = 0; idx < V * V; idx++) { const d = baseHeights[idx] - heights[idx]; if (d > 0) s += d * CELL_AREA; } return s; }
-    // 出来形の点数（0〜100）。残った最大ズレも減点に反映（局所の出っ張りで満点が出ないように）。
-    function score() { const base = 100 * (1 - targetError() / game.initErr); const worst = (game.scene === "dig") ? Math.max(0, maxTargetDev() - FINISH_MAXDEV_DIG) * 10 : Math.max(0, maxTargetDev() - FLAT_TOL) * 25; return Math.max(0, Math.min(100, Math.round(base - worst))); }
+    function genDam(L) { // L2: ため池づくり（盛土で堤防+水路で引き込み）
+      clearWater();
+      const S = L.S, P = L.B;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.1);
+        if (i < 10 || i > 26) h = 0.7 + rnd2(0.1);        // 左右の壁（水路を挟む）
+        else if (j >= S.j0 && j <= S.j1) h = -1.5 + rnd2(0.1); // 奥の水たまり（水源）
+        else if (j >= 10 && j <= 14) h = 0.8 + rnd2(0.1);  // 水源とため池の間の土手（掘る）
+        else if (j >= P.j0 && j <= P.j1) h = -0.8 + rnd2(0.1); // ため池の底（浅い窪み）
+        else if (j >= 27 && j <= 28) h = -0.6 + rnd2(0.05);  // すき間（堤防で盛る対象＝ここから漏れる）
+        else if (j >= 29) h = -2.5 + rnd2(0.1);            // 手前の落ち先（漏れた水が溜まる）
+        else h = rnd2(0.1);
+        heights[idx] = clamp(h);
+      }
+      zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
+    }
+    function genSub(L) { // L5: 水中工事（水没した底の土の山を水中バックホウで掘り下げて平らに）
+      clearWater();
+      const A = L.A, m1 = L.m1, m2 = L.m2;
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
+        let h = rnd2(0.1);
+        if (inRect(i, j, A)) { h = -1.8 + rnd2(0.1); h += gauss(x, z, m1[0], m1[1], 0.9, 1.7) + gauss(x, z, m2[0], m2[1], 0.8, 1.6); } // 深い底＋水中の山
+        heights[idx] = clamp(h);
+      }
+      zoneEach(A, (idx) => { const d = 0.0 - heights[idx]; if (d > 0) waterD[idx] = d; }); // 水面0=深い水(普通のブルは入れない)
+    }
+
+    // ===================== レベル定義 =====================
+    const LEVEL_DEFS = [
+      { type: 'drain', name: '調整池', mainLabel: 'ため池', A: rect(8, 28, 22, 33), B: rect(9, 27, 4, 15),
+        wl: -0.05, bumpScale: 1.0, drainWin: 0.85, maxDev: 0.7, tFrac: 0.5, startZ: 6.3,
+        goal: '調整池の工事：①手前の<b>作業場</b>の水を奥へ流して乾かし平らに ②奥の<b>ため池</b>に水をためる',
+        hint: '緑の枠＝作業場・青の枠＝ため池。土手に<b>水路を掘って排水</b>し、作業場を乾かして平らに',
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genDrain },
+      { type: 'fill', name: '通水（川を通す）', mainLabel: '通水', S: rect(10, 26, 3, 11), B: rect(10, 26, 25, 33),
+        tFrac: 0.5, startZ: 4,
+        goal: '通水の工事：中央の<b>高い尾根を掘って水路</b>を作り、奥の水を手前の<b>下流（緑の枠）</b>へ流そう',
+        hint: '青の枠（奥）＝水源・緑の枠（手前）＝下流。中央の尾根を掘って水路を作り、水を手前へ通そう',
+        markers: [['S', 0x2f7fd6], ['B', 0x2faa55]], gen: genFlow },
+      { type: 'fill', name: 'ため池づくり', mainLabel: 'ため池', S: rect(10, 26, 3, 9), B: rect(10, 26, 15, 26),
+        tFrac: 0.25, startZ: 0,
+        goal: 'ため池づくり：手前の<b>すき間を盛土でせき止め</b>（堤防）、奥から<b>水路を掘って水を引き込み</b>、ため池に貯めよう',
+        hint: '青の枠＝水源・緑の枠＝ため池。まず手前のすき間を<b>盛土でふさぎ</b>、奥の土手を掘って水を引き込む',
+        markers: [['S', 0x2f7fd6], ['B', 0x2faa55]], gen: genDam },
+      { type: 'drain', name: '調整池（難）', mainLabel: 'ため池', A: rect(8, 28, 22, 33), B: rect(9, 27, 4, 15),
+        wl: 0.12, bumpScale: 1.5, drainWin: 0.9, maxDev: 0.6, tFrac: 0.6, startZ: 6.3,
+        goal: '調整池（難しい版）：水多め・目標厳しめ。作業場をしっかり排水＆平らに＋ため池に多く貯める',
+        hint: 'レベル1と同じ要領。水が多く目標も厳しめ。排水路をしっかり掘って排水＆整地',
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genDrain },
+      { type: 'level', name: '水中工事', mainLabel: '', A: rect(9, 27, 9, 27), m1: [-3, 1], m2: [3, -2],
+        maxDev: 0.5, tFrac: 0, startZ: 0, subFloor: -1.8, clearTol: 0.3,
+        goal: '水中工事：水没した底の<b>土の山</b>を、<b>水中バックホウ</b>で<b>掘り取って撤去</b>しよう（普通のブルは深い水に入れない→🛒で購入を）',
+        hint: '深い水で普通のブルは入れない。🛒で水中バックホウを買い、機械チェンジして水中の<b>山を掘り取る</b>（穴ができてもOK）',
+        markers: [['A', 0x9b59b6]], gen: genSub }
+    ];
+    const NLV = LEVEL_DEFS.length;
 
     // ===================== 描画層 =====================
     const app = document.getElementById("app");
@@ -296,177 +361,469 @@
     scene.add(new THREE.AmbientLight(0xffffff, 0.55));
     const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(-6, 12, 7); scene.add(sun);
 
-    const positions = new Float32Array(V * V * 3), colors = new Float32Array(V * V * 3), indices = [];
-    for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) {
-      const a = j * V + i, b = j * V + (i + 1), c = (j + 1) * V + i, d = (j + 1) * V + (i + 1);
-      indices.push(a, c, b, b, c, d);
-    }
+    const positions = new Float32Array(N * 3), colors = new Float32Array(N * 3), indices = [];
+    for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) { const a = j * V + i, b = j * V + (i + 1), c = (j + 1) * V + i, d = (j + 1) * V + (i + 1); indices.push(a, c, b, b, c, d); }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     geo.setIndex(indices);
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
     scene.add(ground);
-    // お手本（目標の高さの半透明サーフェス）：平ら現場は平面、掘る現場は池+盛り場の形をそのまま表示。
-    const ghostPos = new Float32Array(V * V * 3);
-    const ghostGeo = new THREE.BufferGeometry();
-    ghostGeo.setAttribute("position", new THREE.BufferAttribute(ghostPos, 3));
-    ghostGeo.setIndex(indices.slice());
-    const ghost = new THREE.Mesh(ghostGeo, new THREE.MeshBasicMaterial({ color: 0x2faa55, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
-    scene.add(ghost);
-    function updateGhost() {
-      for (let idx = 0; idx < V * V; idx++) { ghostPos[idx * 3] = vx[idx]; ghostPos[idx * 3 + 1] = targetH[idx] + 0.05; ghostPos[idx * 3 + 2] = vz[idx]; }
-      ghostGeo.attributes.position.needsUpdate = true; ghostGeo.computeBoundingSphere();
-    }
-    const cOK = new THREE.Color(0x5fae57), cRedL = new THREE.Color(0xe8a48f), cRedH = new THREE.Color(0xb83020), cBluL = new THREE.Color(0x9fc5e8), cBluH = new THREE.Color(0x215f9e), tmpC = new THREE.Color();
-    // 目標との差で色分け：赤=高い(削る)／青=低い(盛る)／緑=OK
-    function colorDiff(diff, out) {
-      if (diff > FLAT_TOL) { out.copy(cRedL).lerp(cRedH, Math.min(1, (diff - FLAT_TOL) / 3)); }
-      else if (diff < -FLAT_TOL) { out.copy(cBluL).lerp(cBluH, Math.min(1, (-diff - FLAT_TOL) / 3)); }
-      else out.copy(cOK);
-      return out;
+    const cLow = new THREE.Color(0x6f9a4d), cMid = new THREE.Color(0xb08245), cHigh = new THREE.Color(0x6e4a23), cWet = new THREE.Color(0x4a5f3a), tmpC = new THREE.Color();
+    function colorFor(h, wet, out) {
+      const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
+      if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
+      if (wet) out.lerp(cWet, 0.32); return out;
     }
     let normalsDone = false;
+    // 土の粒状感[見た目専用]：頂点ごとの安定したランダム濃淡（初期化1回）。地面が一様な単色に見えるのを防ぐ。
+    const grain = new Float32Array(N); for (let gk = 0; gk < N; gk++) grain[gk] = Math.random() * 2 - 1;
     function syncGeometry() {
-      for (let idx = 0; idx < V * V; idx++) {
+      for (let idx = 0; idx < N; idx++) {
         positions[idx * 3] = vx[idx]; positions[idx * 3 + 1] = heights[idx]; positions[idx * 3 + 2] = vz[idx];
-        colorDiff(heights[idx] - targetH[idx], tmpC); colors[idx * 3] = tmpC.r; colors[idx * 3 + 1] = tmpC.g; colors[idx * 3 + 2] = tmpC.b;
+        const wet = waterD[idx] > WATER_EPS;
+        colorFor(heights[idx], wet, tmpC);
+        // 斜面の急さ（隣マスとの高低差）→急なほど暗く＝掘った断面・法面・盛り土が「土っぽい」陰影に。粒状の濃淡も加算。
+        const gi = idx % V, gj = (idx / V) | 0;
+        const hl = heights[gi > 0 ? idx - 1 : idx], hr = heights[gi < GRID ? idx + 1 : idx], hd = heights[gj > 0 ? idx - V : idx], hu = heights[gj < GRID ? idx + V : idx];
+        const slope = (Math.abs(hl - hr) + Math.abs(hd - hu)) * 0.5;
+        const mul = Math.max(0.5, 1 - Math.min(0.3, slope * 0.16) + grain[idx] * (wet ? 0.02 : 0.05));
+        colors[idx * 3] = Math.min(1, tmpC.r * mul); colors[idx * 3 + 1] = Math.min(1, tmpC.g * mul); colors[idx * 3 + 2] = Math.min(1, tmpC.b * mul);
       }
       geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
       if (!normalsDone) { geo.computeVertexNormals(); normalsDone = true; }
       geo.computeBoundingSphere();
     }
 
+    // 水メッシュ
+    const wPos = new Float32Array(N * 3);
+    const wGeo = new THREE.BufferGeometry();
+    wGeo.setAttribute("position", new THREE.BufferAttribute(wPos, 3));
+    wGeo.setIndex(indices.slice());
+    const water = new THREE.Mesh(wGeo, new THREE.MeshStandardMaterial({ color: 0x2f7fd6, transparent: true, opacity: 0.72, roughness: 0.2, metalness: 0.05, depthWrite: false }));
+    water.renderOrder = 2; water.frustumCulled = false; scene.add(water);
+    let wt = 0, wframe = 0;
+    function syncWater(dt) {
+      wt += dt; wframe++;
+      for (let idx = 0; idx < N; idx++) {
+        wPos[idx * 3] = vx[idx]; wPos[idx * 3 + 2] = vz[idx];
+        const d = waterD[idx];
+        let show = false;
+        if (d > RENDER_EPS) {
+          if (heights[idx] < SHALLOW_GROUND || d > PLAIN_MIN) show = true; // 窪み or 本物の池の深さ
+          else { // 浅くても「高い縁に囲まれて溜まっている水」(低地に貯まる水)は描く＝水位上昇が見える／囲い無しの平地こぼれ筋は描かない
+            const ii = idx % V, jj = (idx / V) | 0, surf = heights[idx] + d; let rim = -1e9;
+            if (ii > 0 && heights[idx - 1] > rim) rim = heights[idx - 1];
+            if (ii < GRID && heights[idx + 1] > rim) rim = heights[idx + 1];
+            if (jj > 0 && heights[idx - V] > rim) rim = heights[idx - V];
+            if (jj < GRID && heights[idx + V] > rim) rim = heights[idx + V];
+            if (rim > surf + 0.1) show = true; // 隣に水面より高い縁=囲われて溜まっている
+          }
+        }
+        if (show) {
+          const flow = Math.abs(fR[idx] - fL[idx]) + Math.abs(fB[idx] - fT[idx]);
+          const amp = 0.02 + (flow < 0.12 ? flow : 0.12) * 0.5;
+          const ripple = Math.sin(wt * 2.6 + vx[idx] * 0.7 + vz[idx] * 0.7) * (d > 0.05 ? amp : amp * d / 0.05);
+          wPos[idx * 3 + 1] = heights[idx] + d + ripple;
+        } else { wPos[idx * 3 + 1] = heights[idx] - 0.05; }
+      }
+      wGeo.attributes.position.needsUpdate = true;
+      if (wframe % 2 === 0) wGeo.computeVertexNormals();
+    }
+
+    // 水シミュ（仮想パイプ法・浅水＋慣性・総量保存）
+    function simWater(dt) {
+      const dtG = dt * GF, inv = dt / CELL_AREA;
+      for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
+        const c = j * V + i, surfC = heights[c] + waterD[c];
+        let l = (i > 0) ? (fL[c] + dtG * (surfC - (heights[c - 1] + waterD[c - 1]))) : 0; if (l < 0) l = 0; else l *= FLUX_DAMP;
+        let r = (i < GRID) ? (fR[c] + dtG * (surfC - (heights[c + 1] + waterD[c + 1]))) : 0; if (r < 0) r = 0; else r *= FLUX_DAMP;
+        let t = (j > 0) ? (fT[c] + dtG * (surfC - (heights[c - V] + waterD[c - V]))) : 0; if (t < 0) t = 0; else t *= FLUX_DAMP;
+        let b = (j < GRID) ? (fB[c] + dtG * (surfC - (heights[c + V] + waterD[c + V]))) : 0; if (b < 0) b = 0; else b *= FLUX_DAMP;
+        const out = (l + r + t + b) * dt;
+        if (out > 1e-9) { const avail = waterD[c] * CELL_AREA; if (out > avail) { const K = avail / out; l *= K; r *= K; t *= K; b *= K; } }
+        fL[c] = l; fR[c] = r; fT[c] = t; fB[c] = b;
+      }
+      for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
+        const c = j * V + i; let inflow = 0;
+        if (i > 0) inflow += fR[c - 1]; if (i < GRID) inflow += fL[c + 1]; if (j > 0) inflow += fB[c - V]; if (j < GRID) inflow += fT[c + V];
+        const nw = waterD[c] + (inflow - (fL[c] + fR[c] + fT[c] + fB[c])) * inv; waterD[c] = nw > 0 ? nw : 0;
+      }
+    }
+    function sampleWater(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return waterD[j * V + i]; }
+    function canStand(x, z) { return WATER_CAN_ENTER || sampleWater(x, z) <= ENTER_WATER_MAX; }
+    function findDryStart() { // スタートが深い水中なら、近くの立てる場所(乾き/浅瀬)へ寄せる（はまり防止）
+      if (canStand(game.mx, game.mz)) return;
+      const half = WORLD / 2 - 0.5;
+      for (let r = 1; r <= 20; r++) for (let a = 0; a < 12; a++) {
+        const ang = a / 12 * Math.PI * 2, x = game.mx + Math.cos(ang) * r * 0.6, z = game.mz + Math.sin(ang) * r * 0.6;
+        if (Math.abs(x) > half || Math.abs(z) > half) continue;
+        if (canStand(x, z)) { game.mx = x; game.mz = z; return; }
+      }
+    }
+
+    // ゾーン旗・枠
+    const markerGroup = new THREE.Group(); scene.add(markerGroup);
+    function rebuildMarkers(list) {
+      for (let k = markerGroup.children.length - 1; k >= 0; k--) { const c = markerGroup.children[k]; markerGroup.remove(c); if (c.geometry) c.geometry.dispose(); }
+      list.forEach(function (m) {
+        const z = LV[m[0]], colorHex = m[1]; if (!z) return;
+        const x0 = worldX(z.i0), x1 = worldX(z.i1), z0 = worldZ(z.j0), z1 = worldZ(z.j1), col = new THREE.Color(colorHex);
+        const pts = [new THREE.Vector3(x0, 0.3, z0), new THREE.Vector3(x1, 0.3, z0), new THREE.Vector3(x1, 0.3, z1), new THREE.Vector3(x0, 0.3, z1), new THREE.Vector3(x0, 0.3, z0)];
+        markerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: colorHex })));
+        const poleMat = new THREE.MeshStandardMaterial({ color: colorHex, flatShading: true, roughness: 0.6 });
+        const flagMat = new THREE.MeshStandardMaterial({ color: colorHex, flatShading: true, roughness: 0.6, emissive: col.clone().multiplyScalar(0.25) });
+        [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].forEach(function (c) {
+          const pole = new THREE.Mesh(new THREE.BoxGeometry(0.16, 4.0, 0.16), poleMat); pole.position.set(c[0], 1.0, c[1]); markerGroup.add(pole);
+          const flag = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.06), flagMat); flag.position.set(c[0] + 0.45, 2.7, c[1]); markerGroup.add(flag);
+        });
+      });
+    }
+
     // 重機
     const dozer = new THREE.Group();
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf0c020, flatShading: true, roughness: 0.7 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x333333, flatShading: true, roughness: 0.9 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.9, 2.2), bodyMat); body.position.y = 0.95; dozer.add(body);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.9), bodyMat); cabin.position.set(0, 1.6, -0.2); dozer.add(cabin);
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 0.25), darkMat); const BLADE_Y = 0.6; blade.position.set(0, BLADE_Y, 1.45); dozer.add(blade);
-    const trackL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 2.4), darkMat); trackL.position.set(-0.8, 0.4, 0); dozer.add(trackL);
-    const trackR = trackL.clone(); trackR.position.x = 0.8; dozer.add(trackR);
-    scene.add(dozer);
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x2a3a44, flatShading: true, roughness: 0.25, metalness: 0.15 }); // 窓ガラス
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x6a7075, flatShading: true, roughness: 0.55, metalness: 0.2 }); // 鋼（刃・爪・バケット）
+    const warnMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, flatShading: true, roughness: 0.5 }); // 回転灯
+    const makerAccent = { komashi: 0xffd23a, kuboki: 0x41c85a, hidachi: 0x2d9be8, caterpia: 0xff9b2e, koveriko: 0x8c65d8, borugo: 0xd84646, sumiken: 0xf4f4ef, yanama: 0x8a4d2d, isuzu2: 0x3c8cff };
+    const modelCache = {};
+    let activeModel = null, activeBlade = null, activeArm = null, activeLoader = null, activeDump = null, activeBeacon = null;
 
-    // バックホウ[F2]：履帯＋旋回体(キャビン)＋うで(ブーム→アーム→バケット)。掘るアニメは関節を回す(S2で実装)。
-    const backhoe = new THREE.Group();
-    const bhMat = new THREE.MeshStandardMaterial({ color: 0xe8861a, flatShading: true, roughness: 0.7 });
-    const bhTrackL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 2.3), darkMat); bhTrackL.position.set(-0.72, 0.38, 0); backhoe.add(bhTrackL);
-    const bhTrackR = bhTrackL.clone(); bhTrackR.position.x = 0.72; backhoe.add(bhTrackR);
-    const bhHouse = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 1.7), bhMat); bhHouse.position.set(0, 1.05, -0.25); backhoe.add(bhHouse);
-    const bhCab = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.75, 0.85), bhMat); bhCab.position.set(0, 1.7, -0.5); backhoe.add(bhCab);
-    // うで（前方+zへ伸びる2関節）。bhBoomPivot を下げ、bhArmPivot を曲げて掘る。
-    const bhBoomPivot = new THREE.Group(); bhBoomPivot.position.set(0, 1.15, 0.55); backhoe.add(bhBoomPivot);
-    const bhBoom = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 1.7), darkMat); bhBoom.position.set(0, 0, 0.85); bhBoomPivot.add(bhBoom);
-    const bhArmPivot = new THREE.Group(); bhArmPivot.position.set(0, 0, 1.7); bhBoomPivot.add(bhArmPivot);
-    const bhStick = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 1.2), darkMat); bhStick.position.set(0, 0, 0.6); bhArmPivot.add(bhStick);
-    const bhBucket = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.55), bhMat); bhBucket.position.set(0, -0.18, 1.18); bhArmPivot.add(bhBucket);
-    const BH_BOOM_REST = -0.5, BH_ARM_REST = 0.95;  // 待機ポーズ（少し持ち上げ）
-    bhBoomPivot.rotation.x = BH_BOOM_REST; bhArmPivot.rotation.x = BH_ARM_REST;
-    scene.add(backhoe);
-    // 選択中マーカー（足元の光る輪）：active 機械の下に毎フレーム置く。
-    const selRing = new THREE.Mesh(new THREE.RingGeometry(1.5, 1.85, 28), new THREE.MeshBasicMaterial({ color: 0xffe14d, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
-    selRing.rotation.x = -Math.PI / 2; scene.add(selRing);
-    // ブレード前の「持ってる土の山」の見た目[親方FB]：ブレードが持つ土量(game.blade)に応じて大きくなる茶色の山。体積は地面と二重計上しない見た目専用。
-    const bladePile = new THREE.Mesh(new THREE.ConeGeometry(1.1, 1, 7), new THREE.MeshStandardMaterial({ color: 0x8a6234, flatShading: true, roughness: 1 }));
+    function accentColor(id) { return makerAccent[id] || 0xffffff; }
+    function mixHex(a, b, t) { const ca = new THREE.Color(a), cb = new THREE.Color(b); ca.lerp(cb, t); return ca.getHex(); }
+    function makeMat(color, rough, metal) { return new THREE.MeshStandardMaterial({ color: color, flatShading: true, roughness: rough == null ? 0.72 : rough, metalness: metal || 0 }); }
+    function machineMats(M) {
+      const main = M.color, accent = accentColor(M.maker);
+      return {
+        body: makeMat(main, 0.72, 0.02),
+        body2: makeMat(mixHex(main, 0xffffff, 0.18), 0.76, 0.01),
+        trim: makeMat(accent, 0.68, 0.02),
+        stripe: makeMat(mixHex(accent, 0x111111, 0.12), 0.74, 0.01),
+        dark: darkMat, glass: glassMat, steel: steelMat, warn: warnMat,
+        light: new THREE.MeshStandardMaterial({ color: 0xfff2a0, emissive: 0x332200, flatShading: true, roughness: 0.4 }),
+        water: new THREE.MeshStandardMaterial({ color: mixHex(accent, 0x58d8ff, 0.55), flatShading: true, roughness: 0.38, metalness: 0.08 })
+      };
+    }
+    function box(parent, mat, sx, sy, sz, x, y, z, rx, ry, rz) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+      m.position.set(x || 0, y || 0, z || 0); m.rotation.set(rx || 0, ry || 0, rz || 0); parent.add(m); return m;
+    }
+    function cyl(parent, mat, r, h, x, y, z, axis, rx, ry, rz, seg) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg || 10), mat);
+      m.position.set(x || 0, y || 0, z || 0);
+      if (axis === 'x') m.rotation.z = Math.PI / 2; else if (axis === 'z') m.rotation.x = Math.PI / 2;
+      m.rotation.x += rx || 0; m.rotation.y += ry || 0; m.rotation.z += rz || 0; parent.add(m); return m;
+    }
+    function cone(parent, mat, r, h, x, y, z, axis, rx, ry, rz, seg) {
+      const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg || 6), mat);
+      m.position.set(x || 0, y || 0, z || 0);
+      if (axis === 'x') m.rotation.z = -Math.PI / 2; else if (axis === 'z') m.rotation.x = Math.PI / 2;
+      m.rotation.x += rx || 0; m.rotation.y += ry || 0; m.rotation.z += rz || 0; parent.add(m); return m;
+    }
+    function addTracks(parent, mats, p) {
+      const sep = p.sep || 1.5, w = p.w || 0.44, h = p.h || 0.52, len = p.len || 2.25, y = p.y || 0.36, n = p.rollers || 4;
+      for (let side = -1; side <= 1; side += 2) {
+        const x = side * sep / 2;
+        box(parent, mats.dark, w, h, len, x, y, 0);
+        box(parent, mats.steel, w + 0.04, 0.08, len + 0.08, x, y - h / 2 - 0.02, 0);
+        box(parent, mats.steel, w + 0.03, 0.06, len + 0.04, x, y + h / 2 + 0.01, 0);
+        for (let i = 0; i < n; i++) {
+          const z = -len * 0.38 + (n === 1 ? 0 : i * len * 0.76 / (n - 1));
+          cyl(parent, mats.steel, 0.115, w + 0.08, x, y - 0.08, z, 'x', 0, 0, 0, 10);
+        }
+      }
+    }
+    function addWheels(parent, mats, p) {
+      const zs = p.zs || [-0.75, 0.8], sep = p.sep || 1.46, r = p.r || 0.34, w = p.w || 0.25;
+      for (let side = -1; side <= 1; side += 2) for (let i = 0; i < zs.length; i++) {
+        const x = side * sep / 2, z = zs[i];
+        cyl(parent, mats.dark, r, w, x, r + 0.05, z, 'x', 0, 0, 0, 12);
+        cyl(parent, mats.steel, r * 0.45, w + 0.03, x, r + 0.05, z, 'x', 0, 0, 0, 10);
+      }
+    }
+    function addCabin(parent, mats, p) {
+      const c = box(parent, mats.body2, p.w, p.h, p.d, p.x || 0, p.y, p.z || 0, p.rx || 0, p.ry || 0, p.rz || 0);
+      box(parent, mats.glass, p.w * 0.72, p.h * 0.46, 0.055, p.x || 0, p.y + p.h * 0.06, (p.z || 0) + p.d / 2 + 0.035, p.rx || 0, p.ry || 0, p.rz || 0);
+      box(parent, mats.glass, 0.055, p.h * 0.42, p.d * 0.58, (p.x || 0) - p.w / 2 - 0.03, p.y + p.h * 0.04, p.z || 0, p.rx || 0, p.ry || 0, p.rz || 0);
+      box(parent, mats.glass, 0.055, p.h * 0.42, p.d * 0.58, (p.x || 0) + p.w / 2 + 0.03, p.y + p.h * 0.04, p.z || 0, p.rx || 0, p.ry || 0, p.rz || 0);
+      box(parent, mats.trim, p.w * 0.86, 0.07, p.d * 0.8, p.x || 0, p.y + p.h / 2 + 0.055, p.z || 0);
+      const beacon = box(parent, mats.warn, 0.16, 0.14, 0.16, (p.x || 0) - p.w * 0.25, p.y + p.h / 2 + 0.18, p.z || 0);
+      return { cabin: c, beacon: beacon };
+    }
+    function addLights(parent, mats, y, z, span) { box(parent, mats.light, 0.14, 0.1, 0.06, -(span || 0.42), y, z); box(parent, mats.light, 0.14, 0.1, 0.06, span || 0.42, y, z); }
+    function addExhaust(parent, mats, x, y, z, h, twin) { cyl(parent, mats.dark, 0.05, h || 0.58, x, y, z, 'y', 0, 0, 0, 8); box(parent, mats.steel, 0.16, 0.07, 0.12, x, y + (h || 0.58) / 2 + 0.03, z + 0.02); if (twin) addExhaust(parent, mats, -x, y, z, h, false); }
+    function addMakerStripe(parent, mats, x, y, z, len) { box(parent, mats.trim, 0.055, 0.12, len || 1.0, x, y, z, 0, 0, 0.08); }
+    function addWave(parent, mats, side, y, z) { for (let i = 0; i < 3; i++) box(parent, mats.water, 0.055, 0.055, 0.34, side * 0.72, y + i * 0.08, z + i * 0.16, 0.4, 0, 0.35); }
+    function addRipper(parent, mats, count, width, z) {
+      box(parent, mats.dark, width, 0.11, 0.12, 0, 0.75, z || -1.25);
+      for (let i = 0; i < count; i++) { const x = count === 1 ? 0 : -width * 0.35 + i * width * 0.7 / (count - 1); cone(parent, mats.steel, 0.08, 0.42, x, 0.5, (z || -1.25) - 0.05, 'y', Math.PI, 0, 0, 5); }
+    }
+    function countMeshes(obj) { let n = 0; if (!obj) return 0; obj.traverse(function (c) { if (c.isMesh) n++; }); return n; }
+    function resetBladePart(b) { if (!b) return; b.position.y = b.userData.baseY == null ? b.position.y : b.userData.baseY; b.rotation.x = b.userData.baseRx || 0; }
+    function resetArmPose(A) { if (!A) return; if (A.boom) A.boom.rotation.x = A.boomBase; if (A.stick) A.stick.rotation.x = A.stickBase; if (A.bucket) A.bucket.rotation.x = A.bucketBase; }
+
+    const MODEL_STYLE = {
+      dozer: { trackLen: 2.35, trackSep: 1.55, body: [1.45, 0.74, 1.55], bodyY: 0.9, cab: [0.92, 0.68, 0.78, 0, 1.48, -0.28], bladeW: 2.2, bladeH: 0.8, bladeZ: 1.45, rollers: 4, pipes: 1, ripper: 0 },
+      bigdozer: { trackLen: 2.65, trackSep: 1.7, body: [1.62, 0.82, 1.78], bodyY: 0.94, cab: [1.02, 0.72, 0.85, 0, 1.58, -0.32], bladeW: 2.75, bladeH: 0.9, bladeZ: 1.58, rollers: 5, pipes: 2, ripper: 3, warning: true },
+      d11: { trackLen: 2.9, trackSep: 1.85, body: [1.82, 0.92, 1.92], bodyY: 1.02, cab: [1.12, 0.82, 0.92, 0, 1.72, -0.34], bladeW: 3.25, bladeH: 1.0, bladeZ: 1.72, rollers: 6, pipes: 2, ripper: 4, warning: true, crown: true },
+      mini: { trackLen: 1.55, trackSep: 1.05, trackW: 0.26, body: [1.0, 0.52, 1.05], bodyY: 0.68, cab: [0.66, 0.52, 0.56, 0, 1.12, -0.18], bladeW: 1.45, bladeH: 0.46, bladeZ: 1.02, rollers: 3, pipes: 1, cute: true },
+      kx12: { trackLen: 1.75, trackSep: 1.16, body: [1.12, 0.55, 1.1], bodyY: 0.78, cab: [0.66, 0.58, 0.58, -0.22, 1.22, -0.2], boomL: 1.22, stickL: 0.82, bucketW: 0.54, bucketZ: 1.82, rollers: 3, round: true },
+      sub: { trackLen: 2.18, trackSep: 1.42, body: [1.34, 0.62, 1.32], bodyY: 0.86, cab: [0.82, 0.7, 0.72, -0.18, 1.42, -0.25], boomL: 1.55, stickL: 0.98, bucketW: 0.68, bucketZ: 2.08, rollers: 4, snorkel: 1.28, cover: true, waterMark: true },
+      digger: { trackLen: 2.45, trackSep: 1.55, body: [1.5, 0.68, 1.45], bodyY: 0.92, cab: [0.92, 0.72, 0.78, -0.24, 1.52, -0.22], boomL: 1.9, stickL: 1.18, bucketW: 0.86, bucketZ: 2.42, rollers: 5, heavy: true },
+      sk200: { trackLen: 2.25, trackSep: 1.46, body: [1.42, 0.63, 1.36], bodyY: 0.88, cab: [0.82, 0.66, 0.72, -0.22, 1.42, -0.22], boomL: 1.6, stickL: 1.0, bucketW: 0.7, bucketZ: 2.15, rollers: 4, counter: true },
+      skaqua: { trackLen: 2.48, trackSep: 1.62, body: [1.58, 0.7, 1.5], bodyY: 0.94, cab: [0.92, 0.76, 0.8, -0.24, 1.58, -0.25], boomL: 1.82, stickL: 1.12, bucketW: 0.96, bucketZ: 2.36, rollers: 5, snorkel: 1.55, cover: true, waterMark: true, heavy: true },
+      ym30: { trackLen: 1.86, trackSep: 1.22, body: [1.18, 0.56, 1.12], bodyY: 0.8, cab: [0.72, 0.6, 0.62, -0.2, 1.26, -0.18], boomL: 1.28, stickL: 0.86, bucketW: 0.56, bucketZ: 1.9, rollers: 3, round: true, quick: true },
+      ymb7: { trackLen: 2.42, trackSep: 1.56, body: [1.54, 0.7, 1.48], bodyY: 0.92, cab: [0.9, 0.72, 0.78, -0.25, 1.54, -0.2], boomL: 1.88, stickL: 1.14, bucketW: 0.9, bucketZ: 2.42, rollers: 5, heavy: true, counter: true },
+      l90: { wheels: true, wheelZ: [-0.82, 0.82], body: [1.38, 0.62, 1.18], cab: [0.82, 0.68, 0.76, 0, 1.44, -0.54], bucketW: 2.0, bucketZ: 1.78, joint: true },
+      sh77: { tracks: true, trackLen: 2.1, trackSep: 1.36, body: [1.28, 0.58, 1.18], cab: [0.78, 0.64, 0.68, 0, 1.36, -0.42], bucketW: 1.75, bucketZ: 1.62, balanced: true },
+      lsamp: { wheels: true, wheelZ: [-0.78, 0.68], floats: true, snorkel: 0.85, body: [1.34, 0.56, 1.18], cab: [0.78, 0.62, 0.68, 0, 1.36, -0.42], bucketW: 1.72, bucketZ: 1.58 },
+      hauler: { tracks: true, trackLen: 2.45, trackSep: 1.62, body: [1.42, 0.58, 1.18], cab: [0.74, 0.64, 0.66, 0.42, 1.34, 0.62], bedW: 1.62, bedL: 1.58, bedZ: -0.48, open: true, rollers: 5 },
+      a60: { wheels: true, wheelZ: [-1.05, -0.15, 0.82], body: [1.35, 0.56, 1.0], cab: [0.72, 0.64, 0.7, 0.38, 1.34, 0.7], bedW: 1.75, bedL: 1.78, bedZ: -0.66, joint: true, huge: true },
+      igx250: { wheels: true, wheelZ: [-0.9, 0.1, 0.86], body: [1.22, 0.52, 0.86], cab: [0.78, 0.72, 0.78, 0, 1.28, 0.88], bedW: 1.44, bedL: 1.5, bedZ: -0.52, road: true, plate: true },
+      igxmax: { wheels: true, wheelZ: [-1.18, -0.52, 0.18, 0.88, 1.28], body: [1.42, 0.58, 0.98], cab: [0.9, 0.82, 0.9, 0, 1.42, 0.96], bedW: 1.78, bedL: 1.92, bedZ: -0.68, road: true, plate: true, huge: true, grill: true }
+    };
+
+    function buildDozerModel(M, mats, p) {
+      const g = new THREE.Group(); g.userData.kind = machineKind(M);
+      addTracks(g, mats, { len: p.trackLen, sep: p.trackSep, w: p.trackW || 0.42, rollers: p.rollers });
+      box(g, mats.body, p.body[0], p.body[1], p.body[2], 0, p.bodyY, 0.02);
+      box(g, mats.body2, p.body[0] * 0.72, 0.28, p.body[2] * 0.72, 0, p.bodyY + p.body[1] * 0.45, 0.12);
+      const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
+      addExhaust(g, mats, 0.52, 1.38, 0.45, p.pipes === 2 ? 0.78 : 0.58, p.pipes === 2);
+      addLights(g, mats, 1.12, 0.83, p.cute ? 0.28 : 0.46); addMakerStripe(g, mats, -0.78, 1.0, 0.05, 1.0); addMakerStripe(g, mats, 0.78, 1.0, 0.05, 1.0);
+      const bladeG = new THREE.Group(); bladeG.position.set(0, 0.62, p.bladeZ); bladeG.userData.baseY = bladeG.position.y; bladeG.userData.baseRx = 0; g.add(bladeG);
+      box(bladeG, mats.body, p.bladeW, p.bladeH, 0.18, 0, 0, 0);
+      box(bladeG, mats.steel, p.bladeW + 0.06, 0.16, 0.26, 0, -p.bladeH * 0.54, 0.04);
+      box(bladeG, mats.body2, 0.18, p.bladeH, 0.42, -p.bladeW / 2, 0, 0.16, 0, -0.46, 0); box(bladeG, mats.body2, 0.18, p.bladeH, 0.42, p.bladeW / 2, 0, 0.16, 0, 0.46, 0);
+      box(bladeG, mats.dark, 0.12, 0.12, 1.0, -0.55, -0.12, -0.58, 0.18, 0, 0); box(bladeG, mats.dark, 0.12, 0.12, 1.0, 0.55, -0.12, -0.58, 0.18, 0, 0);
+      if (p.warning) for (let i = 0; i < 5; i++) box(bladeG, mats.dark, 0.08, p.bladeH * 0.9, 0.03, -p.bladeW * 0.35 + i * p.bladeW * 0.18, 0, 0.12, 0, 0, -0.45);
+      if (p.cute) { cyl(g, mats.light, 0.08, 0.06, -0.28, 0.94, 0.72, 'z', 0, 0, 0, 10); cyl(g, mats.light, 0.08, 0.06, 0.28, 0.94, 0.72, 'z', 0, 0, 0, 10); }
+      if (p.ripper) addRipper(g, mats, p.ripper, p.ripper >= 4 ? 1.55 : 1.22, -1.25);
+      if (p.crown) box(g, mats.dark, 1.05, 0.12, 0.12, 0, 2.2, -0.35);
+      g.userData.blade = bladeG; return g;
+    }
+    function buildBackhoeModel(M, mats, p) {
+      const g = new THREE.Group(); g.userData.kind = 'backhoe';
+      addTracks(g, mats, { len: p.trackLen, sep: p.trackSep, rollers: p.rollers });
+      cyl(g, mats.dark, 0.58, 0.18, 0, 0.72, 0.02, 'y', 0, 0, 0, 14);
+      box(g, mats.body, p.body[0], p.body[1], p.body[2], 0, p.bodyY, -0.08);
+      if (p.round) cyl(g, mats.body2, 0.55, 0.42, 0, p.bodyY + 0.08, -0.62, 'z', 0, 0, 0, 12); else box(g, p.counter ? mats.dark : mats.body2, p.body[0] * 0.72, p.body[1] * 0.75, 0.38, 0, p.bodyY + 0.06, -0.72);
+      const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
+      addLights(g, mats, 1.12, 0.62, 0.35); addMakerStripe(g, mats, 0.72, 1.0, -0.18, 0.7);
+      const boomBase = p.heavy ? 0.5 : 0.56, stickBase = p.heavy ? -0.42 : -0.48, bucketBase = 0.52;
+      const bw = p.heavy ? 0.34 : 0.26, sw = p.heavy ? 0.26 : 0.2;
+      const boom = box(g, mats.body, bw, bw, p.boomL, 0, 1.26, 0.72, boomBase, 0, 0);
+      const stick = box(g, mats.dark, sw, sw, p.stickL, 0, 0.72, 1.45, stickBase, 0, 0);
+      const bucket = new THREE.Group(); bucket.position.set(0, 0.42, p.bucketZ); bucket.rotation.x = bucketBase; g.add(bucket);
+      box(bucket, mats.steel, p.bucketW, 0.42, 0.48, 0, 0, 0);
+      box(bucket, mats.dark, p.bucketW, 0.08, 0.52, 0, -0.18, 0.08);
+      const teeth = p.heavy ? 5 : 3; for (let i = 0; i < teeth; i++) box(bucket, mats.steel, 0.09, 0.12, 0.16, -p.bucketW * 0.36 + i * p.bucketW * 0.72 / Math.max(1, teeth - 1), -0.22, 0.34);
+      cyl(g, mats.steel, 0.035, 0.92, -0.22, 1.05, 1.0, 'z', 0.38, 0, 0, 8); cyl(g, mats.steel, 0.03, 0.78, 0.22, 0.78, 1.62, 'z', -0.28, 0, 0, 8);
+      if (p.snorkel) { cyl(g, mats.dark, 0.055, p.snorkel, 0.52, 1.45 + p.snorkel * 0.5, -0.58, 'y', 0, 0, 0, 8); box(g, mats.water, 0.24, 0.08, 0.18, 0.52, 1.45 + p.snorkel, -0.5); }
+      if (p.cover) { box(g, mats.water, 1.0, 0.08, 0.88, 0, 1.23, -0.1); box(g, mats.water, 1.52, 0.12, 0.14, 0, 0.7, 0.94); }
+      if (p.waterMark) { addWave(g, mats, -1, 1.02, -0.35); addWave(g, mats, 1, 1.02, -0.35); }
+      g.userData.arm = { boom: boom, stick: stick, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase }; return g;
+    }
+    function buildLoaderModel(M, mats, p) {
+      const g = new THREE.Group(); g.userData.kind = 'loader';
+      if (p.tracks) addTracks(g, mats, { len: p.trackLen, sep: p.trackSep, rollers: 4 }); else addWheels(g, mats, { zs: p.wheelZ, sep: p.floats ? 1.62 : 1.48, r: p.floats ? 0.3 : 0.36, w: 0.26 });
+      if (p.floats) { box(g, mats.water, 0.24, 0.28, 1.92, -0.96, 0.55, -0.05); box(g, mats.water, 0.24, 0.28, 1.92, 0.96, 0.55, -0.05); }
+      box(g, mats.body, p.body[0], p.body[1], p.body[2], 0, 0.88, -0.15); box(g, mats.body2, p.body[0] * 0.88, 0.46, 0.82, 0, 0.92, 0.58);
+      if (p.joint) cyl(g, mats.dark, 0.16, 0.34, 0, 0.82, 0.12, 'y', 0, 0, 0, 10);
+      const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
+      addLights(g, mats, 1.14, 0.98, 0.42); addMakerStripe(g, mats, -0.74, 1.03, -0.16, 0.82); addMakerStripe(g, mats, 0.74, 1.03, -0.16, 0.82);
+      const loader = new THREE.Group(); g.add(loader);
+      box(loader, mats.dark, 0.13, 0.13, 1.32, -0.54, 0.78, 0.95, 0.28, 0, 0); box(loader, mats.dark, 0.13, 0.13, 1.32, 0.54, 0.78, 0.95, 0.28, 0, 0);
+      const bucket = new THREE.Group(); bucket.position.set(0, 0.35, p.bucketZ); bucket.rotation.x = 0.25; loader.add(bucket);
+      box(bucket, mats.steel, p.bucketW, 0.46, 0.52, 0, 0, 0); box(bucket, mats.dark, p.bucketW, 0.1, 0.54, 0, -0.23, 0.12);
+      for (let i = 0; i < 5; i++) box(bucket, mats.steel, 0.1, 0.1, 0.16, -p.bucketW * 0.38 + i * p.bucketW * 0.19, -0.27, 0.34);
+      if (p.snorkel) { cyl(g, mats.dark, 0.05, p.snorkel, 0.48, 1.34 + p.snorkel * 0.5, -0.52, 'y', 0, 0, 0, 8); box(g, mats.water, 0.2, 0.07, 0.16, 0.48, 1.34 + p.snorkel, -0.44); addWave(g, mats, 1, 0.92, -0.45); }
+      g.userData.loader = loader; return g;
+    }
+    function buildHaulerModel(M, mats, p) {
+      const g = new THREE.Group(); g.userData.kind = 'hauler';
+      if (p.tracks) addTracks(g, mats, { len: p.trackLen, sep: p.trackSep, rollers: p.rollers }); else addWheels(g, mats, { zs: p.wheelZ, sep: p.huge ? 1.62 : 1.46, r: p.huge ? 0.34 : 0.31, w: 0.25 });
+      box(g, p.road ? mats.dark : mats.body, p.body[0], p.body[1], p.body[2], 0, 0.86, 0.58);
+      const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
+      if (p.joint) cyl(g, mats.dark, 0.18, 0.36, 0, 0.78, 0.08, 'y', 0, 0, 0, 10);
+      const bed = new THREE.Group(); bed.position.set(0, 0, 0); bed.rotation.x = p.open ? -0.06 : -0.03; g.add(bed);
+      box(bed, mats.body2, p.bedW, 0.14, p.bedL, 0, 1.04, p.bedZ);
+      box(bed, mats.body, p.bedW, 0.52, 0.12, 0, 1.3, p.bedZ + p.bedL / 2);
+      box(bed, mats.body, p.bedW, 0.36, 0.12, 0, 1.2, p.bedZ - p.bedL / 2);
+      box(bed, mats.body, 0.12, 0.46, p.bedL, -p.bedW / 2, 1.24, p.bedZ); box(bed, mats.body, 0.12, 0.46, p.bedL, p.bedW / 2, 1.24, p.bedZ);
+      if (p.grill) { for (let i = 0; i < 4; i++) box(g, mats.steel, 0.72, 0.04, 0.05, 0, 1.08 + i * 0.1, 1.45); }
+      if (p.plate) box(g, mats.light, 0.36, 0.1, 0.04, 0, 0.88, 1.45);
+      addLights(g, mats, 1.12, 1.34, 0.42); addMakerStripe(g, mats, -0.76, 1.08, -0.34, 1.0);
+      g.userData.dump = bed; return g;
+    }
+    function buildMachineModel(M) {
+      const mats = machineMats(M), p = MODEL_STYLE[M.id] || MODEL_STYLE.dozer, k = machineKind(M);
+      let g; if (k === 'backhoe') g = buildBackhoeModel(M, mats, p); else if (k === 'loader') g = buildLoaderModel(M, mats, p); else if (k === 'hauler') g = buildHaulerModel(M, mats, p); else g = buildDozerModel(M, mats, p);
+      g.userData.id = M.id; g.userData.maker = M.maker; g.userData.meshCount = countMeshes(g); return g;
+    }
+    function getMachineModel(M) { if (!modelCache[M.id]) modelCache[M.id] = buildMachineModel(M); return modelCache[M.id]; }
+    scene.add(dozer);
+    // ブレード前の「押した土の山」[本体移植 2026-06-25]：ブル系で持っている土(game.blade)に応じて前に盛り上がる茶色の山。見た目専用（体積は地面/blade側で管理＝二重計上しない）。
+    const pileGeo = new THREE.ConeGeometry(1.1, 1, 9);
+    { const pa = pileGeo.attributes.position; for (let pk = 0; pk < pa.count; pk++) { const py = pa.getY(pk); if (py < 0.4) { pa.setX(pk, pa.getX(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setZ(pk, pa.getZ(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setY(pk, py + (Math.random() - 0.5) * 0.12); } } pileGeo.computeVertexNormals(); }  // 裾をデコボコに＝積んだ土塊っぽいシルエット（位置/拡縮は updateDozer 側で不変）
+    const bladePile = new THREE.Mesh(pileGeo, new THREE.MeshStandardMaterial({ color: 0x7d5320, flatShading: true, roughness: 1 }));
     bladePile.position.y = -999; scene.add(bladePile);
 
-    // 粒子（細かい土ぼこり＋飛ぶ土の塊）の共通プール
+    // 粒子（土ぼこり・土塊・水しぶき）。丸くフワッとした見た目にするため、手続き生成の放射状グラデ画像をスプライトに使う（外部ファイル不要）。
+    const dustSprite = (function () { const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'); const rg = x.createRadialGradient(16, 16, 0, 16, 16, 16); rg.addColorStop(0, 'rgba(255,255,255,1)'); rg.addColorStop(0.45, 'rgba(255,255,255,0.55)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = rg; x.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(c); })();
     function makeParticles(n, size, color, opacity) {
       const pos = new Float32Array(n * 3), vel = new Float32Array(n * 3), life = new Float32Array(n);
       for (let k = 0; k < n; k++) pos[k * 3 + 1] = -999;
       const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size, transparent: true, opacity, depthWrite: false }));
-      scene.add(pts);
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size, map: dustSprite, transparent: true, opacity, depthWrite: false })); scene.add(pts);
       return { pos, vel, life, g, cur: 0, n };
     }
-    const dust = makeParticles(90, 0.34, 0xbfa478, 0.85);   // 細かいぼこり（増量）
-    const chunk = makeParticles(40, 0.75, 0x8a6234, 0.95);  // 飛ぶ土の塊
-    function emit(p, x, y, z, up, spread) {
-      const k = p.cur; p.cur = (p.cur + 1) % p.n;
-      p.pos[k * 3] = x + (Math.random() - 0.5) * spread;
-      p.pos[k * 3 + 1] = y + 0.2;
-      p.pos[k * 3 + 2] = z + (Math.random() - 0.5) * spread;
-      p.vel[k * 3] = (Math.random() - 0.5) * spread * 2.2;
-      p.vel[k * 3 + 1] = up * (0.7 + Math.random() * 0.8);
-      p.vel[k * 3 + 2] = (Math.random() - 0.5) * spread * 2.2;
-      p.life[k] = 0.45 + Math.random() * 0.4;
-    }
-    function updateParticles(p, dt, grav) {
-      let live = false;
-      for (let k = 0; k < p.n; k++) {
-        if (p.life[k] > 0) {
-          live = true; p.life[k] -= dt; p.vel[k * 3 + 1] -= grav * dt;
-          p.pos[k * 3] += p.vel[k * 3] * dt; p.pos[k * 3 + 1] += p.vel[k * 3 + 1] * dt; p.pos[k * 3 + 2] += p.vel[k * 3 + 2] * dt;
-          if (p.life[k] <= 0) p.pos[k * 3 + 1] = -999;
-        }
-      }
-      if (live) p.g.attributes.position.needsUpdate = true;
-    }
-    // 削るエフェクト本体：ぼこり多め＋塊が前方へ飛ぶ＋掘る動き＋揺れ
+    const dust = makeParticles(90, 0.42, 0xc4a36a, 0.8), chunk = makeParticles(40, 0.8, 0x6f4a22, 0.95), splash = makeParticles(50, 0.4, 0x9fd0ff, 0.9);
+    function emit(p, x, y, z, up, spread) { const k = p.cur; p.cur = (p.cur + 1) % p.n; p.pos[k * 3] = x + rnd2(spread); p.pos[k * 3 + 1] = y + 0.2; p.pos[k * 3 + 2] = z + rnd2(spread); p.vel[k * 3] = rnd2(spread * 2.2); p.vel[k * 3 + 1] = up * (0.7 + Math.random() * 0.8); p.vel[k * 3 + 2] = rnd2(spread * 2.2); p.life[k] = 0.45 + Math.random() * 0.4; }
+    function updateParticles(p, dt, grav) { let live = false; for (let k = 0; k < p.n; k++) { if (p.life[k] > 0) { live = true; p.life[k] -= dt; p.vel[k * 3 + 1] -= grav * dt; p.pos[k * 3] += p.vel[k * 3] * dt; p.pos[k * 3 + 1] += p.vel[k * 3 + 1] * dt; p.pos[k * 3 + 2] += p.vel[k * 3 + 2] * dt; if (p.life[k] <= 0) p.pos[k * 3 + 1] = -999; } } if (live) p.g.attributes.position.needsUpdate = true; }
     let digPulse = 0, bladePhase = 0, lastChunk = 0;
     function digFx(strong) {
-      const fx = game.mx + Math.sin(game.myaw) * 1.4, fz = game.mz + Math.cos(game.myaw) * 1.4; // ブレード前方
-      const gy = sampleHeight(fx, fz);            // 粒子は地面の高さから出す
-      const nDust = strong ? 4 : 2;
-      for (let i = 0; i < nDust; i++) emit(dust, fx, gy, fz, 3.0, 1.3);
-      if (strong) { const now = performance.now(); if (now - lastChunk > 70) { lastChunk = now; for (let i = 0; i < 2; i++) emit(chunk, fx, gy, fz, 4.2, 0.8); } } // 土の塊は間引いて放出
-      digPulse = strong ? 0.16 : 0.10;
-      shake = Math.min(strong ? 0.16 : 0.09, shake + (strong ? 0.06 : 0.03));
+      const fx = game.mx + Math.sin(game.myaw) * 1.4, fz = game.mz + Math.cos(game.myaw) * 1.4, gy = sampleHeight(fx, fz), wet = sampleWater(fx, fz) > WATER_EPS, nDust = strong ? 4 : 2;
+      for (let i = 0; i < nDust; i++) emit(wet ? splash : dust, fx, gy, fz, 3.0, 1.3);
+      if (strong && !wet) { const now = performance.now(); if (now - lastChunk > 70) { lastChunk = now; for (let i = 0; i < 2; i++) emit(chunk, fx, gy, fz, 4.2, 0.8); } }
+      digPulse = strong ? 0.16 : 0.10; shake = Math.min(strong ? 0.05 : 0.04, shake + (strong ? 0.02 : 0.015)); // 整地中の揺れを控えめに(上限0.16→0.05)
     }
 
-    // ===================== 入力：左下パッド＋キーボード＝移動 / 画面ドラッグ＝視点 =====================
+    // ===================== サウンド（手続き生成・WebAudio／音声ファイル不要） =====================
+    // AudioContextは初回ユーザー操作でだけ生成/resume（モバイル自動再生ポリシー対策）。ノードは使い回し（毎フレーム生成しない）。失敗時は全メソッドが無害なno-op。
+    const SND = (function () {
+      const MUTE_KEY = 'doboku_mute_v1';
+      let ctx = null, master = null, ready = false, started = false;
+      let muted = false; try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch (_) {}
+      let engOsc = null, engGain = null, engLP = null, engVibOsc = null, engVibGain = null;
+      let fwdSrc = null, fwdGain = null, revSrc = null, revGain = null; // 走行音＝本物の録音（前進=戦車キャタピラ track-fwd / 後退=ブル作業音 track-rev）
+      let digBus = null, digGain = null, lastDig = 0;
+      function makeNoiseBuffer() {
+        const len = (ctx.sampleRate * 0.5) | 0, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.6;
+        return buf;
+      }
+      // 走行音の録音ファイルを取得→デコード（失敗しても無害なno-op）
+      function loadDrive(url, cb) {
+        try { fetch(url).then(function (r) { return r.arrayBuffer(); }).then(function (ab) { ctx.decodeAudioData(ab, cb, function () {}); }).catch(function () {}); } catch (_) {}
+      }
+      function build() {
+        master = ctx.createGain(); master.gain.value = muted ? 0 : 0.5; master.connect(ctx.destination);
+        engGain = ctx.createGain(); engGain.gain.value = 0.0;
+        engLP = ctx.createBiquadFilter(); engLP.type = 'lowpass'; engLP.frequency.value = 420; engLP.Q.value = 0.7;
+        engOsc = ctx.createOscillator(); engOsc.type = 'sawtooth'; engOsc.frequency.value = 48;
+        engVibGain = ctx.createGain(); engVibGain.gain.value = 6;
+        engVibOsc = ctx.createOscillator(); engVibOsc.type = 'sine'; engVibOsc.frequency.value = 7;
+        engVibOsc.connect(engVibGain); engVibGain.connect(engOsc.frequency);
+        engOsc.connect(engLP); engLP.connect(engGain); engGain.connect(master);
+        engOsc.start(); engVibOsc.start();
+        const nz = ctx.createBufferSource(); nz.buffer = makeNoiseBuffer(); nz.loop = true;
+        digBus = ctx.createBiquadFilter(); digBus.type = 'bandpass'; digBus.frequency.value = 900; digBus.Q.value = 0.8;
+        digGain = ctx.createGain(); digGain.gain.value = 0.0;
+        nz.connect(digBus); digBus.connect(digGain); digGain.connect(master);
+        nz.start();
+        // 走行音＝本物の録音（前進=戦車キャタピラ track-fwd.mp3 / 後退=ブル作業音 track-rev.mp3）。取得→デコード→ループ再生し、gain で鳴らし分け（停止中は0／mute は master 経由）。
+        fwdGain = ctx.createGain(); fwdGain.gain.value = 0; fwdGain.connect(master);
+        revGain = ctx.createGain(); revGain.gain.value = 0; revGain.connect(master);
+        loadDrive('track-fwd.mp3', function (b) { fwdSrc = ctx.createBufferSource(); fwdSrc.buffer = b; fwdSrc.loop = true; fwdSrc.connect(fwdGain); fwdSrc.start(); });
+        loadDrive('track-rev.mp3', function (b) { revSrc = ctx.createBufferSource(); revSrc.buffer = b; revSrc.loop = true; revSrc.connect(revGain); revSrc.start(); });
+        ready = true;
+      }
+      function ensure() {
+        if (started) { if (ctx && ctx.state === 'suspended') ctx.resume(); return; }
+        started = true;
+        try { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; ctx = new AC(); build(); if (ctx.state === 'suspended') ctx.resume(); } catch (_) { ready = false; }
+      }
+      // 単発音用（buy/win/click のみ＝離散イベント限定。毎フレーム呼ぶな）
+      function beep(freq, t0, dur, vol, type) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type || 'triangle'; o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + dur + 0.02);
+      }
+      return {
+        unlock: function () { ensure(); },
+        isMuted: function () { return muted; },
+        toggleMute: function () { muted = !muted; try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (_) {} if (ready) master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.02); return muted; },
+        drive: function (moving, rev) {
+          if (!ready) return;
+          const now = ctx.currentTime, VOL = 0.85;
+          // 走行音＝本物の録音を gain で鳴らし分け（前進=track-fwd / 後退=track-rev / 停止=無音）。mute は master が担当。
+          if (fwdGain) fwdGain.gain.setTargetAtTime((moving && !rev) ? VOL : 0, now, 0.06);
+          if (revGain) revGain.gain.setTargetAtTime((moving && rev) ? VOL : 0, now, 0.06);
+        },
+        dig: function (strong) {
+          if (!ready || muted) return;
+          const now = ctx.currentTime; if (now - lastDig < 0.08) return; lastDig = now;
+          digBus.frequency.setTargetAtTime(strong ? 760 : 1050, now, 0.02);
+          digGain.gain.cancelScheduledValues(now); digGain.gain.setValueAtTime(strong ? 0.22 : 0.13, now);
+          digGain.gain.exponentialRampToValueAtTime(0.0008, now + (strong ? 0.16 : 0.10));
+        },
+        click: function () { if (!ready || muted) return; beep(880, ctx.currentTime, 0.05, 0.18, 'square'); },
+        buy: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(660, t, 0.08, 0.2, 'triangle'); beep(990, t + 0.07, 0.1, 0.2, 'triangle'); },
+        win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); }
+      };
+    })();
+
+    // ===================== 入力 =====================
     const keys = { up: false, down: false, left: false, right: false };
-    let acting = false;   // 動作ボタン（押している間だけ 削る/盛る）
+    let acting = false;
     const clearKeys = () => { keys.up = keys.down = keys.left = keys.right = false; acting = false; document.querySelectorAll(".dbtn").forEach((b) => b.classList.remove("on")); const a = document.getElementById("act"); if (a) a.classList.remove("on"); };
     document.querySelectorAll(".dbtn").forEach((b) => {
       const dir = b.getAttribute("data-dir"); const ptrs = new Set();
       const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && b.setPointerCapture) { try { b.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); keys[dir] = true; b.classList.add("on"); hideHint(); };
       const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { keys[dir] = false; b.classList.remove("on"); } };
-      b.addEventListener("pointerdown", on);
-      b.addEventListener("pointerup", off);
-      b.addEventListener("pointercancel", off);
-      b.addEventListener("pointerleave", off);
+      b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("pointerleave", off);
     });
     const KEYMAP = { ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" };
     window.addEventListener("keydown", (e) => { if (e.code === "Space") { acting = true; const a = document.getElementById("act"); if (a) a.classList.add("on"); e.preventDefault(); hideHint(); return; } const d = KEYMAP[e.code]; if (d) { keys[d] = true; e.preventDefault(); hideHint(); } });
     window.addEventListener("keyup", (e) => { if (e.code === "Space") { acting = false; const a = document.getElementById("act"); if (a) a.classList.remove("on"); return; } const d = KEYMAP[e.code]; if (d) keys[d] = false; });
-    window.addEventListener("blur", clearKeys);   // フォーカスが外れたら全方向リセット（押しっぱなし暴走防止）
-    window.addEventListener("pagehide", clearKeys);
-
-    // 画面ドラッグ＝視点（カメラ）回転
+    window.addEventListener("blur", clearKeys); window.addEventListener("pagehide", clearKeys);
     const el = renderer.domElement;
     let lookId = null, lookX = 0, lookY = 0;
     el.addEventListener("pointerdown", (e) => { if (lookId !== null) return; lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {} });
-    el.addEventListener("pointermove", (e) => {
-      if (e.pointerId !== lookId) return; e.preventDefault();
-      camYaw -= (e.clientX - lookX) * LOOK_SENS;
-      camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS));
-      lookX = e.clientX; lookY = e.clientY;
-    });
+    el.addEventListener("pointermove", (e) => { if (e.pointerId !== lookId) return; e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }); // カメラは手動（ドラッグで左右回転＋上下見下ろし・自動追従なし）
     const endLook = (e) => { if (e.pointerId === lookId) lookId = null; };
-    el.addEventListener("pointerup", endLook);
-    el.addEventListener("pointercancel", endLook);
-    el.addEventListener("lostpointercapture", endLook);   // キャプチャ喪失でも視点ドラッグを解放
+    el.addEventListener("pointerup", endLook); el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
     window.addEventListener("touchmove", (e) => { if (lookId !== null) e.preventDefault(); }, { passive: false });
-
-    let hintTimer = setTimeout(hideHint, 8000);
+    let hintTimer = setTimeout(hideHint, 12000);
     function hideHint() { const h = document.getElementById("hint"); if (h) h.style.opacity = "0"; clearTimeout(hintTimer); }
-    // 現場ごとのヒント文[S5]：掘る現場はバックホウ手順、平ら現場は押し均し手順。数秒だけ出す。
-    function setSceneHint() {
-      const h = document.getElementById("hint"); if (!h) return;
-      if (game.scene === "dig") h.innerHTML = '🪏 バックホウで<b>手前の池を掘る</b>→たまった土を<b>奥の盛り場(緑が高い所)に降ろす</b><br>1回押すごとに1段ずつ・盛りはラフでOK';
-      else h.innerHTML = 'お手本(緑の面)の高さに地面を合わせよう<br><b>緑の所から押し始める</b>と目標の高さに揃う・赤を削り青を埋めて全部緑に';
-      h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 8000);
-    }
+    function setHint(txt) { const h = document.getElementById("hint"); if (h) { h.innerHTML = txt; h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 12000); } }
 
-    // ===================== 削る/盛る（体積保存）=====================
+    // ===================== 整地（押し均し・体積保存） =====================
     let lastVib = 0, shake = 0;
     function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
-    // 土を分配[親方FB]：(cx,cz)半径R内のセルへ vol(m³)を、天井 ceil(高さ) まで余地に比例して入れる。入り切らない分を返す（天井を超えない）。
+    // 押し均し[本物ブル移植 2026-06-25]：押し始めの足元の高さ(cutHeight)を基準に、前方で「それより高い土」を削ってブレードに溜め（その重機の上限 bladeCap まで＝満杯で削り止め・後ろに出さない）→「それより低い所」へ運んで埋める。色/目標に依らない物理動作。持ち切れぬ土は bladeUnload（ならすを離して進む）で運ぶ。土は保存（地面＋ブレード一定）。
+    function gradePush(dt) {
+      const M = effectiveStats(curM()), RAD = M.digRadius, cap = M.bladeCap; // 強化倍率を反映した実効ステータス
+      const fx = game.mx + Math.sin(game.myaw) * 1.2, fz = game.mz + Math.cos(game.myaw) * 1.2;
+      let blade = game.blade, cutVol = 0, changed = false; const FOOT2 = 0.9 * 0.9;
+      for (let idx = 0; idx < N; idx++) {
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, d2 = dx * dx + dz * dz; if (d2 >= RAD * RAD) continue;
+        const fdx = vx[idx] - game.mx, fdz = vz[idx] - game.mz; if (fdx * fdx + fdz * fdz < FOOT2) continue; // 車体足元は削らない＝押した直後に沈まない
+        const over = heights[idx] - cutHeight;
+        let step = M.digRate * dt * Math.max(0.4, 1 - Math.sqrt(d2) / RAD);
+        if (waterD[idx] > WATER_EPS && !M.underwaterFull) step *= UNDERWATER_DIG_MULT; // 水中バックホウは水中も普通速度
+        if (over > 0.01) { // 高い→ブレードに溜める（空きの分だけ＝満杯で止め・後ろに出さない）
+          const room = cap - blade; if (room <= 0.0001) continue;
+          const cut = Math.min(over, step, room / CELL_AREA); if (cut <= 0) continue;
+          heights[idx] -= cut; blade += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true;
+        } else if (over < -0.01 && blade > 0) { // 低い→溜めた土で埋める（運搬）
+          const fill = Math.min(-over, step, blade / CELL_AREA);
+          if (fill > 0) { heights[idx] += fill; blade -= fill * CELL_AREA; changed = true; }
+        }
+      }
+      game.blade = Math.max(0, blade); game.totalDug += cutVol;
+      if (cutVol > 0) game.cum.dugAll += cutVol; // 累計掘削（レベルをまたいで保持＝実績用）
+      if (changed) { digFx(true); SND.dig(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); }
+    }
+    // ブレードの土を前方の窪みへ容量按分で薄く配分する。[本物ブル移植]
     function depositInto(cx, cz, R, vol, ceil) {
       let room = 0; const cells = [], R2 = R * R;
-      for (let idx = 0; idx < V * V; idx++) {
+      for (let idx = 0; idx < N; idx++) {
         const dx = vx[idx] - cx, dz = vz[idx] - cz; if (dx * dx + dz * dz >= R2) continue;
         const r = (ceil - heights[idx]) * CELL_AREA;
         if (r > 0) { cells.push(idx); room += r; }
@@ -476,324 +833,396 @@
       for (let k = 0; k < cells.length; k++) { const idx = cells[k], r = (ceil - heights[idx]) * CELL_AREA; heights[idx] += (r / room) * place / CELL_AREA; }
       return vol - place;
     }
-    // 押し均し[親方FB・ハイブリッド版]：ブレードの高さ(cutHeight=押し始めの足元の高さ)を基準に、前方で「それより高い土」を削ってブレードに少し持ち(BLADE_CAPまで)→「それより低い所」へ運んで埋める。**色/目標には依らず、純粋に高い所を削り低い所へ落とす物理的な動き**[親方FB]。満杯のあふれは後ろの地面に薄く残す。持ってる土が多いほど重い。土は保存(地面+ブレード一定)。
-    function gradePush(dt) {
-      const s = Math.sin(game.myaw), c = Math.cos(game.myaw);
-      const fx = game.mx + s * 1.4, fz = game.mz + c * 1.4;   // 削り位置＝ブレードの前（広めに削るが足元はFOOT2で除外＝押した直後に車体が沈まない）
-      const bx = game.mx - s * 1.8, bz = game.mz - c * 1.8;   // 後ろ（あふれを残す）
-      const ceil = cutHeight + BLADE_PILE_H;   // 積む天井＝ブレード基準(cutHeight=押し始めの足元の高さ)＋ブレード厚み
-      let behindCap = 0; const BR2 = PILE_R * PILE_R;
-      for (let idx = 0; idx < V * V; idx++) { const dx = vx[idx] - bx, dz = vz[idx] - bz; if (dx * dx + dz * dz >= BR2) continue; const r = (ceil - heights[idx]) * CELL_AREA; if (r > 0) behindCap += r; }
-      let blade = game.blade, spill = 0, changed = false; const SCRAPE_R = 2.0, R2 = SCRAPE_R * SCRAPE_R, FOOT2 = 0.9 * 0.9;
-      let budget = Math.max(0, BLADE_CAP - blade) + behindCap;   // 削れる上限＝持てる空き＋後ろに置ける
-      for (let idx = 0; idx < V * V; idx++) {
-        const dx = vx[idx] - fx, dz = vz[idx] - fz, d2 = dx * dx + dz * dz; if (d2 >= R2) continue;
-        const fdx = vx[idx] - game.mx, fdz = vz[idx] - game.mz; if (fdx * fdx + fdz * fdz < FOOT2) continue;   // 車体足元は触らない
-        const over = heights[idx] - cutHeight, step = DIG_RATE * dt * Math.max(0.4, 1 - Math.sqrt(d2) / SCRAPE_R);   // ブレード基準(cutHeight=押し始めの足元)より高い=削る／低い=埋める（色・目標に依らない）[親方FB]
-        if (over > 0.01 && budget > 0.0001) {     // 高い→削る（行き場のある分=budgetだけ）。ブレードに入れ、超過は spill（あふれ）
-          const cut = Math.min(over, step, budget / CELL_AREA); heights[idx] -= cut; changed = true;
-          const vol = cut * CELL_AREA; budget -= vol;
-          const toB = Math.min(vol, Math.max(0, BLADE_CAP - blade)); blade += toB; spill += vol - toB;
-        } else if (over < -0.01 && blade > 0) {   // 低い→ブレードの土で埋める（運搬）
-          const fill = Math.min(-over, step, blade / CELL_AREA);
-          if (fill > 0) { heights[idx] += fill; blade -= fill * CELL_AREA; changed = true; }
-        }
-      }
-      game.blade = Math.max(0, blade);
-      if (spill > 0.0001) { const left = depositInto(bx, bz, PILE_R, spill, ceil); game.blade += left; }  // あふれを後ろへ薄く残す（重なり端数のみブレードに残る＝保存）
-      if (changed) { digFx(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); refreshHUD(); }
+    // ブル[本物ブル移植]：ならすを離して移動中＝貯めた土(blade)を前へ少しずつ置いていく（止まると出ない）。土は保存(blade→地面)。
+    function bladeUnload(dt) {
+      const M = effectiveStats(curM());
+      const s = Math.sin(game.myaw), c = Math.cos(game.myaw), fx = game.mx + s * 1.2, fz = game.mz + c * 1.2;
+      const amt = Math.min(game.blade, M.digRate * 0.8 * dt); if (amt <= 0) return;
+      const ceil = sampleHeight(fx, fz) + 2.0; // 前の地面より少し高く積むまで（満ちたら移動して下ろす）
+      const left = depositInto(fx, fz, 1.6, amt, ceil);
+      game.blade = Math.max(0, game.blade - (amt - left));
+      const gy = sampleHeight(fx, fz); for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 1.8, 1.0);
+      SND.dig(false); shake = Math.min(0.06, shake + 0.012); syncGeometry();
     }
 
-    // バックホウ[F2-S2]：足元前方の土を1すくいずつ削ってバケットへ（体積保存・バケット上限 BUCKET_CAP）。
+    // ===================== バックホウ系：本物のバケット掘削[本体移植 2026-06-25] =====================
+    // machineKind=='backhoe' の重機は、押し均しでなく「掘る↔下ろす」でバケットに土を溜めて運ぶ。
+    // 容量=その重機の bladeCap（買い替え/強化で増える）／掘る速さ=digRate／範囲=digRadius／足元基準の段切り上限(BH_MAX_CUT/FILL)。
+    let bhMode = null, prevActing = false, bhDigAmt = 0, bhDumpAmt = 0, bhPhase = 0;
+    function bhReach(M) { return Math.max(1.8, M.digRadius + 0.5); }   // 腕の届く距離（機体ごと）
     function backhoeDig(dt) {
-      const fx = game.mx + Math.sin(game.myaw) * BH_REACH, fz = game.mz + Math.cos(game.myaw) * BH_REACH;
+      const M = effectiveStats(curM()), reach = bhReach(M), RAD = M.digRadius, cap = M.bladeCap;
+      const fx = game.mx + Math.sin(game.myaw) * reach, fz = game.mz + Math.cos(game.myaw) * reach;
+      const floor = Math.max(MIN_H, sampleHeight(game.mx, game.mz) - BH_MAX_CUT);   // 足元基準の掘り下げ上限
       let bucket = game.bucket, cutVol = 0, changed = false;
-      for (let idx = 0; idx < V * V; idx++) {
-        const room = BUCKET_CAP - bucket; if (room <= 0.0001) break;
-        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist >= BH_DIG_R) continue;
-        if (bhTag[idx] !== bhPushId) { bhTag[idx] = bhPushId; bhRef[idx] = heights[idx]; }  // この押しで初めて触れた高さを記録
-        const h = heights[idx];
-        const digFloor = Math.max(MIN_H, bhRef[idx] - LAYER);   // 1回の押しでは1段(LAYER)までしか掘れない（深掘りは離して押し直す）
-        if (h <= digFloor + 0.001) continue;
-        const step = BH_DIG_RATE * dt * Math.max(0.4, 1 - dist / BH_DIG_R);
-        const cut = Math.min(h - digFloor, step, room / CELL_AREA);
+      for (let idx = 0; idx < N; idx++) {
+        const room = cap - bucket; if (room <= 0.0001) break;
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz); if (dist >= RAD) continue;
+        const h = heights[idx]; if (h <= floor + 0.001) continue;
+        let step = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
+        if (waterD[idx] > WATER_EPS && !M.underwaterFull) step *= UNDERWATER_DIG_MULT;   // 水中は遅い（水中バックホウは普通速度）
+        const cut = Math.min(h - floor, step, room / CELL_AREA);
         if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
       }
-      game.bucket = Math.min(BUCKET_CAP, bucket); game.totalDug += cutVol;
-      if (changed) {
-        const gy = sampleHeight(fx, fz);
-        for (let i = 0; i < 3; i++) emit(dust, fx, gy, fz, 2.6, 1.1);
-        const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(8); }
-        shake = Math.min(0.10, shake + 0.025);
-        syncGeometry(); refreshHUD();
-      }
+      game.bucket = Math.min(cap, bucket); game.totalDug += cutVol; if (cutVol > 0) game.cum.dugAll += cutVol;
+      if (changed) { digFx(true); SND.dig(true); const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(8); } shake = Math.min(0.10, shake + 0.025); syncGeometry(); }
       return changed;
     }
-    // バックホウ[F2-S3]：バケットの土を足元前方へ降ろして地面を盛る（体積保存・上限 MAX_H）。
     function backhoeDump(dt) {
       if (game.bucket <= 0.0001) return false;
-      const fx = game.mx + Math.sin(game.myaw) * BH_REACH, fz = game.mz + Math.cos(game.myaw) * BH_REACH;
+      const M = effectiveStats(curM()), reach = bhReach(M), RAD = M.digRadius;
+      const fx = game.mx + Math.sin(game.myaw) * reach, fz = game.mz + Math.cos(game.myaw) * reach;
+      const ceil = Math.min(MAX_H, sampleHeight(game.mx, game.mz) + BH_MAX_FILL);   // 足元基準の積み上げ上限
       let bucket = game.bucket, changed = false;
-      for (let idx = 0; idx < V * V; idx++) {
+      for (let idx = 0; idx < N; idx++) {
         if (bucket <= 0.0001) break;
-        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist >= BH_DIG_R) continue;
-        if (bhTag[idx] !== bhPushId) { bhTag[idx] = bhPushId; bhRef[idx] = heights[idx]; }  // この押しで初めて触れた高さを記録
-        const h = heights[idx];
-        const dumpCeil = Math.min(MAX_H, bhRef[idx] + LAYER);   // 1回の押しでは1段(LAYER)までしか盛れない（高盛りは離して押し直す）
-        if (h >= dumpCeil - 0.001) continue;
-        const give = BH_DUMP_RATE * dt * Math.max(0.4, 1 - dist / BH_DIG_R);
-        const add = Math.min(give, dumpCeil - h, bucket / CELL_AREA);
+        const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz); if (dist >= RAD) continue;
+        const h = heights[idx]; if (h >= ceil - 0.001) continue;
+        const give = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
+        const add = Math.min(give, ceil - h, bucket / CELL_AREA);
         if (add > 0) { heights[idx] = h + add; bucket -= add * CELL_AREA; changed = true; }
       }
       game.bucket = Math.max(0, bucket);
-      if (changed) {
-        const gy = sampleHeight(fx, fz);
-        for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 2.0, 1.0);
-        const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(7); }
-        shake = Math.min(0.08, shake + 0.02);
-        syncGeometry(); refreshHUD();
-      }
+      if (changed) { const gy = sampleHeight(fx, fz); for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 2.0, 1.0); SND.dig(false); const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(7); } shake = Math.min(0.08, shake + 0.02); syncGeometry(); }
       return changed;
     }
-    // バックホウのうでアニメ：'dig'=ブーム下げ＋アーム巻きで往復すくい／'dump'=腕を前へ伸ばしバケットを傾けて流す／null=待機へ戻る。
-    function animateBackhoe(dt, action) {
-      const digging = action === "dig", dumping = action === "dump";
+    // 腕アニメ：掘る時は重い上下ストローク、下ろす時と待機は従来姿勢へ戻す。
+    function animateArm(dt, action) {
+      const digging = action === 'dig', dumping = action === 'dump';
       bhDigAmt = Math.max(0, Math.min(1, bhDigAmt + (digging ? dt * 5 : -dt * 5)));
       bhDumpAmt = Math.max(0, Math.min(1, bhDumpAmt + (dumping ? dt * 5 : -dt * 5)));
-      bhPhase += dt * ((digging || dumping) ? 9 : 3);
-      const scoop = Math.sin(bhPhase) * 0.32 * bhDigAmt;
-      bhBoomPivot.rotation.x = BH_BOOM_REST - 0.5 * bhDigAmt - scoop * 0.5 - 0.12 * bhDumpAmt;
-      bhArmPivot.rotation.x = BH_ARM_REST + 0.55 * bhDigAmt + scoop - 0.45 * bhDumpAmt;
-      bhBucket.rotation.x = 1.0 * bhDumpAmt + 0.25 * Math.sin(bhPhase) * bhDumpAmt;
+      bhPhase += dt * ((digging || dumping) ? 5.5 : 3);
+      const A = activeArm; if (!A || !A.boom || !A.stick || !A.bucket) return;
+      const cyc = Math.sin(bhPhase);                         // -1=持ち上げ、+1=下ろし
+      const scoopCurl = Math.max(0, Math.sin(bhPhase - 0.9)); // 腕が下りた少し後に掬う
+      A.boom.rotation.x = A.boomBase + bhDigAmt * (0.28 + 0.42 * cyc) - 0.18 * bhDumpAmt;
+      A.stick.rotation.x = A.stickBase - bhDigAmt * (0.22 + 0.30 * cyc) + 0.32 * bhDumpAmt;
+      A.bucket.rotation.x = A.bucketBase + bhDigAmt * (0.18 + 0.55 * scoopCurl) - 1.0 * bhDumpAmt;
     }
 
-    // ===================== 重機の移動（視点に対して前後左右）=====================
     function updateDozer(dt) {
-      // 視点(camYaw)基準の方向ベクトル
-      const F = [-Math.sin(camYaw), -Math.cos(camYaw)];   // 奥(画面の上＝カメラの逆)
-      const R = [-F[1], F[0]];                            // 右
-      let mxv = 0, mzv = 0;
-      if (keys.up) { mxv += F[0]; mzv += F[1]; }
-      if (keys.down) { mxv -= F[0]; mzv -= F[1]; }
-      if (keys.right) { mxv += R[0]; mzv += R[1]; }
-      if (keys.left) { mxv -= R[0]; mzv -= R[1]; }
-      let moving = false; const len = Math.sqrt(mxv * mxv + mzv * mzv);
-      if (len > 0.0001) {
-        mxv /= len; mzv /= len; game.myaw = Math.atan2(mxv, mzv);
-        let sf = 1;
-        if (acting && active === "dozer" && !game.won) sf = Math.max(STALL_FRAC, 1 - game.blade / BLADE_CAP);  // ブレードに持ってる土が多いほど重く→だんだん遅い→満杯で実質停止[親方FB]
-        const step = MOVE_SPEED * dt * sf; const half = WORLD / 2 - 0.5;
-        game.mx = Math.max(-half, Math.min(half, game.mx + mxv * step));
-        game.mz = Math.max(-half, Math.min(half, game.mz + mzv * step));
-        moving = true;
+      // 実際の重機式の操作：左右＝その場で旋回（向きを変える）／上＝前進・下＝後退（向いてる方向のまま）
+      const TURN = 1.8; // 旋回速度(rad/s)
+      if (keys.left) game.myaw -= TURN * dt;
+      if (keys.right) game.myaw += TURN * dt;
+      let moving = false; const reversing = keys.down && !keys.up; const drive = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
+      if (drive !== 0) {
+        const M = effectiveStats(curM()); // 強化倍率を反映（移動速さ）
+        const carryW = (machineKind(curM()) !== 'backhoe' && game.blade > 0.01) ? Math.max(0.35, 1 - game.blade / M.bladeCap) : 1; // 土を持つほど重い（本物ブル・積むほど遅い）
+        const fwd = [Math.sin(game.myaw), Math.cos(game.myaw)]; // 機体の前方向
+        const step = M.moveSpeed * carryW * (reversing ? 0.7 : 1) * dt * drive, half = WORLD / 2 - 0.5; // 後退は少し遅め＝実機っぽく
+        const cx = Math.max(-half, Math.min(half, game.mx + fwd[0] * step)), cz = Math.max(-half, Math.min(half, game.mz + fwd[1] * step));
+        if (canStand(cx, cz)) { game.mx = cx; game.mz = cz; moving = true; }
+        else if (canStand(cx, game.mz)) { game.mx = cx; moving = true; }
+        else if (canStand(game.mx, cz)) { game.mz = cz; moving = true; }
       }
-      // 2台とも配置（active=game の現在地／非active=退避スロット）。選択中の足元に輪を出す。
-      const dp = (active === "dozer") ? game : dozerState, bp = (active === "backhoe") ? game : backhoeState;
-      dozer.position.set(dp.mx, sampleHeight(dp.mx, dp.mz), dp.mz); dozer.rotation.y = dp.myaw;
-      backhoe.position.set(bp.mx, sampleHeight(bp.mx, bp.mz), bp.mz); backhoe.rotation.y = bp.myaw;
-      selRing.position.set(game.mx, sampleHeight(game.mx, game.mz) + 0.12, game.mz);
-      // ブレード前の土の山[親方FB]：ブル選択中、持ってる土(game.blade)に応じて大きく。空ならしまう。
-      if (active === "dozer" && game.blade > 0.15) {
-        const pf = Math.min(1, game.blade / BLADE_CAP), s2 = Math.sin(dp.myaw), c2 = Math.cos(dp.myaw);
-        const fxp = dp.mx + s2 * 1.65, fzp = dp.mz + c2 * 1.65;
+      const gy = sampleHeight(game.mx, game.mz); dozer.position.set(game.mx, gy, game.mz); dozer.rotation.y = game.myaw;
+      // ブレード前の土の山[本体移植]：ブル系で持ってる土に応じて前に盛り上がる。バックホウ系は非表示。
+      if (machineKind(curM()) !== 'backhoe' && game.blade > 0.15) {
+        const cap = curM().bladeCap, pf = Math.min(1, game.blade / cap), sc = machineScale(curM());
+        const s2 = Math.sin(game.myaw), c2 = Math.cos(game.myaw), fxp = game.mx + s2 * 1.65 * sc, fzp = game.mz + c2 * 1.65 * sc;
         bladePile.position.set(fxp, sampleHeight(fxp, fzp) + 0.25 + 0.55 * pf, fzp);
-        bladePile.scale.set(0.5 + 0.7 * pf, 0.5 + 1.1 * pf, 0.5 + 0.7 * pf); bladePile.rotation.y = dp.myaw;
+        bladePile.scale.set((0.5 + 0.7 * pf) * sc, (0.5 + 1.1 * pf) * sc, (0.5 + 0.7 * pf) * sc); bladePile.rotation.y = game.myaw;
       } else bladePile.position.y = -999;
-      // 押しながら移動した時だけ整地（ブル選択時のみ・止まると動かない）。押し始めの足元の高さをブレード基準(cutHeight)に固定し、それより高い土を削り低い所へ運ぶ（色/目標に依らず物理的に）[親方FB]
-      if (acting && moving && !game.won && active === "dozer") {
-        if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); }
-        gradePush(dt);
-      } else pushing = false;
-      // ブレードの掘る動き
-      if (digPulse > 0) { digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32; blade.position.y = BLADE_Y - 0.18 - Math.sin(bladePhase) * 0.06; blade.rotation.x = Math.sin(bladePhase) * 0.22; }
-      else { blade.position.y = BLADE_Y; blade.rotation.x = 0; }
-      // バックホウ[F2]：選択中は acting で掘る/降ろす。モードは「押し始めのバケット状態」で固定（空→掘る／土あり→降ろす）。降ろしはS3で実装。
-      if (active === "backhoe") {
-        if (acting && !prevActing) {  // 押し始めにモード決定[S5]：満タン→降ろす／空→掘る／土ありは足元が目標より高い(赤)なら掘り進め・他(青/平ら)は降ろす。お手本連動で直感的に。bhPushId を進めて1段制限をリセット。
-          const ffx = game.mx + Math.sin(game.myaw) * BH_REACH, ffz = game.mz + Math.cos(game.myaw) * BH_REACH;
-          const gh = sampleHeight(ffx, ffz), lt = sampleTarget(ffx, ffz);
-          if (game.bucket >= BUCKET_CAP - 0.05) bhMode = "dump";
-          else if (game.bucket <= 0.05) bhMode = "dig";
-          else bhMode = (gh > lt + FLAT_TOL) ? "dig" : "dump";
-          bhPushId++; updateActLabel();
-        }
-        else if (!acting && bhMode !== null) { bhMode = null; }   // 離したらモード解除
-        if (!acting) updateActLabel();   // アイドル中は移動に追従して掘る/降ろす予測表示を更新（内部で変化時のみDOM書換）
-        let action = null;
-        if (acting && !game.won && bhMode === "dig" && game.bucket < BUCKET_CAP) { backhoeDig(dt); action = "dig"; }
-        else if (acting && !game.won && bhMode === "dump" && game.bucket > 0.0001) { backhoeDump(dt); action = "dump"; }
-        animateBackhoe(dt, action);
-      } else { bhMode = null; }
+      // 重機の種類で動きを振り分け[本体移植]：バックホウ系=本物バケット掘削（掘る↔下ろす）／その他=押し均し（water-proto従来）
+      const isBH = machineKind(curM()) === 'backhoe';
+      if (isBH) {
+        if (acting && !prevActing) { bhMode = (game.bucket < 0.05) ? 'dig' : 'dump'; updateActLabel(); }   // 押し始めに固定（空→掘る/土あり→下ろす）
+        else if (!acting && bhMode !== null) { bhMode = null; updateActLabel(); }
+        const cap = effectiveStats(curM()).bladeCap; let action = null;
+        if (acting && !game.won && bhMode === 'dig' && game.bucket < cap) { backhoeDig(dt); action = 'dig'; }
+        else if (acting && !game.won && bhMode === 'dump' && game.bucket > 0.0001) { backhoeDump(dt); action = 'dump'; }
+        animateArm(dt, action); pushing = false;
+      } else {
+        if (acting && moving && !reversing && !game.won) {
+          if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); } // 押し始めの足元の高さを基準に固定（本物ブル・前進時のみ整地）
+          gradePush(dt);
+        } else if (!acting && moving && !game.won && game.blade > 0.01) {
+          pushing = false; bladeUnload(dt);   // ならすを離して移動中（前進でも後退でも）＝持ってる土を少しずつ前へ置く（本物ブル・親方FB）
+        } else pushing = false;
+        animateArm(dt, null);   // 非バックホウ時は腕を待機（表示中の腕がないので無害）
+      }
       prevActing = acting;
+      if (digPulse > 0) {
+        digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32;
+        if (activeBlade) { const by = activeBlade.userData.baseY == null ? 0.62 : activeBlade.userData.baseY; activeBlade.position.y = by - 0.18 - Math.sin(bladePhase) * 0.06; activeBlade.rotation.x = (activeBlade.userData.baseRx || 0) + Math.sin(bladePhase) * 0.22; }
+      } else if (activeBlade) resetBladePart(activeBlade);
     }
-    function sampleHeight(x, z) {
-      const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID)));
-      const j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID)));
-      return heights[j * V + i];
-    }
-    function sampleTarget(x, z) {
-      const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID)));
-      const j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID)));
-      return targetH[j * V + i];
-    }
-
-    // ===================== カメラ（重機を中心に旋回）=====================
+    function sampleHeight(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return heights[j * V + i]; }
     function updateCamera() {
-      const aspect = window.innerWidth / Math.max(1, window.innerHeight);
-      const f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = CAM_DIST * f, horiz = dist * Math.cos(camPitch);
-      let sx = 0, sy = 0; if (shake > 0.001) { sx = (Math.random() - 0.5) * shake; sy = (Math.random() - 0.5) * shake; }
-      camera.position.set(game.mx + horiz * Math.sin(camYaw) + sx, dist * Math.sin(camPitch) + sy, game.mz + horiz * Math.cos(camYaw));
-      camera.lookAt(game.mx, 1, game.mz);
+      const aspect = window.innerWidth / Math.max(1, window.innerHeight), f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = CAM_DIST * f, horiz = dist * Math.cos(camPitch);
+      let sx = 0, sy = 0; if (shake > 0.001) { sx = rnd2(shake); sy = rnd2(shake); }
+      camera.position.set(game.mx + horiz * Math.sin(camYaw) + sx, dist * Math.sin(camPitch) + sy, game.mz + horiz * Math.cos(camYaw)); camera.lookAt(game.mx, 1, game.mz);
     }
 
-    // ===================== HUD =====================
-    const dugEl = document.getElementById("dug"), carryEl = document.getElementById("carry"), barEl = document.querySelector("#bar > i");
-    const scoreEl = document.getElementById("score"), remEl = document.getElementById("rem"), finishEl = document.getElementById("finish");
-    const carryBadgeEl = document.getElementById("carry-badge"), bucketBadgeEl = document.getElementById("bucket-badge"), bucketHudEl = document.getElementById("bucket-hud");
-    let lastDugFloor = 0, lastScore = -1, lastBucketFull = false;
+    // ===================== HUD・クリア判定・レベル進行 =====================
+    const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge");
+    const workBadge = document.getElementById("b-work"), basinBadge = document.getElementById("b-main"), barEl = document.querySelector("#bar > i"), machineBtn = document.getElementById("machineBtn");
+    function drainOf(z, w0) { return w0 > 0 ? Math.max(0, Math.min(1, 1 - zoneVol(z) / w0)) : 0; }
+    function levelDone() {
+      if (LV.type === 'drain') return drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev && zoneVol(LV.B) >= LV.tB;
+      if (LV.type === 'level') return LV.A0exc > 0 ? (zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol) <= 0.05 * LV.A0exc) : true;   // 掘り取り＝残っている山が初期の5%以下[本体移植・バックホウ向き]
+      return zoneVol(LV.B) >= LV.tB;
+    }
     function refreshHUD() {
-      const dug = digVolume();
-      dugEl.textContent = dug.toFixed(1); carryEl.textContent = (active === "dozer" ? game.blade : 0).toFixed(1);
-      // バケットHUD[S5]：バックホウ選択中だけ「バケット x/10」を表示（ブルの時は従来のブレードの土）。満タンで点滅。
-      const isBH = (active === "backhoe");
-      carryBadgeEl.style.display = isBH ? "none" : ""; bucketBadgeEl.style.display = isBH ? "" : "none";
-      bucketHudEl.textContent = game.bucket.toFixed(1);
-      const full = game.bucket >= BUCKET_CAP - 0.05;
-      if (full && !lastBucketFull) { bucketBadgeEl.classList.remove("full"); void bucketBadgeEl.offsetWidth; bucketBadgeEl.classList.add("full"); }
-      lastBucketFull = full;
-      const fl = Math.floor(dug);
-      if (fl !== lastDugFloor) { lastDugFloor = fl; dugEl.classList.remove("pop"); void dugEl.offsetWidth; dugEl.classList.add("pop"); }
-      const sc = score();
-      scoreEl.textContent = sc; remEl.textContent = Math.round(maxTargetDev() * 100);
-      barEl.style.width = sc + "%";
-      if (sc !== lastScore) { lastScore = sc; scoreEl.classList.remove("pop"); void scoreEl.offsetWidth; scoreEl.classList.add("pop"); }
-      finishEl.classList.toggle("ready", !game.won && sc >= PASS_SCORE && maxTargetDev() <= finishMaxDev());
+      totalEl.textContent = totalWater().toFixed(0); moneyEl.textContent = game.money;
+      const M = curM(); const carry = (machineKind(M) === 'backhoe') ? game.bucket : game.blade; bladeEl.textContent = carry.toFixed(1); bladeCapEl.textContent = M.bladeCap; bladeBadge.classList.toggle("over", carry > M.bladeCap + 0.01);   // バックホウはバケット/ブルはブレードの土[本体移植]
+      let overall = 0;
+      if (LV.type === 'level') {
+        const ex = zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol);   // 掘り取り[本体移植]：残っている山の量→進捗
+        const fp = LV.A0exc > 0 ? Math.max(0, Math.min(1, 1 - ex / LV.A0exc)) : 1;
+        workEl.textContent = Math.round(fp * 100); overall = fp;
+        workBadge.classList.toggle("done", LV.A0exc > 0 ? (ex <= 0.05 * LV.A0exc) : true);
+      } else {
+        basinEl.textContent = zoneVol(LV.B).toFixed(0); basinTEl.textContent = LV.tB.toFixed(0);
+        let main = LV.tB > 0 ? Math.min(1, zoneVol(LV.B) / LV.tB) : 0; overall = main;
+        if (LV.type === 'drain') {
+          const dr = Math.min(1, drainOf(LV.A, LV.A0water) / LV.drainWin), fl = Math.max(0, Math.min(1, 1 - zoneFlatness(LV.A) / LV.A0flat)), wf = Math.min(dr, fl);
+          workEl.textContent = Math.round(wf * 100); overall = Math.min(wf, main);
+          workBadge.classList.toggle("done", drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev);
+        }
+        basinBadge.classList.toggle("done", zoneVol(LV.B) >= LV.tB);
+      }
+      barEl.style.width = (overall * 100).toFixed(0) + "%";
     }
-    function finishJob() {
-      if (game.won) return; const sc = score(); if (sc < PASS_SCORE || maxTargetDev() > finishMaxDev()) return;
-      game.won = true; if (sc > game.best) game.best = sc;
-      const s3dev = (game.scene === "dig") ? 0.8 : 0.4;
-      const stars = (sc >= STAR3 && maxTargetDev() <= s3dev) ? 3 : sc >= STAR2 ? 2 : 1;
-      document.getElementById("win-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
-      document.getElementById("win-text").innerHTML = "出来形 <b>" + sc + "</b> 点　／　自己ベスト " + game.best + " 点";
-      document.getElementById("win").classList.add("show"); finishEl.classList.remove("ready"); save();
+    function checkWin() { if (game.won) return; if (levelDone()) { game.won = true; game.cum.cleared++; checkAchievements(); showWin(); } }
+    function showWin() {
+      const last = curLevel >= NLV - 1;
+      game.money += CLEAR_REWARD; refreshHUD(); save();
+      document.getElementById("win-title").textContent = LV.name + " 完成！";
+      document.getElementById("win-text").textContent = "報酬 +" + CLEAR_REWARD + "万円（所持金 " + game.money + "万円）" + (last ? " ／ 全レベルクリア！" : "");
+      document.getElementById("again").textContent = last ? "もう一度（レベル1へ）" : "次のレベルへ ▶";
+      document.getElementById("win").classList.add("show"); tryVibrate(40); SND.win();
+      clearTimeout(winTimer); winTimer = setTimeout(nextLevel, 2000);
+    }
+    function nextLevel() { clearTimeout(winTimer); document.getElementById("win").classList.remove("show"); loadLevel((curLevel + 1) % NLV); }
+
+    function loadLevel(n, saved) {
+      clearTimeout(winTimer); curLevel = ((n % NLV) + NLV) % NLV; game.level = curLevel;
+      const D = LEVEL_DEFS[curLevel]; LV = {}; for (const k in D) LV[k] = D[k];
+      if (saved) { heights.set(saved.h); baseHeights.set(saved.b); clearWater(); waterD.set(saved.w); LV.A0water = saved.a0; LV.A0flat = saved.af; LV.tB = saved.tB; }
+      else { D.gen(LV); baseHeights.set(heights); LV.A0water = LV.type === 'drain' ? Math.max(0.001, zoneVol(LV.A)) : 0; LV.A0flat = (LV.type === 'drain' || LV.type === 'level') ? Math.max(1, zoneFlatness(LV.A)) : 1; LV.tB = LV.tFrac * totalWater(); }
+      LV.A0exc = (LV.type === 'level') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.subFloor + LV.clearTol)) : 0;   // 掘り取り[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
+      game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null;
+      applyMachine();
+      if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
+      else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
+      lvnumEl.textContent = (curLevel + 1);
+      workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : '作業場';
+      document.getElementById("goalLabel").innerHTML = LV.goal;
+      document.getElementById("mainLabel").textContent = LV.mainLabel;
+      document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level') ? '' : 'none';
+      document.getElementById("b-main").style.display = LV.type === 'level' ? 'none' : '';
+      document.getElementById("win").classList.remove("show");
+      rebuildMarkers(LV.markers); setHint(LV.hint);
+      syncGeometry(); syncWater(0); refreshHUD(); save();
     }
 
-    // ===================== ボタン =====================
+    // ボタン
     const actBtn = document.getElementById("act");
-    // 動作ボタン：押している間だけ整地（マルチタッチ取りこぼし防止に Set 管理）
     (function () {
       const ptrs = new Set();
       const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && actBtn.setPointerCapture) { try { actBtn.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); acting = true; actBtn.classList.add("on"); hideHint(); };
       const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { acting = false; actBtn.classList.remove("on"); } };
-      actBtn.addEventListener("pointerdown", on);
-      actBtn.addEventListener("pointerup", off);
-      actBtn.addEventListener("pointercancel", off);
-      actBtn.addEventListener("pointerleave", off);
+      actBtn.addEventListener("pointerdown", on); actBtn.addEventListener("pointerup", off); actBtn.addEventListener("pointercancel", off); actBtn.addEventListener("pointerleave", off);
     })();
-    document.getElementById("reset").addEventListener("click", () => { if (window.confirm("この現場をやり直しますか？\n削った内容は消えます（お題は同じ）。")) restore(false); });
-    document.getElementById("again").addEventListener("click", () => { document.getElementById("win").classList.remove("show"); restore(true); });
-    document.getElementById("finish").addEventListener("click", finishJob);
-
-    // ===================== 機械チェンジ[F2]：ブル⇔バックホウ =====================
-    const machineBtn = document.getElementById("machine");
-    const MACHINE_LABEL = { dozer: "🚜 ブル", backhoe: "🪏 バックホウ" };
-    function showFlash(txt) { const f = document.getElementById("flash"); if (!f) return; f.textContent = txt; f.classList.remove("show"); void f.offsetWidth; f.classList.add("show"); }
-    let actLabelCur = "";
+    document.getElementById("reset").addEventListener("click", () => { if (window.confirm("このレベルを最初からやり直しますか？")) loadLevel(curLevel); });
+    (function () { const mb = document.getElementById('mute'); function paint() { mb.textContent = SND.isMuted() ? '🔇' : '🔊'; mb.classList.toggle('off', SND.isMuted()); } mb.addEventListener('click', function () { SND.unlock(); SND.toggleMute(); paint(); }); paint(); })();
+    document.getElementById("again").addEventListener("click", nextLevel);
+    // 重機の見た目データ（種類＝アタッチメント／大きさ）。idで明示・未登録は能力テキスト＋値段から自動推定
+    const VKIND = { dozer: 'dozer', bigdozer: 'dozer', d11: 'dozer', mini: 'mini', kx12: 'backhoe', sub: 'backhoe', digger: 'backhoe', sk200: 'backhoe', skaqua: 'backhoe', lsamp: 'loader', sh77: 'loader', l90: 'loader', hauler: 'hauler', a60: 'hauler', ym30: 'backhoe', ymb7: 'backhoe', igx250: 'hauler', igxmax: 'hauler' };
+    const VSCALE = { dozer: 1.0, bigdozer: 1.32, d11: 1.6, mini: 0.72, kx12: 0.82, sub: 1.0, digger: 1.16, sk200: 1.0, skaqua: 1.28, lsamp: 0.92, sh77: 1.1, l90: 1.06, hauler: 1.22, a60: 1.38, ym30: 0.8, ymb7: 1.18, igx250: 1.1, igxmax: 1.42 };
+    function machineKind(M) {
+      if (VKIND[M.id]) return VKIND[M.id];
+      const a = M.ability || '';
+      if (/ローダー/.test(a)) return 'loader';
+      if (/運搬/.test(a)) return 'hauler';
+      if (/ミニ/.test(a)) return 'mini';
+      if (/バックホウ|掘削|水中/.test(a)) return 'backhoe';
+      return 'dozer';
+    }
+    function machineScale(M) { return VSCALE[M.id] || Math.max(0.75, Math.min(1.6, 0.9 + (M.price || 0) / 1000)); }
+    function applyMachine() { // 今の重機の効果と見た目を反映
+      const M = curM();
+      WATER_CAN_ENTER = M.canEnterWater;
+      if (activeBlade) resetBladePart(activeBlade); if (activeArm) resetArmPose(activeArm);
+      const model = getMachineModel(M);
+      if (activeModel !== model) { if (activeModel) dozer.remove(activeModel); dozer.add(model); activeModel = model; }
+      activeBlade = model.userData.blade || null;
+      activeArm = model.userData.arm || null;
+      activeLoader = model.userData.loader || null;
+      activeDump = model.userData.dump || null;
+      activeBeacon = model.userData.beacon || null;
+      if (activeBlade) resetBladePart(activeBlade); if (activeArm) resetArmPose(activeArm);
+      dozer.scale.setScalar(machineScale(M));
+      machineBtn.style.display = game.owned.length > 1 ? 'flex' : 'none'; // 2台以上持っていれば切替ボタン表示
+      machineBtn.classList.toggle('sub', M.canEnterWater);
+      machineBtn.childNodes[0].nodeValue = M.icon + ' ' + M.name;
+      updateActLabel();   // 操作ボタンの文字（ブル=ならす／バックホウ=掘る/下ろす）[本体移植]
+    }
+    // 操作ボタンの文字を重機の種類で切替[本体移植]：ブル系=ならす／バックホウ系=空なら掘る・土ありなら下ろす。
+    let _actLabelCur = '';
     function updateActLabel() {
+      const ab = document.getElementById('act'); if (!ab) return;
       let html;
-      if (active === "dozer") html = 'ならす<span>押す</span>';
-      else {
-        let lbl;
-        if (bhMode === "dig") lbl = '掘る';
-        else if (bhMode === "dump") lbl = '降ろす';
-        // アイドル時も押し始めの判定式と同じ予測を表示（満タン→降ろす/空→掘る/土ありは足元が目標より高い赤なら掘る・他は降ろす）＝表示と動作を一致させる[S5点検]
-        else if (game.bucket >= BUCKET_CAP - 0.05) lbl = '降ろす';
-        else if (game.bucket <= 0.05) lbl = '掘る';
-        else { const ffx = game.mx + Math.sin(game.myaw) * BH_REACH, ffz = game.mz + Math.cos(game.myaw) * BH_REACH; lbl = (sampleHeight(ffx, ffz) > sampleTarget(ffx, ffz) + FLAT_TOL) ? '掘る' : '降ろす'; }
-        html = lbl + '<span>押す</span>';
+      if (machineKind(curM()) !== 'backhoe') html = 'ならす<span>押す</span>';
+      else { let lbl; if (bhMode === 'dig') lbl = '掘る'; else if (bhMode === 'dump') lbl = '下ろす'; else lbl = (game.bucket > 0.05) ? '下ろす' : '掘る'; html = lbl + '<span>押す</span>'; }
+      if (html !== _actLabelCur) { _actLabelCur = html; ab.innerHTML = html; }
+    }
+    function ownsMachine(id) { return game.owned.indexOf(id) >= 0; }
+    function setMachine(id) { if (!ownsMachine(id)) return; game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); save(); }
+    // ===== 重機レベルアップ＆実績バッジ =====
+    function buyUpgrade(id) {
+      if (game.owned.indexOf(id) < 0) return;
+      const M = machineById(id), lv = upgLv(id);
+      if (lv >= UPG_MAX) return;
+      const cost = upgCost(M, lv);
+      if (game.money < cost) return;
+      game.money -= cost; game.upg[id] = lv + 1;
+      if (id === game.machine) applyMachine(); // 現行機なら整合（見た目は不変）
+      checkAchievements(); refreshHUD(); save(); renderGarage(); SND.buy(); tryVibrate(20);
+    }
+    let achQueue = [], achToastTimer = 0;
+    function checkAchievements(silent) { // 解禁チェックは「変化イベント時のみ」呼ぶ（毎フレーム禁止）。silent=移行時など静かに解禁
+      for (let k = 0; k < ACHIEVEMENTS.length; k++) {
+        const a = ACHIEVEMENTS[k];
+        if (game.unlockedAch[a.id]) continue;
+        if (a.cond(game)) { game.unlockedAch[a.id] = true; if (!silent) achQueue.push(a); }
       }
-      if (html !== actLabelCur) { actLabelCur = html; actBtn.innerHTML = html; }   // 変化時のみ DOM 書換（毎フレーム呼んでも軽い）
+      if (!silent && achQueue.length) { save(); pumpAchToast(); }
     }
-    function updateMachineUI() { if (machineBtn) machineBtn.innerHTML = MACHINE_LABEL[active] + '<span>タップで切替</span>'; updateActLabel(); }
-    function switchMachine() {
-      flushActive();
-      active = (active === "dozer") ? "backhoe" : "dozer";
-      const ns = (active === "dozer") ? dozerState : backhoeState;
-      game.mx = ns.mx; game.mz = ns.mz; game.myaw = ns.myaw;
-      pushing = false; clearKeys();
-      updateMachineUI(); refreshHUD(); showFlash(active === "dozer" ? "ブルドーザー" : "バックホウ"); save();
+    function pumpAchToast() {
+      const el = document.getElementById("achToast"); if (!el) return;
+      if (el.classList.contains("show") || achQueue.length === 0) return;
+      const a = achQueue.shift();
+      el.innerHTML = '🏅 実績解禁！ ' + a.icon + ' <b>' + a.name + '</b>';
+      el.classList.add("show"); tryVibrate(30);
+      clearTimeout(achToastTimer);
+      achToastTimer = setTimeout(function () { el.classList.remove("show"); setTimeout(pumpAchToast, 450); }, 2200);
     }
-    if (machineBtn) machineBtn.addEventListener("click", switchMachine);
+    function renderBadges() {
+      let html = '';
+      for (let k = 0; k < ACHIEVEMENTS.length; k++) {
+        const a = ACHIEVEMENTS[k], got = !!game.unlockedAch[a.id];
+        html += '<div class="b-item' + (got ? '' : ' locked') + '"><div class="b-ic">' + a.icon + '</div><b>' + a.name + '</b><small>' + a.desc + '</small></div>';
+      }
+      document.getElementById("b-list").innerHTML = html;
+      const n = Object.keys(game.unlockedAch).length, h2 = document.querySelector("#badges h2");
+      if (h2) h2.textContent = '🏅 実績バッジ (' + n + '/' + ACHIEVEMENTS.length + ')';
+    }
+    function sanitizeUpg(o) { const out = {}; for (const id in o) { if (game.owned.indexOf(id) < 0) continue; let lv = o[id] | 0; if (lv < 1) continue; if (lv > UPG_MAX) lv = UPG_MAX; out[id] = lv; } return out; }
+    const garage = document.getElementById("garage"), gList = document.getElementById("g-list");
+    function renderGarage() {
+      let html = '', lastMaker = '';
+      for (let k = 0; k < MACHINES.length; k++) {
+        const m = MACHINES[k];
+        if (m.maker !== lastMaker) { lastMaker = m.maker; const mk = makerById(m.maker); html += '<div class="g-maker">' + mk.dot + ' ' + mk.name + ' <small>' + mk.sub + '</small></div>'; }
+        const own = ownsMachine(m.id), cur = game.machine === m.id; let btn;
+        if (cur) btn = '<button class="g-btn used" disabled>使用中</button>';
+        else if (own) btn = '<button class="g-btn use" data-id="' + m.id + '">使う</button>';
+        else if (game.money >= m.price) btn = '<button class="g-btn buy" data-id="' + m.id + '">' + m.price + '万円 購入</button>';
+        else btn = '<button class="g-btn ng" disabled>' + m.price + '万円<br><small>あと' + (m.price - game.money) + '</small></button>';
+        let upgBtn = '', upgTag = '';
+        if (own) {
+          const lv = upgLv(m.id);
+          if (lv > 0) upgTag = ' <b style="color:#b8860b">+強化Lv' + lv + '</b>';
+          if (lv >= UPG_MAX) upgBtn = '<button class="g-btn maxed" disabled>強化MAX</button>';
+          else { const c = upgCost(m, lv); upgBtn = game.money >= c ? '<button class="g-btn upg" data-id="' + m.id + '">⬆強化 Lv' + lv + '→' + (lv + 1) + '<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
+        }
+        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³' + upgTag + '</small></div><div class="g-btns">' + btn + upgBtn + '</div></div>';
+      }
+      gList.innerHTML = html;
+    }
+    document.getElementById("shop").addEventListener("click", function () { renderGarage(); garage.classList.add("show"); SND.click(); });
+    document.getElementById("g-close").addEventListener("click", function () { garage.classList.remove("show"); SND.click(); });
+    garage.addEventListener("click", function (e) { if (e.target === garage) { garage.classList.remove("show"); SND.click(); } }); // 暗転部（パネル外）タップで閉じる
+    gList.addEventListener("click", function (e) {
+      const b = e.target.closest ? e.target.closest('.g-btn') : null; if (!b || !b.dataset || !b.dataset.id) return;
+      const id = b.dataset.id, m = machineById(id);
+      if (b.classList.contains('use')) { setMachine(id); renderGarage(); SND.click(); }
+      else if (b.classList.contains('upg')) { buyUpgrade(id); }
+      else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); setMachine(id); renderGarage(); SND.buy(); tryVibrate(30); checkAchievements(); }
+    });
+    machineBtn.addEventListener("click", function () { if (game.owned.length <= 1) return; const i = game.owned.indexOf(game.machine); setMachine(game.owned[(i + 1) % game.owned.length]); SND.click(); });
+    const badgesEl = document.getElementById("badges");
+    document.getElementById("achBtn").addEventListener("click", function () { renderBadges(); badgesEl.classList.add("show"); SND.click(); });
+    document.getElementById("b-close").addEventListener("click", function () { badgesEl.classList.remove("show"); SND.click(); });
+    badgesEl.addEventListener("click", function (e) { if (e.target === badgesEl) { badgesEl.classList.remove("show"); SND.click(); } }); // 暗転部（パネル外）タップで閉じる
 
-    function restore(regen) {
-      if (regen) generateTerrain(game.scene === "flat" ? "dig" : "flat"); else { heights.set(baseHeights); game.initErr = Math.max(1, targetError()); updateGhost(); }
-      game.blade = 0; game.totalDug = 0; game.won = false; pushing = false; lastDugFloor = 0; lastScore = -1;
-      active = "dozer"; dozerState.mx = 0; dozerState.mz = 6; dozerState.myaw = Math.PI; backhoeState.mx = 5; backhoeState.mz = 6; backhoeState.myaw = Math.PI;
-      game.mx = 0; game.mz = 6; game.myaw = Math.PI; game.bucket = 0; game.soil0 = currentSoil(); updateMachineUI(); setSceneHint(); syncGeometry(); refreshHUD(); save();
-    }
-
-    // ===================== 保存 =====================
-    const KEY = "doboku_mvp_v7";
-    function save() {
-      try {
-        flushActive();
-        localStorage.setItem(KEY, JSON.stringify({ g: GRID, h: Array.from(heights), b: Array.from(baseHeights), th: Array.from(targetH), scene: game.scene, tl: game.targetLevel, blade: game.blade, bucket: game.bucket, dug: game.totalDug, ds: [dozerState.mx, dozerState.mz, dozerState.myaw], bs: [backhoeState.mx, backhoeState.mz, backhoeState.myaw], act: active, ie: game.initErr, best: game.best, cy: camYaw, cp: camPitch }));
-      } catch (e) {}
-    }
+    // 保存
+    const KEY = "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 6, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine, upg: game.upg, ach: game.unlockedAch, cum: game.cum, bucket: game.bucket })); } catch (e) {} }
     function load() {
       try {
-        const raw = localStorage.getItem(KEY); if (!raw) return false; const s = JSON.parse(raw);
-        if (!s || s.g !== GRID || !s.h || s.h.length !== V * V || !s.b || s.b.length !== V * V) return false;
-        heights.set(s.h); baseHeights.set(s.b);
-        game.scene = (s.scene === "dig") ? "dig" : "flat";
-        if (s.th && s.th.length === V * V) targetH.set(s.th); else setTarget();
-        if (s.tl != null) game.targetLevel = s.tl;
-        game.blade = 0; game.totalDug = s.dug || 0; game.best = s.best || 0;   // ブレードに数字で溜める方式は廃止[親方FB]＝常に0（今押してる土は前の地面の山で表現）
-        game.initErr = Math.max(1, s.ie || targetError(baseHeights)); game.won = false;
-        if (s.ds) { dozerState.mx = s.ds[0]; dozerState.mz = s.ds[1]; dozerState.myaw = s.ds[2]; }
-        if (s.bs) { backhoeState.mx = s.bs[0]; backhoeState.mz = s.bs[1]; backhoeState.myaw = s.bs[2]; }
-        active = (s.act === "backhoe") ? "backhoe" : "dozer";
-        const ls = (active === "dozer") ? dozerState : backhoeState; game.mx = ls.mx; game.mz = ls.mz; game.myaw = ls.myaw;
+        let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
+        if (!raw) return false; const s = JSON.parse(raw);
+        if (!s || s.g !== GRID || !s.h || s.h.length !== N || s.level == null || s.level >= NLV) return false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
-        game.bucket = s.bucket || 0; game.soil0 = currentSoil(); updateGhost();
+        game.money = s.money || 0;
+        game.owned = Array.isArray(s.owned) ? s.owned.slice() : ['dozer'].concat(s.hasSub ? ['sub'] : []); // 旧v4(hasSub)からも移行
+        if (game.owned.indexOf('dozer') < 0) game.owned.unshift('dozer');
+        game.machine = (s.machine && game.owned.indexOf(s.machine) >= 0) ? s.machine : 'dozer';
+        // --- v4→v5 マイグレーション（旧セーブは新フィールド欠落→安全デフォルト） ---
+        game.upg = (s.upg && typeof s.upg === 'object') ? sanitizeUpg(s.upg) : {};
+        game.unlockedAch = (s.ach && typeof s.ach === 'object') ? s.ach : {};
+        game.cum = (s.cum && typeof s.cum === 'object') ? { dugAll: +s.cum.dugAll || 0, cleared: (s.cum.cleared | 0) } : { dugAll: 0, cleared: 0 };
+        loadLevel(s.level, s);
+        checkAchievements(true); // 移行直後＝既に条件を満たす所有/メーカー系バッジを静かに解禁（トースト無し）
         return true;
       } catch (e) { return false; }
     }
 
-    // ===================== リサイズ・ループ =====================
+    // リサイズ・ループ
     let lastW = 0, lastH = 0, rotateTimer = 0;
-    function resize() {
-      const w = window.innerWidth, h = window.innerHeight; if (w === 0 || h === 0) return;
-      renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); lastW = w; lastH = h;
-      const rot = document.getElementById("rotate");
-      if (h > w + 40) { rot.classList.add("show"); clearTimeout(rotateTimer); rotateTimer = setTimeout(() => rot.classList.remove("show"), 3500); } else rot.classList.remove("show");
-    }
+    function resize() { const w = window.innerWidth, h = window.innerHeight; if (w === 0 || h === 0) return; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); lastW = w; lastH = h; const rot = document.getElementById("rotate"); if (h > w + 40) { rot.classList.add("show"); clearTimeout(rotateTimer); rotateTimer = setTimeout(() => rot.classList.remove("show"), 3500); } else rot.classList.remove("show"); }
     window.addEventListener("resize", resize); window.addEventListener("orientationchange", resize);
-
-    let last = performance.now(), running = true;
+    let last = performance.now(), running = true, hudAccum = 0, fpsEMA = 60;
     function loop(now) {
       if (document.hidden) { running = false; return; }
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      if (dt > 0) fpsEMA = fpsEMA * 0.92 + (1 / dt) * 0.08;
       if (window.innerWidth !== lastW || window.innerHeight !== lastH) resize();
-      updateDozer(dt); updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0);
+      updateDozer(dt);
+      SND.drive(keys.up || keys.down || keys.left || keys.right || pushing, keys.down && !keys.up); // 走行音（前進=戦車キャタピラ／後退=ブル作業音）
+      const sub = dt / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); syncWater(dt);
+      updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0); updateParticles(splash, dt, 6.0);
       if (shake > 0) shake = Math.max(0, shake - dt * 0.4);
+      hudAccum += dt; if (hudAccum > 0.15) { hudAccum = 0; refreshHUD(); checkWin(); }
       updateCamera(); renderer.render(scene, camera); requestAnimationFrame(loop);
     }
-    document.addEventListener("visibilitychange", () => { if (document.hidden) { clearKeys(); } else if (!running) { running = true; last = performance.now(); requestAnimationFrame(loop); } });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) { clearKeys(); SND.drive(false, false); } else { SND.unlock(); if (!running) { running = true; last = performance.now(); requestAnimationFrame(loop); } } });
+    // 初回ユーザー操作で音を解錠（モバイル自動再生ポリシー。unlockはidempotent＝何度呼んでも安全）
+    ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) { window.addEventListener(ev, function () { SND.unlock(); }, { passive: true }); });
 
-    // ===================== 起動 =====================
-    // URL に ?dig / ?flat を付けると、その現場で新規スタート（親方の手触り確認用・付けた時だけ効く）。
-    const forceScene = /[?&]dig\b/.test(location.search) ? "dig" : (/[?&]flat\b/.test(location.search) ? "flat" : null);
-    if (forceScene) generateTerrain(forceScene);
-    else if (!load()) generateTerrain(); else setSceneHint();   // generateTerrain は末尾で setSceneHint を呼ぶ。load 成功時のみ別途呼ぶ（コールド起動の二重実行を回避）[S5点検]
-    updateMachineUI();
-    normalsDone = false; syncGeometry(); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
+    // 起動
+    if (!load()) loadLevel(0);
+    normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
 
-    // デバッグ用フック（URLに ?test を付けた時だけ有効・通常は無効）
-    if (/[?&]test\b/.test(location.search)) window.__t = { game, keys, updateDozer, updateCamera, score, targetError, maxTargetDev, finishJob, restore, camera, sampleHeight, setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting, setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, getCut: () => cutHeight, getPushing: () => pushing, targetLevel: () => game.targetLevel, terrainStats: () => { let sum = 0, mx = -1e9, mn = 1e9; for (let i = 0; i < V * V; i++) { sum += heights[i]; if (heights[i] > mx) mx = heights[i]; if (heights[i] < mn) mn = heights[i]; } return { sum, mx, mn }; }, soilTotal: () => currentSoil(), soil0: () => game.soil0, soilDrift: () => currentSoil() - game.soil0, bucket: () => game.bucket, active: () => active, dozerPos: () => ({ mx: dozerState.mx, mz: dozerState.mz, myaw: dozerState.myaw }), backhoePos: () => ({ mx: backhoeState.mx, mz: backhoeState.mz, myaw: backhoeState.myaw }), doSwitch: () => switchMachine(), scene: () => game.scene, sampleTarget, finishMaxDev: () => finishMaxDev(), bhPushId: () => bhPushId, maxDevRaw: () => { let m = 0; for (let j = 1; j < GRID; j++) for (let i = 1; i < GRID; i++) { const idx = j * V + i; const d = Math.abs(heights[idx] - targetH[idx]); if (d > m) m = d; } return m; }, solve: () => { heights.set(targetH); game.blade = 0; game.bucket = 0; syncGeometry(); refreshHUD(); }, solveNoisy: (amp, bias) => { for (let idx = 0; idx < V * V; idx++) heights[idx] = Math.max(MIN_H, Math.min(MAX_H, targetH[idx] + (Math.random() - 0.5) * 2 * (amp || 0) + (bias || 0))); game.blade = 0; game.bucket = 0; syncGeometry(); refreshHUD(); }, targetSoil: () => { let s = 0; for (let i = 0; i < V * V; i++) s += targetH[i]; return s * CELL_AREA; } };
+    // デバッグ用フック
+    if (/[?&]test\b/.test(location.search)) window.__t = {
+      game, keys, heights, waterD, simWater, syncWater, syncGeometry, gradePush, updateDozer, camera, sampleHeight, sampleWater,
+      totalWater, zoneVol, zoneMaxDev, zoneFlatness, levelDone, checkWin, loadLevel, refreshHUD, N, V, GRID,
+      getLevel: () => curLevel, getLV: () => LV, getFps: () => fpsEMA,
+      setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting,
+      setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, setGF: (v) => { GF = v; }, setDamp: (v) => { FLUX_DAMP = v; },
+      getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, getOwned: () => game.owned.slice(), getBlade: () => game.blade, curM: () => curM(), MACHINES: MACHINES, REWARD: CLEAR_REWARD,
+      getBucket: () => game.bucket, backhoeDig: (dt) => backhoeDig(dt || 0.05), backhoeDump: (dt) => backhoeDump(dt || 0.05), kindOf: (id) => machineKind(id ? machineById(id) : curM()), bhMode: () => bhMode,
+      soilTotal: () => { let s = 0; for (let i = 0; i < N; i++) s += heights[i]; return s * CELL_AREA + game.blade + game.bucket; },
+      setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, setBlade: (v) => { game.blade = v; }, setBucket: (v) => { game.bucket = v; },
+      buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
+      setMachine: (id) => { if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); },
+      look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), id: curM().id, meshCount: activeModel ? countMeshes(activeModel) : 0, blade: !!activeBlade, arm: !!activeArm, loader: !!activeLoader, dump: !!activeDump }),
+      bladePilePose: () => ({ y: +bladePile.position.y.toFixed(3), sx: +bladePile.scale.x.toFixed(3), sy: +bladePile.scale.y.toFixed(3), sz: +bladePile.scale.z.toFixed(3), visible: bladePile.position.y > -900, px: +bladePile.position.x.toFixed(2), pz: +bladePile.position.z.toFixed(2) }),
+      partPose: () => ({ bladeY: activeBlade ? +activeBlade.position.y.toFixed(4) : null, bladeRx: activeBlade ? +activeBlade.rotation.x.toFixed(4) : null, boomRx: activeArm ? +activeArm.boom.rotation.x.toFixed(4) : null, stickRx: activeArm ? +activeArm.stick.rotation.x.toFixed(4) : null, bucketRx: activeArm ? +activeArm.bucket.rotation.x.toFixed(4) : null }),
+      pulseBlade: () => { digFx(true); updateDozer(0.016); return window.__t.partPose(); },
+      armStep: (action, dt) => { animateArm(dt || 0.05, action || null); return window.__t.partPose(); },
+      getShake: () => shake,
+      getUpg: () => JSON.parse(JSON.stringify(game.upg)), getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
+      buyUpgrade: (id) => buyUpgrade(id), upgCostOf: (id) => upgCost(machineById(id), upgLv(id)), upgLvOf: (id) => upgLv(id),
+      effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), MAKERS: MAKERS,
+      fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
+      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
+    };
   })();
   </script>
 </body>
