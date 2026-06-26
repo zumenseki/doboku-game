@@ -773,7 +773,7 @@
     const el = renderer.domElement;
     let lookId = null, lookX = 0, lookY = 0;
     el.addEventListener("pointerdown", (e) => { if (lookId !== null) return; lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {} });
-    el.addEventListener("pointermove", (e) => { if (e.pointerId !== lookId) return; e.preventDefault(); camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }); // 横回転は重機の向きに自動追従（迷子防止）。上下ドラッグで見下ろし角だけ調整
+    el.addEventListener("pointermove", (e) => { if (e.pointerId !== lookId) return; e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }); // カメラは手動（ドラッグで左右回転＋上下見下ろし・自動追従なし）
     const endLook = (e) => { if (e.pointerId === lookId) lookId = null; };
     el.addEventListener("pointerup", endLook); el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
     window.addEventListener("touchmove", (e) => { if (lookId !== null) e.preventDefault(); }, { passive: false });
@@ -905,8 +905,6 @@
         else if (canStand(game.mx, cz)) { game.mz = cz; moving = true; }
       }
       const gy = sampleHeight(game.mx, game.mz); dozer.position.set(game.mx, gy, game.mz); dozer.rotation.y = game.myaw;
-      // カメラを重機の後ろへ自動追従（前が常に画面の上＝迷わない）。最短角度でスムーズに。
-      { let tg = game.myaw + Math.PI, dd = tg - camYaw; while (dd > Math.PI) dd -= 2 * Math.PI; while (dd < -Math.PI) dd += 2 * Math.PI; camYaw += dd * Math.min(1, dt * 8); }
       // ブレード前の土の山[本体移植]：ブル系で持ってる土に応じて前に盛り上がる。バックホウ系は非表示。
       if (machineKind(curM()) !== 'backhoe' && game.blade > 0.15) {
         const cap = curM().bladeCap, pf = Math.min(1, game.blade / cap), sc = machineScale(curM());
