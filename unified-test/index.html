@@ -369,7 +369,7 @@
     geo.setIndex(indices);
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
     scene.add(ground);
-    const cLow = new THREE.Color(0x6f9a4d), cMid = new THREE.Color(0xb08245), cHigh = new THREE.Color(0x6e4a23), cWet = new THREE.Color(0x4a5f3a), tmpC = new THREE.Color();
+    const cLow = new THREE.Color(0xc2a06c), cMid = new THREE.Color(0x9a6e3e), cHigh = new THREE.Color(0x5f3e1e), cWet = new THREE.Color(0x47301c), tmpC = new THREE.Color();  // 土寄せ[親方FB もっと土っぽく]：低=乾いた土/中=茶土/高=濃い掘りたて土/濡れ=黒っぽい泥
     function colorFor(h, wet, out) {
       const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
       if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
@@ -387,7 +387,7 @@
         const gi = idx % V, gj = (idx / V) | 0;
         const hl = heights[gi > 0 ? idx - 1 : idx], hr = heights[gi < GRID ? idx + 1 : idx], hd = heights[gj > 0 ? idx - V : idx], hu = heights[gj < GRID ? idx + V : idx];
         const slope = (Math.abs(hl - hr) + Math.abs(hd - hu)) * 0.5;
-        const mul = Math.max(0.5, 1 - Math.min(0.3, slope * 0.16) + grain[idx] * (wet ? 0.02 : 0.05));
+        const mul = Math.max(0.42, 1 - Math.min(0.42, slope * 0.24) + grain[idx] * (wet ? 0.04 : 0.09));  // 土寄せ[親方FB]：斜面の陰影と粒のザラつきを強める
         colors[idx * 3] = Math.min(1, tmpC.r * mul); colors[idx * 3 + 1] = Math.min(1, tmpC.g * mul); colors[idx * 3 + 2] = Math.min(1, tmpC.b * mul);
       }
       geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
@@ -668,7 +668,7 @@
     // ブレード前の「押した土の山」[本体移植 2026-06-25]：ブル系で持っている土(game.blade)に応じて前に盛り上がる茶色の山。見た目専用（体積は地面/blade側で管理＝二重計上しない）。
     const pileGeo = new THREE.ConeGeometry(1.1, 1, 9);
     { const pa = pileGeo.attributes.position; for (let pk = 0; pk < pa.count; pk++) { const py = pa.getY(pk); if (py < 0.4) { pa.setX(pk, pa.getX(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setZ(pk, pa.getZ(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setY(pk, py + (Math.random() - 0.5) * 0.12); } } pileGeo.computeVertexNormals(); }  // 裾をデコボコに＝積んだ土塊っぽいシルエット（位置/拡縮は updateDozer 側で不変）
-    const bladePile = new THREE.Mesh(pileGeo, new THREE.MeshStandardMaterial({ color: 0x7d5320, flatShading: true, roughness: 1 }));
+    const bladePile = new THREE.Mesh(pileGeo, new THREE.MeshStandardMaterial({ color: 0x6e481f, flatShading: true, roughness: 1 }));
     bladePile.position.y = -999; scene.add(bladePile);
 
     // 粒子（土ぼこり・土塊・水しぶき）。丸くフワッとした見た目にするため、手続き生成の放射状グラデ画像をスプライトに使う（外部ファイル不要）。
