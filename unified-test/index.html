@@ -715,22 +715,16 @@
       }
       function build() {
         master = ctx.createGain(); master.gain.value = muted ? 0 : 0.5; master.connect(ctx.destination);
-        engGain = ctx.createGain(); engGain.gain.value = 0.0;
-        engLP = ctx.createBiquadFilter(); engLP.type = 'lowpass'; engLP.frequency.value = 420; engLP.Q.value = 0.7;
-        engOsc = ctx.createOscillator(); engOsc.type = 'sawtooth'; engOsc.frequency.value = 48;
-        engVibGain = ctx.createGain(); engVibGain.gain.value = 6;
-        engVibOsc = ctx.createOscillator(); engVibOsc.type = 'sine'; engVibOsc.frequency.value = 7;
-        engVibOsc.connect(engVibGain); engVibGain.connect(engOsc.frequency);
-        engOsc.connect(engLP); engLP.connect(engGain); engGain.connect(master);
-        engOsc.start(); engVibOsc.start();
+        // エンジン低音（常時の低い唸り）は廃止[親方FB エンジンの低音がずっと鳴っているので消す]＝オシレータ自体を作らない。
         const nz = ctx.createBufferSource(); nz.buffer = makeNoiseBuffer(); nz.loop = true;
         digBus = ctx.createBiquadFilter(); digBus.type = 'bandpass'; digBus.frequency.value = 900; digBus.Q.value = 0.8;
         digGain = ctx.createGain(); digGain.gain.value = 0.0;
         nz.connect(digBus); digBus.connect(digGain); digGain.connect(master);
         nz.start();
         // 走行音＝本物の録音（前進=戦車キャタピラ track-fwd.mp3 / 後退=ブル作業音 track-rev.mp3）。取得→デコード→ループ再生し、gain で鳴らし分け（停止中は0／mute は master 経由）。
-        fwdGain = ctx.createGain(); fwdGain.gain.value = 0; fwdGain.connect(master);
-        revGain = ctx.createGain(); revGain.gain.value = 0; revGain.connect(master);
+        const driveHP = ctx.createBiquadFilter(); driveHP.type = 'highpass'; driveHP.frequency.value = 170; driveHP.Q.value = 0.5; driveHP.connect(master);   // 走行音の低い唸り(ブーン)をカット[親方FB エンジンの低音を消す]
+        fwdGain = ctx.createGain(); fwdGain.gain.value = 0; fwdGain.connect(driveHP);
+        revGain = ctx.createGain(); revGain.gain.value = 0; revGain.connect(driveHP);
         loadDrive('track-fwd.mp3', function (b) { fwdSrc = ctx.createBufferSource(); fwdSrc.buffer = b; fwdSrc.loop = true; fwdSrc.connect(fwdGain); fwdSrc.start(); });
         loadDrive('track-rev.mp3', function (b) { revSrc = ctx.createBufferSource(); revSrc.buffer = b; revSrc.loop = true; revSrc.connect(revGain); revSrc.start(); });
         ready = true;
@@ -754,7 +748,7 @@
         toggleMute: function () { muted = !muted; try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (_) {} if (ready) master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.02); return muted; },
         drive: function (moving, rev) {
           if (!ready) return;
-          const now = ctx.currentTime, VOL = 0.85;
+          const now = ctx.currentTime, VOL = 0.4;
           // 走行音＝本物の録音を gain で鳴らし分け（前進=track-fwd / 後退=track-rev / 停止=無音）。mute は master が担当。
           if (fwdGain) fwdGain.gain.setTargetAtTime((moving && !rev) ? VOL : 0, now, 0.06);
           if (revGain) revGain.gain.setTargetAtTime((moving && rev) ? VOL : 0, now, 0.06);
