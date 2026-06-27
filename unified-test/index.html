@@ -725,9 +725,9 @@
         nz.connect(digBus); digBus.connect(digGain); digGain.connect(master);
         nz.start();
         // 走行音＝本物の録音（前進=戦車キャタピラ track-fwd.mp3 / 後退=ブル作業音 track-rev.mp3）。取得→デコード→ループ再生し、gain で鳴らし分け（停止中は0／mute は master 経由）。
-        const driveHP = ctx.createBiquadFilter(); driveHP.type = 'highpass'; driveHP.frequency.value = 170; driveHP.Q.value = 0.5; driveHP.connect(master);   // 走行音の低い唸り(ブーン)をカット[親方FB エンジンの低音を消す]
-        fwdGain = ctx.createGain(); fwdGain.gain.value = 0; fwdGain.connect(driveHP);
-        revGain = ctx.createGain(); revGain.gain.value = 0; revGain.connect(driveHP);
+        // 走行音は録音をそのまま使う（前回の170Hz低音カットは低音主体の録音の芯まで削って実質無音化→撤去[親方FB「音が聞こえない」]）。小ささは drive() の VOL で調整。
+        fwdGain = ctx.createGain(); fwdGain.gain.value = 0; fwdGain.connect(master);
+        revGain = ctx.createGain(); revGain.gain.value = 0; revGain.connect(master);
         loadDrive('track-fwd.mp3', function (b) { fwdSrc = ctx.createBufferSource(); fwdSrc.buffer = b; fwdSrc.loop = true; fwdSrc.connect(fwdGain); fwdSrc.start(); });
         loadDrive('track-rev.mp3', function (b) { revSrc = ctx.createBufferSource(); revSrc.buffer = b; revSrc.loop = true; revSrc.connect(revGain); revSrc.start(); });
         ready = true;
@@ -751,7 +751,7 @@
         toggleMute: function () { muted = !muted; try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (_) {} if (ready) master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.02); return muted; },
         drive: function (moving, rev) {
           if (!ready) return;
-          const now = ctx.currentTime, VOL = 0.4;
+          const now = ctx.currentTime, VOL = 0.6;
           // 走行音＝本物の録音を gain で鳴らし分け（前進=track-fwd / 後退=track-rev / 停止=無音）。mute は master が担当。
           if (fwdGain) fwdGain.gain.setTargetAtTime((moving && !rev) ? VOL : 0, now, 0.06);
           if (revGain) revGain.gain.setTargetAtTime((moving && rev) ? VOL : 0, now, 0.06);
@@ -765,7 +765,8 @@
         },
         click: function () { if (!ready || muted) return; beep(880, ctx.currentTime, 0.05, 0.18, 'square'); },
         buy: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(660, t, 0.08, 0.2, 'triangle'); beep(990, t + 0.07, 0.1, 0.2, 'triangle'); },
-        win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); }
+        win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); },
+        _diag: function () { return { ready: ready, ctx: ctx ? ctx.state : 'none', muted: muted, master: master ? +master.gain.value.toFixed(3) : null, fwdLoaded: !!fwdSrc, revLoaded: !!revSrc, fwdGain: fwdGain ? +fwdGain.gain.value.toFixed(3) : null, revGain: revGain ? +revGain.gain.value.toFixed(3) : null }; }
       };
     })();
 
@@ -1235,7 +1236,7 @@
       getShake: () => shake,
       getUpg: () => JSON.parse(JSON.stringify(game.upg)), getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
       buyUpgrade: (id) => buyUpgrade(id), upgCostOf: (id) => upgCost(machineById(id), upgLv(id)), upgLvOf: (id) => upgLv(id),
-      effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), MAKERS: MAKERS,
+      effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
     };
