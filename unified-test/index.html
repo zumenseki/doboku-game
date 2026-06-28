@@ -981,8 +981,8 @@
       }
       const dumping = acting && truckLoad > 0.0001 && !game.won;
       truckTilt = Math.max(0, Math.min(1, truckTilt + (dumping ? dt * 3 : -dt * 3)));   // ダンプアップ動作[親方FB]
-      if (dumping) {                          // 下ろす：荷台の土を前方へ放出（荷台を持ち上げながら）
-        const s = Math.sin(truckYaw), c = Math.cos(truckYaw), fx = truckX + s * 2.4, fz = truckZ + c * 2.4;
+      if (dumping) {                          // 下ろす：荷台の土を後方へ放出（ダンプは後ろに落とす・荷台を持ち上げながら）[親方FB]
+        const s = Math.sin(truckYaw), c = Math.cos(truckYaw), fx = truckX - s * 2.6, fz = truckZ - c * 2.6;
         const ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(truckLoad, 45 * dt);
         const left = depositInto(fx, fz, 2.1, amt, ceil); truckLoad = Math.max(0, truckLoad - (amt - left));
         const gy = sampleHeight(fx, fz); for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 2.2, 1.2); SND.dig(false); shake = Math.min(0.08, shake + 0.02); syncGeometry();
