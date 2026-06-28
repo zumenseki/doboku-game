@@ -1170,7 +1170,8 @@
     badgesEl.addEventListener("click", function (e) { if (e.target === badgesEl) { badgesEl.classList.remove("show"); SND.click(); } }); // 暗転部（パネル外）タップで閉じる
 
     // 保存
-    const KEY = "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
+    const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
+    const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
     function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 6, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine, upg: game.upg, ach: game.unlockedAch, cum: game.cum, bucket: game.bucket })); } catch (e) {} }
     function load() {
       try {
@@ -1216,6 +1217,7 @@
 
     // 起動
     if (!load()) loadLevel(0);
+    if (UNLOCK_ALL) { game.owned = MACHINES.map(function (m) { return m.id; }); if (game.money < 9000000) game.money = 9999999; applyMachine(); refreshHUD(); }   // 検証用(?all)：18台全解放+資金潤沢[親方FB]
     normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
 
     // デバッグ用フック
