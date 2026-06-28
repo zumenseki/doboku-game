@@ -53,7 +53,7 @@
   .g-btn.buy { background:var(--fill); color:#fff; } .g-btn.use { background:var(--water); color:#fff; }
   .g-btn.used { background:#cdeccd; color:var(--ink); } .g-btn.ng { background:#e6e6e6; color:#999; }
   #g-close { margin-top:4px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
-  #shop { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #shop { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 96px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #machineBtn { position:fixed; left:calc(env(safe-area-inset-left,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:8px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; display:flex; flex-direction:column; align-items:center; line-height:1.1; }
   #truckBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 24px); bottom:calc(env(safe-area-inset-bottom,0px) + 128px); background:#caa14a; color:#3a2c0a; border:none; border-radius:14px; padding:11px 14px; font-weight:800; box-shadow:0 4px 12px rgba(0,0,0,.25); cursor:pointer; z-index:4; font-size:14px; }
   #machineBtn span { font-size:9px; opacity:.7; margin-top:1px; }
@@ -62,7 +62,7 @@
   #lv-badge { background:rgba(32,48,58,.82); color:#fff; }
   #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 80px); left:50%; transform:translateX(-50%); width:min(82vw,380px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); }
   #goal .label { font-size:12px; font-weight:700; color:var(--ink); opacity:.85; margin-bottom:4px; line-height:1.45; }
-  #bar { height:9px; background:#d6dee2; border-radius:6px; overflow:hidden; }
+  #bar { display:none; }   /* [親方FB] 中央の進捗バーは非表示（進捗はバッジの%で表示） */
   #bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#7db5ec,#2f7fd6); transition:width .2s ease; }
   #dpad { position:fixed; left:calc(env(safe-area-inset-left,0px) + 16px); bottom:calc(env(safe-area-inset-bottom,0px) + 18px); display:grid; grid-template-columns:repeat(3,56px); grid-template-rows:repeat(3,56px); gap:6px; z-index:4; }
   .dbtn { border:none; border-radius:14px; background:var(--panel); color:var(--ink); font-size:24px; font-weight:900; box-shadow:0 3px 10px rgba(0,0,0,.2); display:flex; align-items:center; justify-content:center; touch-action:none; }
@@ -71,7 +71,7 @@
   #act { position:fixed; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 22px); width:96px; height:96px; border-radius:50%; border:none; color:#fff; font-weight:900; font-size:21px; background:var(--dig); box-shadow:0 6px 16px rgba(0,0,0,.28); cursor:pointer; line-height:1.1; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; touch-action:none; }
   #act span { font-size:11px; font-weight:700; opacity:.9; }
   #act.on { transform:scale(.93); filter:brightness(1.12); }
-  #reset { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 12px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:10px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #reset { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 56px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:10px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #reset:active { transform:scale(.95); }
   #hint { position:fixed; left:50%; bottom:96px; transform:translateX(-50%); background:rgba(0,0,0,.55); color:#fff; padding:9px 16px; border-radius:18px; font-weight:700; font-size:13px; pointer-events:none; transition:opacity .5s ease; text-align:center; max-width:86vw; line-height:1.6; }
   #win { position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; background:rgba(10,30,40,.55); color:#fff; text-align:center; z-index:8; gap:14px; }
@@ -82,11 +82,16 @@
   #again { margin-top:6px; background:var(--water); color:#fff; border:none; border-radius:14px; padding:14px 30px; font-weight:900; font-size:18px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,.3); }
   #rotate { position:fixed; top:calc(env(safe-area-inset-top,8px) + 96px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,.6); color:#fff; padding:8px 14px; border-radius:16px; font-weight:700; font-size:13px; pointer-events:none; opacity:0; transition:opacity .4s ease; z-index:6; white-space:nowrap; }
   #rotate.show { opacity:1; }
-  #mute { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 92px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:16px; line-height:1; }
-  #achBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 132px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #mute { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 136px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:16px; line-height:1; }
+  #achBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 176px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #mute:active, #achBtn:active { transform:scale(.95); } #mute.off { opacity:.55; }
-  #mapBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 172px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #mapBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 216px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #mapBtn:active { transform:scale(.95); }
+  /* [親方FB] 右側ボタン(最初から/ショップ/音/実績/マップ)は☰メニューで開閉。普段は隠す＝画面スッキリ */
+  #menuBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 12px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:5; font-size:16px; line-height:1; }
+  #menuBtn:active { transform:scale(.95); }
+  #reset, #shop, #mute, #achBtn, #mapBtn { display:none; }
+  body.menu-open #reset, body.menu-open #shop, body.menu-open #mute, body.menu-open #achBtn, body.menu-open #mapBtn { display:block; }
   #mapsel { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
   #mapsel.show { display:flex; animation:fade .3s ease; }
   .m-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -136,6 +141,7 @@
   <button id="mute" aria-label="音">🔊</button>
   <button id="achBtn">🏅 実績</button>
   <button id="mapBtn">🗺 マップ</button>
+  <button id="menuBtn" aria-label="メニュー">☰</button>
   <div id="hint">…</div>
   <div id="rotate">📱 横向きがおすすめ</div>
   <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
@@ -1408,6 +1414,10 @@
       const n = +c.dataset.n; if (n > game.unlocked) { SND.click(); return; }   // ロック中は選べない
       mapselEl.classList.remove("show"); loadLevel(n); SND.click();
     });
+
+    // ===================== 右側ボタンの☰メニュー開閉[親方FB] =====================
+    document.getElementById("menuBtn").addEventListener("click", function () { document.body.classList.toggle("menu-open"); SND.click(); });
+    ['reset', 'shop', 'mute', 'achBtn', 'mapBtn'].forEach(function (id) { const b = document.getElementById(id); if (b) b.addEventListener("click", function () { document.body.classList.remove("menu-open"); }); });   // メニュー項目を押したら自動で閉じる＝画面スッキリ
 
     // 保存
     const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
