@@ -85,6 +85,16 @@
   #mute { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 92px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:16px; line-height:1; }
   #achBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 132px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #mute:active, #achBtn:active { transform:scale(.95); } #mute.off { opacity:.55; }
+  #mapBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 172px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #mapBtn:active { transform:scale(.95); }
+  #mapsel { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #mapsel.show { display:flex; animation:fade .3s ease; }
+  .m-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .m-card { display:flex; align-items:center; gap:9px; padding:9px; border-radius:12px; background:#f2f5f7; cursor:pointer; }
+  .m-card.cur { background:#e2f0e2; box-shadow:inset 0 0 0 2px #9ccf9c; }
+  .m-card.locked { opacity:.5; cursor:default; }
+  .m-card .m-ic { font-size:20px; flex:0 0 auto; }
+  .m-card .m-tx { line-height:1.25; font-size:13px; } .m-card .m-tx small { display:block; color:#667; font-size:11px; margin-top:2px; }
   .g-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
   .g-btn.upg { background:#e89a2a; color:#fff; } .g-btn.maxed { background:#f0d8a0; color:#7a5a10; }
   #badges { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
@@ -105,7 +115,7 @@
   <div id="hud-top">
     <div class="badge" id="lv-badge">LV<span id="lvnum">1</span></div>
     <div class="badge" id="b-work">🏗 <span id="workLabel">作業場</span> <span class="v" id="work">0</span><small>%</small></div>
-    <div class="badge" id="b-main">💧 <span id="mainLabel">ため池</span> <span class="v" id="basin">0</span><small>/<span id="basinT">0</span> m³</small></div>
+    <div class="badge" id="b-main"><span id="mainIcon">💧</span> <span id="mainLabel">ため池</span> <span class="v" id="basin">0</span><small>/<span id="basinT">0</span> m³</small></div>
     <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
     <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
     <div class="badge" id="blade-badge">🪣 <span class="v" id="blade">0</span><small>/<span id="bladeCap">12</span> m³</small></div>
@@ -124,10 +134,12 @@
   <button id="truckBtn">🚛 トラック召喚</button>
   <button id="mute" aria-label="音">🔊</button>
   <button id="achBtn">🏅 実績</button>
+  <button id="mapBtn">🗺 マップ</button>
   <div id="hint">…</div>
   <div id="rotate">📱 横向きがおすすめ</div>
   <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
   <div id="badges"><div class="b-box"><h2>🏅 実績バッジ</h2><div id="b-list"></div><button id="b-close">とじる</button></div></div>
+  <div id="mapsel"><div class="b-box"><h2>🗺 マップ選択</h2><div id="m-list" class="m-grid"></div><button id="m-close">とじる</button></div></div>
   <div id="achToast"></div>
   <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
 
@@ -138,14 +150,15 @@
     if (!window.THREE) { document.body.innerHTML = "<p style='color:#fff;padding:20px'>3D部品(Three.js)の読み込みに失敗しました。</p>"; return; }
 
     // ===================== 設定 =====================
-    const MAP_SCALE = 3;   // マップ拡大[親方FB 面積9倍=一辺3倍]。GRID/WORLD/ゾーン/地形生成を一括スケール。重さは simWater の乾きスキップで対策。
-    const GRID = 36 * MAP_SCALE, WORLD = 24 * MAP_SCALE, V = GRID + 1, N = V * V;
-    const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
+    const GRID_MAX = 108, V_MAX = GRID_MAX + 1, N_MAX = V_MAX * V_MAX;   // 大マップ(L6-10)用の最大寸法。全配列はこのサイズで確保し、レベル別の実寸 GRID/WORLD で使う部分だけ使う。
+    let GRID = 36, WORLD = 24, V = GRID + 1, N = V * V;                  // レベル別に可変（L1-5=36/24・L6-10=108/72）。loadLevel→rebuildGrid() で設定。
+    let CELL_AREA = (WORLD / GRID) * (WORLD / GRID);                     // セル面積。WORLD/GRID は常に2/3＝CELL_AREA は全レベル共通(≈0.444)。
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
     const FLAT_TOL = 0.4;
-    const CAM_DIST = 34, CAM_MIN = 12, CAM_MAX = 90, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;   // 大マップ[親方FB]：引きを大きく(全体俯瞰可)・初期も少し引き
+    const CAM_DIST = 26, CAM_MIN = 12, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
+    let CAM_MAX = 46;   // 大マップ(L6-10)では rebuildGrid で広げる（小マップは46）
     // 水[追加]
     const WATER_EPS = 0.02, RENDER_EPS = 0.0015, SHALLOW_GROUND = -0.1, PLAIN_MIN = 0.08;
     let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
@@ -246,19 +259,19 @@
     ];
 
     // ===================== データ =====================
-    const heights = new Float32Array(N), baseHeights = new Float32Array(N);
-    const vx = new Float32Array(N), vz = new Float32Array(N);
-    const passRef = new Float32Array(N), passTag = new Int32Array(N);
-    const waterD = new Float32Array(N);
-    const fL = new Float32Array(N), fR = new Float32Array(N), fT = new Float32Array(N), fB = new Float32Array(N);
-    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 } };
+    const heights = new Float32Array(N_MAX), baseHeights = new Float32Array(N_MAX);
+    const vx = new Float32Array(N_MAX), vz = new Float32Array(N_MAX);
+    const passRef = new Float32Array(N_MAX), passTag = new Int32Array(N_MAX);
+    const waterD = new Float32Array(N_MAX);
+    const fL = new Float32Array(N_MAX), fR = new Float32Array(N_MAX), fT = new Float32Array(N_MAX), fB = new Float32Array(N_MAX);
+    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {} };
     let camYaw = 0, camPitch = 0.95, camDist = CAM_DIST, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
 
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) { const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD; }
     function gauss(x, z, cx, cz, h, s) { const d2 = (x - cx) * (x - cx) + (z - cz) * (z - cz); return h * Math.exp(-d2 / (2 * s * s)); }
     function rnd2(k) { return (Math.random() - 0.5) * k; }
-    function rect(i0, i1, j0, j1) { const s = MAP_SCALE; return { i0: Math.round(i0 * s), i1: Math.round(i1 * s), j0: Math.round(j0 * s), j1: Math.round(j1 * s) }; }   // GRIDスケールに合わせ自動拡大[親方FB]
+    function rect(i0, i1, j0, j1) { return { i0: i0, i1: i1, j0: j0, j1: j1 }; }
     function inRect(i, j, z) { return i >= z.i0 && i <= z.i1 && j >= z.j0 && j <= z.j1; }
     function worldX(i) { return (i / GRID - 0.5) * WORLD; }
     function worldZ(j) { return (j / GRID - 0.5) * WORLD; }
@@ -272,23 +285,25 @@
     function zoneMaxDev(z) { const mean = zoneMean(z); let m = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > m) m = d; }); return m; }
     function zoneFlatness(z) { const mean = zoneMean(z); let s = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > FLAT_TOL) { const e = d - FLAT_TOL; s += e * e * CELL_AREA; } }); return s; }
     function zoneExcessAbove(arr, z, thr) { let s = 0; zoneEach(z, (idx) => { const e = arr[idx] - thr; if (e > 0) s += e * CELL_AREA; }); return s; }   // 掘り取り[LV5]：閾値より上に残っている土の量（=残っている山）。穴(閾値以下)は数えない＝バックホウ向き。
+    function zoneDeficitBelow(arr, z, thr) { let s = 0; zoneEach(z, (idx) => { const e = thr - arr[idx]; if (e > 0) s += e * CELL_AREA; }); return s; }   // 埋立[L6]：閾値より下に足りない土の量（=埋めるべき窪み）。盛り上がり(閾値以上)は数えない。
+    function zoneToTarget(arr, z, target) { let work = 0, mx = 0; zoneEach(z, (idx) => { const d = Math.abs(arr[idx] - target); if (d > mx) mx = d; const e = d - FLAT_TOL; if (e > 0) work += e * CELL_AREA; }); return { work: work, maxDev: mx }; }   // 整地[L7/L8/L10]：目標高さから FLAT_TOL 超ぶんのズレ土量(=残る土工量)と最大ズレ
     function totalWater() { let s = 0; for (let idx = 0; idx < N; idx++) s += waterD[idx]; return s * CELL_AREA; }
 
     // ===================== レベル地形生成 =====================
     function genDrain(L) { // L0 / L3: 調整池（作業場を排水+整地, ため池に貯水）
       clearWater();
-      const s = MAP_SCALE, A = L.A, B = L.B, bcx = worldX((B.i0 + B.i1) / 2), bcz = worldZ((B.j0 + B.j1) / 2), sc = L.bumpScale;
+      const A = L.A, B = L.B, bcx = worldX((B.i0 + B.i1) / 2), bcz = worldZ((B.j0 + B.j1) / 2), sc = L.bumpScale;
       const bumps = [
-        { x: -3.5 * s + rnd2(2 * s), z: 5.5 * s + rnd2(1.5 * s), h: 1.3 * sc, s: 1.2 * s },
-        { x: 3.0 * s + rnd2(2 * s), z: 7.5 * s + rnd2(1.5 * s), h: 1.2 * sc, s: 1.2 * s },
-        { x: -1.0 * s + rnd2(2 * s), z: 9.0 * s + rnd2(1.5 * s), h: 1.1 * sc, s: 1.1 * s },
-        { x: 3.5 * s + rnd2(2 * s), z: 4.5 * s + rnd2(1.5 * s), h: 1.0 * sc, s: 1.1 * s }
+        { x: -3.5 + rnd2(2), z: 5.5 + rnd2(1.5), h: 1.3 * sc, s: 1.2 },
+        { x: 3.0 + rnd2(2), z: 7.5 + rnd2(1.5), h: 1.2 * sc, s: 1.2 },
+        { x: -1.0 + rnd2(2), z: 9.0 + rnd2(1.5), h: 1.1 * sc, s: 1.1 },
+        { x: 3.5 + rnd2(2), z: 4.5 + rnd2(1.5), h: 1.0 * sc, s: 1.1 }
       ];
       for (let idx = 0; idx < N; idx++) {
         const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
         let h = rnd2(0.1);
-        h -= gauss(x, z, bcx, bcz, 3.4, 2.6 * s);   // ため池の深い穴
-        h += gauss(x, z, 0, 0, 1.2, 2.2 * s);        // 土手
+        h -= gauss(x, z, bcx, bcz, 3.4, 2.6);   // ため池の深い穴
+        h += gauss(x, z, 0, 0, 1.2, 2.2);        // 土手
         if (inRect(i, j, A)) { const t = (j - A.j0) / (A.j1 - A.j0); h = -0.7 + 0.4 * t + rnd2(0.08); for (let b = 0; b < bumps.length; b++) h += gauss(x, z, bumps[b].x, bumps[b].z, bumps[b].h, bumps[b].s); }
         heights[idx] = clamp(h);
       }
@@ -296,28 +311,28 @@
     }
     function genFlow(L) { // L1: 通水（奥の水を尾根を掘って手前へ流す）
       clearWater();
-      const s = MAP_SCALE, S = L.S, D = L.B, scz = worldZ((S.j0 + S.j1) / 2), dcz = worldZ((D.j0 + D.j1) / 2);
+      const S = L.S, D = L.B, scz = worldZ((S.j0 + S.j1) / 2), dcz = worldZ((D.j0 + D.j1) / 2);
       for (let idx = 0; idx < N; idx++) {
         const x = vx[idx], z = vz[idx];
         let h = rnd2(0.1);
-        h -= gauss(x, z, 0, scz, 1.6, 3.0 * s);   // 奥の水たまり（上流）
-        h += gauss(x, z, 0, 0, 2.0, 1.8 * s);      // 中央の尾根（掘る対象）
-        h -= gauss(x, z, 0, dcz, 2.6, 3.0 * s);    // 手前の窪み（下流・より深い）
+        h -= gauss(x, z, 0, scz, 1.6, 3.0);   // 奥の水たまり（上流）
+        h += gauss(x, z, 0, 0, 2.0, 1.8);      // 中央の尾根（掘る対象）
+        h -= gauss(x, z, 0, dcz, 2.6, 3.0);    // 手前の窪み（下流・より深い）
         heights[idx] = clamp(h);
       }
       zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
     }
     function genDam(L) { // L2: ため池づくり（盛土で堤防+水路で引き込み）
       clearWater();
-      const s = MAP_SCALE, S = L.S, P = L.B;
+      const S = L.S, P = L.B;
       for (let idx = 0; idx < N; idx++) {
         const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.1);
-        if (i < 10 * s || i > 26 * s) h = 0.7 + rnd2(0.1);        // 左右の壁（水路を挟む）
+        if (i < 10 || i > 26) h = 0.7 + rnd2(0.1);        // 左右の壁（水路を挟む）
         else if (j >= S.j0 && j <= S.j1) h = -1.5 + rnd2(0.1); // 奥の水たまり（水源）
-        else if (j >= 10 * s && j <= 14 * s) h = 0.8 + rnd2(0.1);  // 水源とため池の間の土手（掘る）
+        else if (j >= 10 && j <= 14) h = 0.8 + rnd2(0.1);  // 水源とため池の間の土手（掘る）
         else if (j >= P.j0 && j <= P.j1) h = -0.8 + rnd2(0.1); // ため池の底（浅い窪み）
-        else if (j >= 27 * s && j <= 28 * s) h = -0.6 + rnd2(0.05);  // すき間（堤防で盛る対象＝ここから漏れる）
-        else if (j >= 29 * s) h = -2.5 + rnd2(0.1);            // 手前の落ち先（漏れた水が溜まる）
+        else if (j >= 27 && j <= 28) h = -0.6 + rnd2(0.05);  // すき間（堤防で盛る対象＝ここから漏れる）
+        else if (j >= 29) h = -2.5 + rnd2(0.1);            // 手前の落ち先（漏れた水が溜まる）
         else h = rnd2(0.1);
         heights[idx] = clamp(h);
       }
@@ -325,14 +340,66 @@
     }
     function genSub(L) { // L5: 水中工事（水没した底の土の山を水中バックホウで掘り下げて平らに）
       clearWater();
-      const s = MAP_SCALE, A = L.A, m1 = L.m1, m2 = L.m2;
+      const A = L.A, m1 = L.m1, m2 = L.m2;
       for (let idx = 0; idx < N; idx++) {
         const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
         let h = rnd2(0.1);
-        if (inRect(i, j, A)) { h = -1.8 + rnd2(0.1); h += gauss(x, z, m1[0] * s, m1[1] * s, 0.9, 1.7 * s) + gauss(x, z, m2[0] * s, m2[1] * s, 0.8, 1.6 * s); } // 深い底＋水中の山
+        if (inRect(i, j, A)) { h = -1.8 + rnd2(0.1); h += gauss(x, z, m1[0], m1[1], 0.9, 1.7) + gauss(x, z, m2[0], m2[1], 0.8, 1.6); } // 深い底＋水中の山
         heights[idx] = clamp(h);
       }
       zoneEach(A, (idx) => { const d = 0.0 - heights[idx]; if (d > 0) waterD[idx] = d; }); // 水面0=深い水(普通のブルは入れない)
+    }
+    function genHaul(L) { // L6: 大規模造成（左奥の山を掘る→トラックで運ぶ→右手前の窪地を埋める・大マップ108）
+      clearWater();
+      const hills = [ { x: -18, z: 16, h: 2.4, s: 4.6 }, { x: -11, z: 23, h: 2.1, s: 4.3 }, { x: -24, z: 9, h: 1.9, s: 4.0 }, { x: -15, z: 8, h: 1.7, s: 3.8 } ];
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        let h = rnd2(0.12);                                   // ほぼ平地（地盤0）
+        for (let k = 0; k < hills.length; k++) h += gauss(x, z, hills[k].x, hills[k].z, hills[k].h, hills[k].s);  // 左奥の山クラスタ（掘る対象）
+        h -= gauss(x, z, 18, -15, 2.7, 7.8);                  // 右手前の広い窪地（埋める対象）
+        heights[idx] = clamp(h);
+      }
+    }
+    function genRoad(L) { // L7: 道路をつくる（脇の山から土を取り、横断する道を盛土で目標高さに・大マップ108）
+      clearWater();
+      const borrow = [ { x: -22, z: -18, h: 3.0, s: 5.0 }, { x: 22, z: 18, h: 2.8, s: 5.2 }, { x: -18, z: 24, h: 2.4, s: 4.4 } ];
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        let h = rnd2(0.1);                                    // ほぼ平地（道はまだ地盤0＝これを盛り上げる）
+        for (let k = 0; k < borrow.length; k++) h += gauss(x, z, borrow[k].x, borrow[k].z, borrow[k].h, borrow[k].s);  // 脇の借土山（掘って道へ運ぶ）
+        heights[idx] = clamp(h);
+      }
+    }
+    function genPlat(L) { // L8: 宅地造成（傾いた広い土地を削り盛りして一枚の平地に・大マップ108）
+      clearWater();
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        let h = (x + z) * 0.05 + rnd2(0.15);                  // 対角に±約3.6mの傾斜（高い側を削り低い側へ盛る＝目標0）
+        heights[idx] = clamp(h);
+      }
+    }
+    function genDamBig(L) { // L9: ダム建設（盛土で堤防を作り、水路を掘って貯水池に貯める・大マップ108＝L2の拡大版）
+      clearWater();
+      const S = L.S, P = L.B;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.1);
+        if (i < 30 || i > 78) h = 0.7 + rnd2(0.1);            // 左右の壁（水路を挟む）
+        else if (j >= S.j0 && j <= S.j1) h = -1.5 + rnd2(0.1); // 奥の水源（上流・j9-27）
+        else if (j >= 28 && j <= 44) h = 0.8 + rnd2(0.1);      // 水源と貯水池の間の土手（掘って水路・j28-44で連続）
+        else if (j >= P.j0 && j <= P.j1) h = -0.8 + rnd2(0.1); // 貯水池の底（浅い窪み・j45-78）
+        else if (j >= 79 && j <= 86) h = -0.95 + rnd2(0.04);   // すき間（堤防で盛る対象＝貯水池の底-0.8より低い→堤防なしだと水は全部ここから漏れて貯まらない＝堤防が必須）
+        else if (j >= 87) h = -2.5 + rnd2(0.1);               // 手前の落ち先（漏れた水が溜まる）
+        else h = rnd2(0.1);                                   // 手前の平地（j0-8）
+        heights[idx] = clamp(h);
+      }
+      zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
+    }
+    function genQuarry(L) { // L10: 大採掘（広い範囲を目標の深さまで掘り下げ、出た土をトラックで運び出す・大マップ108）
+      clearWater();
+      for (let idx = 0; idx < N; idx++) {
+        let h = 0.5 + rnd2(0.12);                             // ほぼ平地（地盤+0.5）＝採掘場を掘り下げる
+        heights[idx] = clamp(h);
+      }
     }
 
     // ===================== レベル定義 =====================
@@ -361,7 +428,33 @@
         maxDev: 0.5, tFrac: 0, startZ: 0, subFloor: -1.8, clearTol: 0.3,
         goal: '水中工事：水没した底の<b>土の山</b>を、<b>水中バックホウ</b>で<b>掘り取って撤去</b>しよう（普通のブルは深い水に入れない→🛒で購入を）',
         hint: '深い水で普通のブルは入れない。🛒で水中バックホウを買い、機械チェンジして水中の<b>山を掘り取る</b>（穴ができてもOK）',
-        markers: [['A', 0x9b59b6]], gen: genSub }
+        markers: [['A', 0x9b59b6]], gen: genSub },
+      { type: 'haul', name: '大規模造成', mainLabel: '埋立', grid: 108,
+        A: rect(9, 45, 58, 96), B: rect(63, 99, 13, 49),
+        digRef: 0, fillRef: 0, clearTol: 0.4, startZ: 0,
+        goal: '大規模造成：左奥の<b>山を掘って</b>、🚛トラックで右手前の<b>窪地（青枠）まで運び</b>、埋めて平らに。山（赤枠）を撤去し窪地を埋め立てれば完成',
+        hint: '赤枠＝掘る山／青枠＝埋める窪地。🚛トラックを召喚→山で土を積む→窪地で下ろす。遠いのでトラック運搬が便利',
+        markers: [['A', 0xd06a2f], ['B', 0x2f7fd6]], gen: genHaul },
+      { type: 'grade', name: '道路をつくる', mainLabel: '', grid: 108,
+        A: rect(14, 94, 50, 58), gradeTarget: 1.5, gradeTol: 0.6, startZ: 0,
+        goal: '道路建設：脇の<b>山から土を取り</b>、中央を横断する<b>道（黄枠）を高さ1.5mまで盛って</b>上を平らに仕上げよう',
+        hint: '黄枠＝道路。脇の小山を掘り、トラックやブルで道に運んで盛り、目標の高さで平らに均す',
+        markers: [['A', 0xe0b020]], gen: genRoad },
+      { type: 'grade', name: '宅地造成', mainLabel: '', grid: 108,
+        A: rect(24, 84, 24, 84), gradeTarget: 0, gradeTol: 0.6, startZ: 0,
+        goal: '宅地造成：傾いた広い土地（黄枠）を、<b>高い側を削って低い側へ盛り</b>、一枚の<b>平らな土地（高さ0）</b>に仕上げよう',
+        hint: '黄枠の中を平らに。高い所をブル/バックホウで削り、低い所へ運んで埋める（切土盛土）',
+        markers: [['A', 0xe0b020]], gen: genPlat },
+      { type: 'fill', name: 'ダム建設', mainLabel: '貯水池', grid: 108,
+        S: rect(30, 78, 9, 27), B: rect(30, 78, 45, 78), tFrac: 0.12, startZ: 0,
+        goal: 'ダム建設：手前の<b>すき間を盛土でせき止め（堤防）</b>、奥の水源から<b>水路を掘って水を引き込み</b>、貯水池（緑枠）に貯めよう',
+        hint: '青枠＝水源・緑枠＝貯水池。まず手前のすき間を盛土でふさぎ、水源との間の土手を掘って水を流し込む',
+        markers: [['S', 0x2f7fd6], ['B', 0x2faa55]], gen: genDamBig },
+      { type: 'grade', name: '大採掘', mainLabel: '', grid: 108,
+        A: rect(42, 66, 42, 66), gradeTarget: -2.0, gradeTol: 0.6, startZ: 0,
+        goal: '大採掘：中央の採掘場（黄枠）を<b>深さ-2mまで掘り下げ</b>、出た土を<b>トラックで枠の外へ運び出そう</b>。集大成の大仕事',
+        hint: '黄枠の中をバックホウで掘り下げ、出た土はトラックで枠の外へ運び出す。目標の深さで平らに',
+        markers: [['A', 0xe0b020]], gen: genQuarry }
     ];
     const NLV = LEVEL_DEFS.length;
 
@@ -377,12 +470,11 @@
     scene.add(new THREE.AmbientLight(0xffffff, 0.55));
     const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(-6, 12, 7); scene.add(sun);
 
-    const positions = new Float32Array(N * 3), colors = new Float32Array(N * 3), indices = [];
-    for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) { const a = j * V + i, b = j * V + (i + 1), c = (j + 1) * V + i, d = (j + 1) * V + (i + 1); indices.push(a, c, b, b, c, d); }
+    const positions = new Float32Array(N_MAX * 3), colors = new Float32Array(N_MAX * 3);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    geo.setIndex(indices);
+    // index（三角形）は rebuildGrid() でレベル別の実寸グリッドに合わせて毎回作り直す（L1-5=36格子/L6-10=108格子）。
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
     scene.add(ground);
     const cLow = new THREE.Color(0xc2a06c), cMid = new THREE.Color(0x9a6e3e), cHigh = new THREE.Color(0x5f3e1e), cWet = new THREE.Color(0x47301c), tmpC = new THREE.Color();  // 土寄せ[親方FB もっと土っぽく]：低=乾いた土/中=茶土/高=濃い掘りたて土/濡れ=黒っぽい泥
@@ -393,7 +485,7 @@
     }
     let normalsDone = false;
     // 土の粒状感[見た目専用]：頂点ごとの安定したランダム濃淡（初期化1回）。地面が一様な単色に見えるのを防ぐ。
-    const grain = new Float32Array(N); for (let gk = 0; gk < N; gk++) grain[gk] = Math.random() * 2 - 1;
+    const grain = new Float32Array(N_MAX); for (let gk = 0; gk < N_MAX; gk++) grain[gk] = Math.random() * 2 - 1;
     function syncGeometry() {
       for (let idx = 0; idx < N; idx++) {
         positions[idx * 3] = vx[idx]; positions[idx * 3 + 1] = heights[idx]; positions[idx * 3 + 2] = vz[idx];
@@ -412,12 +504,29 @@
     }
 
     // 水メッシュ
-    const wPos = new Float32Array(N * 3);
+    const wPos = new Float32Array(N_MAX * 3);
     const wGeo = new THREE.BufferGeometry();
     wGeo.setAttribute("position", new THREE.BufferAttribute(wPos, 3));
-    wGeo.setIndex(indices.slice());
+    // 水メッシュの index も rebuildGrid() でレベル別に作り直す。
     const water = new THREE.Mesh(wGeo, new THREE.MeshStandardMaterial({ color: 0x2f7fd6, transparent: true, opacity: 0.72, roughness: 0.2, metalness: 0.05, depthWrite: false }));
     water.renderOrder = 2; water.frustumCulled = false; scene.add(water);
+
+    // ===================== レベル別マップ寸法（忠実版・Plan B） =====================
+    // L1-5 は GRID=36/WORLD=24（原版と完全同一）。L6-10 は GRID=108/WORLD=72（一辺3倍・セルの細かさは同じ）。
+    // 配列は N_MAX で確保済。レベル切替時にここで実寸 GRID/WORLD/V/N/CELL_AREA と頂点座標(vx/vz)・三角形(index) を作り直す。
+    function rebuildGrid(grid) {
+      GRID = grid; WORLD = grid * (2 / 3); V = GRID + 1; N = V * V;
+      CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
+      for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) { const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD; }
+      const idxArr = [];
+      for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) { const a = j * V + i, b = j * V + (i + 1), c = (j + 1) * V + i, d = (j + 1) * V + (i + 1); idxArr.push(a, c, b, b, c, d); }
+      geo.setIndex(idxArr); wGeo.setIndex(idxArr.slice());
+      normalsDone = false;
+      // 大マップでも全景が見えるよう、霧・最大ズーム・カメラ遠clip を実寸に追従
+      scene.fog.near = WORLD * 1.75; scene.fog.far = WORLD * 4.0;
+      camera.far = Math.max(500, WORLD * 8); camera.updateProjectionMatrix();
+      CAM_MAX = Math.max(46, WORLD * 1.9);
+    }
     let wt = 0, wframe = 0;
     function syncWater(dt) {
       wt += dt; wframe++;
@@ -451,9 +560,7 @@
     function simWater(dt) {
       const dtG = dt * GF, inv = dt / CELL_AREA;
       for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
-        const c = j * V + i;
-        if (waterD[c] <= 1e-7) { fL[c] = fR[c] = fT[c] = fB[c] = 0; continue; }   // 乾きセルは流出0＝大マップ軽量化(水のある所だけ計算)[親方FB]
-        const surfC = heights[c] + waterD[c];
+        const c = j * V + i, surfC = heights[c] + waterD[c];
         let l = (i > 0) ? (fL[c] + dtG * (surfC - (heights[c - 1] + waterD[c - 1]))) : 0; if (l < 0) l = 0; else l *= FLUX_DAMP;
         let r = (i < GRID) ? (fR[c] + dtG * (surfC - (heights[c + 1] + waterD[c + 1]))) : 0; if (r < 0) r = 0; else r *= FLUX_DAMP;
         let t = (j > 0) ? (fT[c] + dtG * (surfC - (heights[c - V] + waterD[c - V]))) : 0; if (t < 0) t = 0; else t *= FLUX_DAMP;
@@ -1058,11 +1165,25 @@
     function levelDone() {
       if (LV.type === 'drain') return drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev && zoneVol(LV.B) >= LV.tB;
       if (LV.type === 'level') return LV.A0exc > 0 ? (zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol) <= 0.05 * LV.A0exc) : true;   // 掘り取り＝残っている山が初期の5%以下[本体移植・バックホウ向き]
+      if (LV.type === 'haul') return zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol) <= 0.05 * LV.A0exc && zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol) <= 0.05 * LV.A0def;   // 造成＝山の撤去95%以上 かつ 窪地の埋立95%以上
+      if (LV.type === 'grade') return zoneToTarget(heights, LV.A, LV.gradeTarget).work <= 0.05 * LV.A0work;   // 整地＝目標高さからのズレ土量が初期の5%以下
       return zoneVol(LV.B) >= LV.tB;
     }
     function refreshHUD() {
       totalEl.textContent = totalWater().toFixed(0); moneyEl.textContent = game.money;
       const M = curM(); const dvT = (driving === 'truck' && truck); const carry = dvT ? truckLoad : ((machineKind(M) === 'backhoe') ? game.bucket : game.blade); const cCap = dvT ? TRUCK_CAP : M.bladeCap; bladeEl.textContent = carry.toFixed(1); bladeCapEl.textContent = cCap; bladeBadge.classList.toggle("over", carry > cCap + 0.01);   // トラック運転中=荷台/バックホウ=バケット/ブル=ブレード[親方FB]
+      if (LV.type === 'haul') {   // 大規模造成＝掘削%(b-work) と 埋立 m³(b-main) の2目標
+        const exc = zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol), dig = LV.A0exc > 0 ? Math.max(0, Math.min(1, 1 - exc / LV.A0exc)) : 1;
+        const def = zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol), fill = LV.A0def > 0 ? Math.max(0, Math.min(1, 1 - def / LV.A0def)) : 1;
+        workEl.textContent = Math.round(dig * 100); workBadge.classList.toggle("done", exc <= 0.05 * LV.A0exc);
+        basinEl.textContent = (LV.A0def - def).toFixed(0); basinTEl.textContent = LV.A0def.toFixed(0); basinBadge.classList.toggle("done", def <= 0.05 * LV.A0def);
+        barEl.style.width = (Math.min(dig, fill) * 100).toFixed(0) + "%"; return;
+      }
+      if (LV.type === 'grade') {   // 整地＝目標高さへの達成%(b-work)
+        const g = zoneToTarget(heights, LV.A, LV.gradeTarget), p = LV.A0work > 0 ? Math.max(0, Math.min(1, 1 - g.work / LV.A0work)) : 1;
+        workEl.textContent = Math.round(p * 100); workBadge.classList.toggle("done", g.work <= 0.05 * LV.A0work);
+        barEl.style.width = (p * 100).toFixed(0) + "%"; return;
+      }
       let overall = 0;
       if (LV.type === 'level') {
         const ex = zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol);   // 掘り取り[本体移植]：残っている山の量→進捗
@@ -1084,6 +1205,7 @@
     function checkWin() { if (game.won) return; if (levelDone()) { game.won = true; game.cum.cleared++; checkAchievements(); showWin(); } }
     function showWin() {
       const last = curLevel >= NLV - 1;
+      game.clearedLv[curLevel] = true; game.unlocked = Math.max(game.unlocked, Math.min(NLV - 1, curLevel + 1));   // クリア記録＆次レベル解放[マップ選択]
       game.money += CLEAR_REWARD; refreshHUD(); save();
       document.getElementById("win-title").textContent = LV.name + " 完成！";
       document.getElementById("win-text").textContent = "報酬 +" + CLEAR_REWARD + "万円（所持金 " + game.money + "万円）" + (last ? " ／ 全レベルクリア！" : "");
@@ -1096,20 +1218,28 @@
     function loadLevel(n, saved) {
       clearTimeout(winTimer); curLevel = ((n % NLV) + NLV) % NLV; game.level = curLevel;
       const D = LEVEL_DEFS[curLevel]; LV = {}; for (const k in D) LV[k] = D[k];
+      rebuildGrid(D.grid || 36);   // レベル別マップ寸法へ（L1-5=36・L6-10=108）。vx/vz/index/N/CELL_AREA を作り直す
+      camDist = Math.max(CAM_MIN, Math.min(CAM_MAX, WORLD * (GRID >= 108 ? 1.0 : 1.08)));   // マップ全景が入るよう寄り引きを再設定
+      { const hf = WORLD / 2 - 0.5; if (Math.abs(game.mx) > hf) game.mx = 0; if (Math.abs(game.mz) > hf) game.mz = Math.min(hf, 6.3); }   // 縮小時に機械が場外なら中へ
       if (saved) { heights.set(saved.h); baseHeights.set(saved.b); clearWater(); waterD.set(saved.w); LV.A0water = saved.a0; LV.A0flat = saved.af; LV.tB = saved.tB; }
       else { D.gen(LV); baseHeights.set(heights); LV.A0water = LV.type === 'drain' ? Math.max(0.001, zoneVol(LV.A)) : 0; LV.A0flat = (LV.type === 'drain' || LV.type === 'level') ? Math.max(1, zoneFlatness(LV.A)) : 1; LV.tB = LV.tFrac * totalWater(); }
-      LV.A0exc = (LV.type === 'level') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.subFloor + LV.clearTol)) : 0;   // 掘り取り[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
+      LV.A0exc = (LV.type === 'level') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.subFloor + LV.clearTol))
+               : (LV.type === 'haul') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.digRef + LV.clearTol)) : 0;   // 掘り取り/造成[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
+      if (LV.type === 'haul') LV.A0def = Math.max(0.001, zoneDeficitBelow(baseHeights, LV.B, LV.fillRef - LV.clearTol));   // 造成：初期の窪地の量(=埋立目標 m³)
+      if (LV.type === 'grade') LV.A0work = Math.max(0.001, zoneToTarget(baseHeights, LV.A, LV.gradeTarget).work);   // 整地：初期の目標高さからのズレ土量(=整地の総仕事)
       game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null;
       driving = 'machine'; if (truck) { scene.remove(truck); truck = null; } truckLoad = 0; truckTilt = 0; if (typeof updateTruckBtn === 'function') updateTruckBtn();   // レベル切替でトラックはリセット(召喚し直し)[親方FB]
       applyMachine();
       if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
-      else { game.mx = 0; game.mz = LV.startZ * MAP_SCALE; game.myaw = Math.PI; findDryStart(); }   // スタートz も拡大[親方FB]
+      else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
       lvnumEl.textContent = (curLevel + 1);
-      workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : '作業場';
+      workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : LV.type === 'haul' ? '山の撤去' : LV.type === 'grade' ? '整地' : '作業場';
       document.getElementById("goalLabel").innerHTML = LV.goal;
       document.getElementById("mainLabel").textContent = LV.mainLabel;
-      document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level') ? '' : 'none';
-      document.getElementById("b-main").style.display = LV.type === 'level' ? 'none' : '';
+      document.getElementById("mainIcon").textContent = (LV.type === 'haul') ? '⛰' : '💧';
+      document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level' || LV.type === 'haul' || LV.type === 'grade') ? '' : 'none';
+      document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade') ? 'none' : '';
+      document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade') ? 'none' : '';   // 造成/整地は水なし＝水バッジを隠す
       document.getElementById("win").classList.remove("show");
       rebuildMarkers(LV.markers); setHint(LV.hint);
       syncGeometry(); syncWater(0); refreshHUD(); save();
@@ -1251,15 +1381,40 @@
     document.getElementById("b-close").addEventListener("click", function () { badgesEl.classList.remove("show"); SND.click(); });
     badgesEl.addEventListener("click", function (e) { if (e.target === badgesEl) { badgesEl.classList.remove("show"); SND.click(); } }); // 暗転部（パネル外）タップで閉じる
 
+    // ===================== マップ選択（クリア済み選択・未到達ロック）[親方FB] =====================
+    function renderMapSelect() {
+      const list = document.getElementById("m-list"); let html = '';
+      for (let n = 0; n < NLV; n++) {
+        const D = LEVEL_DEFS[n], unlocked = n <= game.unlocked, cleared = !!game.clearedLv[n], cur = n === curLevel;
+        const cls = 'm-card' + (unlocked ? '' : ' locked') + (cur ? ' cur' : '');
+        const ic = !unlocked ? '🔒' : cleared ? '✅' : '▶';
+        const sub = !unlocked ? 'ロック中' : cleared ? 'クリア済み' : (cur ? 'プレイ中' : '未クリア');
+        const big = (D.grid >= 108) ? ' 🗺大' : '';
+        html += '<div class="' + cls + '" data-n="' + n + '"><div class="m-ic">' + ic + '</div><div class="m-tx"><b>LV' + (n + 1) + '</b>' + big + '<br>' + D.name + '<small>' + sub + '</small></div></div>';
+      }
+      list.innerHTML = html;
+    }
+    const mapselEl = document.getElementById("mapsel");
+    document.getElementById("mapBtn").addEventListener("click", function () { renderMapSelect(); mapselEl.classList.add("show"); SND.click(); });
+    document.getElementById("m-close").addEventListener("click", function () { mapselEl.classList.remove("show"); SND.click(); });
+    mapselEl.addEventListener("click", function (e) { if (e.target === mapselEl) { mapselEl.classList.remove("show"); SND.click(); } }); // 暗転部タップで閉じる
+    document.getElementById("m-list").addEventListener("click", function (e) {
+      const c = e.target.closest ? e.target.closest('.m-card') : null; if (!c || !c.dataset || c.dataset.n == null) return;
+      const n = +c.dataset.n; if (n > game.unlocked) { SND.click(); return; }   // ロック中は選べない
+      mapselEl.classList.remove("show"); loadLevel(n); SND.click();
+    });
+
     // 保存
     const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
-    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 6, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine, upg: game.upg, ach: game.unlockedAch, cum: game.cum, bucket: game.bucket })); } catch (e) {} }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 7, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine, upg: game.upg, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket })); } catch (e) {} }
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
         if (!raw) return false; const s = JSON.parse(raw);
-        if (!s || s.g !== GRID || !s.h || s.h.length !== N || s.level == null || s.level >= NLV) return false;
+        if (!s || s.level == null || s.level >= NLV || !s.h) return false;
+        const eg = (LEVEL_DEFS[s.level].grid || 36);   // 保存レベルの実寸グリッド（L1-5=36・L6-10=108）
+        if (s.g !== eg || s.h.length !== (eg + 1) * (eg + 1)) return false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
         game.money = s.money || 0;
         game.owned = Array.isArray(s.owned) ? s.owned.slice() : ['dozer'].concat(s.hasSub ? ['sub'] : []); // 旧v4(hasSub)からも移行
@@ -1269,6 +1424,8 @@
         game.upg = (s.upg && typeof s.upg === 'object') ? sanitizeUpg(s.upg) : {};
         game.unlockedAch = (s.ach && typeof s.ach === 'object') ? s.ach : {};
         game.cum = (s.cum && typeof s.cum === 'object') ? { dugAll: +s.cum.dugAll || 0, cleared: (s.cum.cleared | 0) } : { dugAll: 0, cleared: 0 };
+        game.unlocked = Math.max(0, Math.min(NLV - 1, Math.max(s.unlocked | 0, s.level | 0)));   // 解放済み最高レベル[マップ選択]。旧セーブ(unlocked無し)も現在レベルまでは解放扱い
+        game.clearedLv = (s.clearedLv && typeof s.clearedLv === 'object') ? s.clearedLv : {};
         loadLevel(s.level, s);
         checkAchievements(true); // 移行直後＝既に条件を満たす所有/メーカー系バッジを静かに解禁（トースト無し）
         return true;
@@ -1299,13 +1456,13 @@
 
     // 起動
     if (!load()) loadLevel(0);
-    if (UNLOCK_ALL) { game.owned = MACHINES.map(function (m) { return m.id; }); if (game.money < 9000000) game.money = 9999999; applyMachine(); refreshHUD(); }   // 検証用(?all)：18台全解放+資金潤沢[親方FB]
+    if (UNLOCK_ALL) { game.owned = MACHINES.map(function (m) { return m.id; }); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); }   // 検証用(?all)：18台全解放+資金潤沢[親方FB]
     normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
 
     // デバッグ用フック
     if (/[?&]test\b/.test(location.search)) window.__t = {
       game, keys, heights, waterD, simWater, syncWater, syncGeometry, gradePush, updateDozer, camera, sampleHeight, sampleWater,
-      totalWater, zoneVol, zoneMaxDev, zoneFlatness, levelDone, checkWin, loadLevel, refreshHUD, N, V, GRID,
+      totalWater, zoneVol, zoneMaxDev, zoneFlatness, levelDone, checkWin, loadLevel, refreshHUD, getN: () => N, getV: () => V, getGrid: () => GRID,
       getLevel: () => curLevel, getLV: () => LV, getFps: () => fpsEMA,
       setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, getCamDist: () => camDist, setCamDist: (v) => { camDist = Math.max(CAM_MIN, Math.min(CAM_MAX, v)); }, CAM_MIN: CAM_MIN, CAM_MAX: CAM_MAX, setActing: (v) => { acting = v; }, getActing: () => acting,
       setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, setGF: (v) => { GF = v; }, setDamp: (v) => { FLUX_DAMP = v; },
@@ -1327,7 +1484,7 @@
       buyUpgrade: (id) => buyUpgrade(id), upgCostOf: (id) => upgCost(machineById(id), upgLv(id)), upgLvOf: (id) => upgLv(id),
       effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
-      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
+      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
     };
   })();
   </script>
