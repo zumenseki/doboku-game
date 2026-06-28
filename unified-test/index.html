@@ -27,8 +27,8 @@
   }
   #app { position:fixed; inset:0; }
   canvas { display:block; touch-action:none; }
-  #hud-top { position:fixed; top:env(safe-area-inset-top,8px); left:0; right:0; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; pointer-events:none; padding:8px env(safe-area-inset-right,8px) 0 env(safe-area-inset-left,8px); }
-  .badge { background:var(--panel); color:var(--ink); border-radius:14px; padding:7px 13px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.15); font-variant-numeric:tabular-nums; }
+  #hud-top { position:fixed; top:env(safe-area-inset-top,8px); left:0; right:0; display:flex; justify-content:center; gap:6px; flex-wrap:wrap; pointer-events:none; padding:8px env(safe-area-inset-right,8px) 0 env(safe-area-inset-left,8px); }
+  .badge { background:var(--panel); color:var(--ink); border-radius:13px; padding:6px 10px; font-weight:800; font-size:12.5px; box-shadow:0 2px 8px rgba(0,0,0,.15); font-variant-numeric:tabular-nums; white-space:nowrap; }
   .badge small { font-weight:700; opacity:.7; font-size:.72em; }
   #b-work .v { color:var(--fill); }
   #b-main .v { color:var(--water); }
@@ -60,7 +60,7 @@
   #machineBtn.sub { background:#cfe6f6; }
   #shop:active, #machineBtn:active { transform:scale(.95); }
   #lv-badge { background:rgba(32,48,58,.82); color:#fff; }
-  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 52px); left:50%; transform:translateX(-50%); width:min(82vw,380px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); }
+  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 80px); left:50%; transform:translateX(-50%); width:min(82vw,380px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); }
   #goal .label { font-size:12px; font-weight:700; color:var(--ink); opacity:.85; margin-bottom:4px; line-height:1.45; }
   #bar { height:9px; background:#d6dee2; border-radius:6px; overflow:hidden; }
   #bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#7db5ec,#2f7fd6); transition:width .2s ease; }
@@ -119,6 +119,7 @@
     <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
     <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
     <div class="badge" id="blade-badge">🪣 <span class="v" id="blade">0</span><small>/<span id="bladeCap">12</span> m³</small></div>
+    <div class="badge" id="elev-badge">⛰<span class="v" id="elev">0.0</span><small>m</small></div>
   </div>
   <div id="goal"><div class="label" id="goalLabel">…</div><div id="bar"><i></i></div></div>
   <div id="dpad">
@@ -899,6 +900,7 @@
     // ===================== 入力 =====================
     const keys = { up: false, down: false, left: false, right: false };
     let acting = false;
+    let resetAct = () => {};
     const clearKeys = () => { keys.up = keys.down = keys.left = keys.right = false; acting = false; document.querySelectorAll(".dbtn").forEach((b) => b.classList.remove("on")); const a = document.getElementById("act"); if (a) a.classList.remove("on"); };
     document.querySelectorAll(".dbtn").forEach((b) => {
       const dir = b.getAttribute("data-dir"); const ptrs = new Set();
@@ -1159,7 +1161,7 @@
     }
 
     // ===================== HUD・クリア判定・レベル進行 =====================
-    const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge");
+    const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge"), elevEl = document.getElementById("elev");
     const workBadge = document.getElementById("b-work"), basinBadge = document.getElementById("b-main"), barEl = document.querySelector("#bar > i"), machineBtn = document.getElementById("machineBtn");
     function drainOf(z, w0) { return w0 > 0 ? Math.max(0, Math.min(1, 1 - zoneVol(z) / w0)) : 0; }
     function levelDone() {
@@ -1170,7 +1172,7 @@
       return zoneVol(LV.B) >= LV.tB;
     }
     function refreshHUD() {
-      totalEl.textContent = totalWater().toFixed(0); moneyEl.textContent = game.money;
+      totalEl.textContent = totalWater().toFixed(0); moneyEl.textContent = game.money; elevEl.textContent = sampleHeight(game.mx, game.mz).toFixed(1);
       const M = curM(); const dvT = (driving === 'truck' && truck); const carry = dvT ? truckLoad : ((machineKind(M) === 'backhoe') ? game.bucket : game.blade); const cCap = dvT ? TRUCK_CAP : M.bladeCap; bladeEl.textContent = carry.toFixed(1); bladeCapEl.textContent = cCap; bladeBadge.classList.toggle("over", carry > cCap + 0.01);   // トラック運転中=荷台/バックホウ=バケット/ブル=ブレード[親方FB]
       if (LV.type === 'haul') {   // 大規模造成＝掘削%(b-work) と 埋立 m³(b-main) の2目標
         const exc = zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol), dig = LV.A0exc > 0 ? Math.max(0, Math.min(1, 1 - exc / LV.A0exc)) : 1;
@@ -1227,7 +1229,7 @@
                : (LV.type === 'haul') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.digRef + LV.clearTol)) : 0;   // 掘り取り/造成[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
       if (LV.type === 'haul') LV.A0def = Math.max(0.001, zoneDeficitBelow(baseHeights, LV.B, LV.fillRef - LV.clearTol));   // 造成：初期の窪地の量(=埋立目標 m³)
       if (LV.type === 'grade') LV.A0work = Math.max(0.001, zoneToTarget(baseHeights, LV.A, LV.gradeTarget).work);   // 整地：初期の目標高さからのズレ土量(=整地の総仕事)
-      game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null;
+      game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();
       driving = 'machine'; if (truck) { scene.remove(truck); truck = null; } truckLoad = 0; truckTilt = 0; if (typeof updateTruckBtn === 'function') updateTruckBtn();   // レベル切替でトラックはリセット(召喚し直し)[親方FB]
       applyMachine();
       if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
@@ -1249,9 +1251,12 @@
     const actBtn = document.getElementById("act");
     (function () {
       const ptrs = new Set();
+      const clear = () => { ptrs.clear(); acting = false; actBtn.classList.remove("on"); };
+      resetAct = clear;
       const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && actBtn.setPointerCapture) { try { actBtn.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); acting = true; actBtn.classList.add("on"); hideHint(); };
       const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { acting = false; actBtn.classList.remove("on"); } };
       actBtn.addEventListener("pointerdown", on); actBtn.addEventListener("pointerup", off); actBtn.addEventListener("pointercancel", off); actBtn.addEventListener("pointerleave", off);
+      actBtn.addEventListener("lostpointercapture", clear);
     })();
     const truckBtn = document.getElementById('truckBtn');
     function updateTruckBtn() { if (!truckBtn) return; truckBtn.textContent = (driving === 'truck') ? '🚜 重機に戻る' : (truck ? '🚛 トラックに乗る' : '🚛 トラック召喚'); }
