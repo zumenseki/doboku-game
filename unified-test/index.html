@@ -6,7 +6,17 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>土木ゲーム 水の試作（4レベル）</title>
+<!-- PWA（ホーム画面アプリ化）：全画面表示・アイコン・オフライン対応 -->
+<meta name="theme-color" content="#bfe3f2" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="土木ゲーム" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" type="image/png" href="icon-192.png" />
+<script>if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); }); }</script>
+<title>土木ゲーム</title>
 <style>
   :root { --dig:#e07a1c; --fill:#2faa55; --ink:#20303a; --panel:rgba(255,255,255,0.82); --water:#2f7fd6; }
   * { box-sizing: border-box; }
