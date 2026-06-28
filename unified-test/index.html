@@ -882,7 +882,7 @@
     // 容量=その重機の bladeCap（買い替え/強化で増える）／掘る速さ=digRate／範囲=digRadius／足元基準の段切り上限(BH_MAX_CUT/FILL)。
     let bhMode = null, prevActing = false, bhDigAmt = 0, bhDumpAmt = 0, bhPhase = 0;
     // ===== トラック運搬[親方FB]：バックホウ/ブルで近くに召喚→積む→自分で運転して運ぶ→別場所で下ろす。容量=バックホウ約5倍。別の乗り物として共存。 =====
-    let truck = null, truckX = 0, truckZ = 0, truckYaw = Math.PI, truckLoad = 0, driving = 'machine'; const TRUCK_CAP = 75;
+    let truck = null, truckX = 0, truckZ = 0, truckYaw = Math.PI, truckLoad = 0, truckTilt = 0, driving = 'machine'; const TRUCK_CAP = 75;
     function bhReach(M) { return Math.max(1.8, M.digRadius + 0.5); }   // 腕の届く距離（機体ごと）
     function backhoeDig(dt) {
       const M = effectiveStats(curM()), reach = bhReach(M), RAD = M.digRadius, cap = M.bladeCap;
@@ -944,19 +944,19 @@
       box(g, M.body, 1.24, 0.82, 0.95, 0, 1.06, 1.3);             // 運転席
       box(g, M.glass, 0.96, 0.44, 0.06, 0, 1.16, 1.79);          // 窓
       box(g, M.body, 1.3, 0.3, 0.5, 0, 0.78, 1.98);              // ボンネット前
-      const bedG = new THREE.Group(); bedG.position.set(0, 0.72, -0.45); g.add(bedG);
-      box(bedG, M.bed, 1.4, 0.12, 2.5, 0, 0, 0);                  // 荷台床
-      box(bedG, M.bed, 1.4, 0.55, 0.12, 0, 0.3, -1.25);          // 後あおり
-      box(bedG, M.bed, 0.1, 0.55, 2.5, -0.68, 0.3, 0);           // 左あおり
-      box(bedG, M.bed, 0.1, 0.55, 2.5, 0.68, 0.3, 0);            // 右あおり
+      const bedG = new THREE.Group(); bedG.position.set(0, 0.74, -1.7); g.add(bedG); g.userData.bedPivot = bedG;   // 後端ヒンジ＝ダンプアップ回転軸[親方FB]。子は前へ+1.25シフトで世界座標は据置。
+      box(bedG, M.bed, 1.4, 0.12, 2.5, 0, -0.02, 1.25);          // 荷台床
+      box(bedG, M.bed, 1.4, 0.55, 0.12, 0, 0.28, 0.0);           // 後あおり(ヒンジ側)
+      box(bedG, M.bed, 0.1, 0.55, 2.5, -0.68, 0.28, 1.25);       // 左あおり
+      box(bedG, M.bed, 0.1, 0.55, 2.5, 0.68, 0.28, 1.25);        // 右あおり
       const load = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.6, 2.2), makeMat(0x6e481f));   // 荷台の土(量で高さ)
-      load.position.set(0, 0.36, 0); load.visible = false; bedG.add(load); g.userData.load = load;
+      load.position.set(0, 0.34, 1.25); load.visible = false; bedG.add(load); g.userData.load = load;
       return g;
     }
     function updateTruckBed() {
-      if (!truck) return; const load = truck.userData.load; if (!load) return;
-      const pf = Math.min(1, truckLoad / TRUCK_CAP);
-      load.visible = truckLoad > 0.05; load.scale.y = Math.max(0.08, pf); load.position.y = 0.06 + 0.30 * pf;
+      if (!truck) return; const load = truck.userData.load;
+      if (load) { const pf = Math.min(1, truckLoad / TRUCK_CAP); load.visible = truckLoad > 0.05; load.scale.y = Math.max(0.08, pf); load.position.y = 0.04 + 0.30 * pf; }
+      if (truck.userData.bedPivot) truck.userData.bedPivot.rotation.x = -truckTilt * 0.85;   // ダンプアップ：後端ヒンジで荷台前部が持ち上がる[親方FB]
     }
     function summonTruck() {
       if (!truck) { truck = buildTruck(); scene.add(truck); }
@@ -964,7 +964,7 @@
       const cand = [[game.mx - c * 3.0, game.mz + s * 3.0], [game.mx + c * 3.0, game.mz - s * 3.0], [game.mx + s * 3.4, game.mz + c * 3.4], [game.mx - s * 3.4, game.mz - c * 3.4]];
       truckX = game.mx; truckZ = game.mz;
       for (let i = 0; i < cand.length; i++) { if (canStand(cand[i][0], cand[i][1])) { truckX = cand[i][0]; truckZ = cand[i][1]; break; } }
-      truckYaw = game.myaw;
+      truckYaw = game.myaw; truckTilt = 0;
       const ty = sampleHeight(truckX, truckZ); truck.position.set(truckX, ty, truckZ); truck.rotation.y = truckYaw; updateTruckBed();
     }
     function truckNearMachine() { return truck && truckLoad < TRUCK_CAP && Math.hypot(truckX - game.mx, truckZ - game.mz) < 4.2; }
@@ -979,7 +979,9 @@
         const cx = Math.max(-half, Math.min(half, truckX + fwd[0] * sp * dt * drive)), cz = Math.max(-half, Math.min(half, truckZ + fwd[1] * sp * dt * drive));
         if (canStand(cx, cz)) { truckX = cx; truckZ = cz; } else if (canStand(cx, truckZ)) { truckX = cx; } else if (canStand(truckX, cz)) { truckZ = cz; }
       }
-      if (acting && truckLoad > 0.0001 && !game.won) {                          // 下ろす：荷台の土を前方へ放出
+      const dumping = acting && truckLoad > 0.0001 && !game.won;
+      truckTilt = Math.max(0, Math.min(1, truckTilt + (dumping ? dt * 3 : -dt * 3)));   // ダンプアップ動作[親方FB]
+      if (dumping) {                          // 下ろす：荷台の土を前方へ放出（荷台を持ち上げながら）
         const s = Math.sin(truckYaw), c = Math.cos(truckYaw), fx = truckX + s * 2.4, fz = truckZ + c * 2.4;
         const ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(truckLoad, 45 * dt);
         const left = depositInto(fx, fz, 2.1, amt, ceil); truckLoad = Math.max(0, truckLoad - (amt - left));
@@ -1036,7 +1038,7 @@
         digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32;
         if (activeBlade) { const by = activeBlade.userData.baseY == null ? 0.62 : activeBlade.userData.baseY; activeBlade.position.y = by - 0.18 - Math.sin(bladePhase) * 0.06; activeBlade.rotation.x = (activeBlade.userData.baseRx || 0) + Math.sin(bladePhase) * 0.22; }
       } else if (activeBlade) resetBladePart(activeBlade);
-      if (truck) { const ty2 = sampleHeight(truckX, truckZ); truck.position.set(truckX, ty2, truckZ); truck.rotation.y = truckYaw; updateTruckBed(); }   // 待機中のトラックも配置
+      if (truck) { truckTilt = Math.max(0, truckTilt - dt * 3); const ty2 = sampleHeight(truckX, truckZ); truck.position.set(truckX, ty2, truckZ); truck.rotation.y = truckYaw; updateTruckBed(); }   // 待機中のトラックも配置(ダンプは下がる)
     }
     function sampleHeight(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return heights[j * V + i]; }
     function updateCamera() {
@@ -1095,7 +1097,7 @@
       else { D.gen(LV); baseHeights.set(heights); LV.A0water = LV.type === 'drain' ? Math.max(0.001, zoneVol(LV.A)) : 0; LV.A0flat = (LV.type === 'drain' || LV.type === 'level') ? Math.max(1, zoneFlatness(LV.A)) : 1; LV.tB = LV.tFrac * totalWater(); }
       LV.A0exc = (LV.type === 'level') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.subFloor + LV.clearTol)) : 0;   // 掘り取り[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
       game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null;
-      driving = 'machine'; if (truck) { scene.remove(truck); truck = null; } truckLoad = 0; if (typeof updateTruckBtn === 'function') updateTruckBtn();   // レベル切替でトラックはリセット(召喚し直し)[親方FB]
+      driving = 'machine'; if (truck) { scene.remove(truck); truck = null; } truckLoad = 0; truckTilt = 0; if (typeof updateTruckBtn === 'function') updateTruckBtn();   // レベル切替でトラックはリセット(召喚し直し)[親方FB]
       applyMachine();
       if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
       else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
@@ -1307,7 +1309,7 @@
       getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, getOwned: () => game.owned.slice(), getBlade: () => game.blade, curM: () => curM(), MACHINES: MACHINES, REWARD: CLEAR_REWARD,
       getBucket: () => game.bucket, backhoeDig: (dt) => backhoeDig(dt || 0.05), backhoeDump: (dt) => backhoeDump(dt || 0.05), kindOf: (id) => machineKind(id ? machineById(id) : curM()), bhMode: () => bhMode,
       soilTotal: () => { let s = 0; for (let i = 0; i < N; i++) s += heights[i]; return s * CELL_AREA + game.blade + game.bucket + truckLoad; },
-      getTruckLoad: () => truckLoad, setTruckLoad: (v) => { truckLoad = v; updateTruckBed(); }, getDriving: () => driving, setDriving: (d) => { driving = d; }, hasTruck: () => !!truck, callTruck: () => summonTruck(), truckPos: () => truck ? { x: +truckX.toFixed(2), z: +truckZ.toFixed(2), load: +truckLoad.toFixed(1), cap: TRUCK_CAP } : null,
+      getTruckLoad: () => truckLoad, setTruckLoad: (v) => { truckLoad = v; updateTruckBed(); }, getDriving: () => driving, setDriving: (d) => { driving = d; }, hasTruck: () => !!truck, callTruck: () => summonTruck(), truckPos: () => truck ? { x: +truckX.toFixed(2), z: +truckZ.toFixed(2), load: +truckLoad.toFixed(1), cap: TRUCK_CAP, tilt: +truckTilt.toFixed(2), bedRx: truck.userData.bedPivot ? +truck.userData.bedPivot.rotation.x.toFixed(2) : null } : null,
       setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, setBlade: (v) => { game.blade = v; }, setBucket: (v) => { game.bucket = v; },
       buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
       setMachine: (id) => { if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); },
