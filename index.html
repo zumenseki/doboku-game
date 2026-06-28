@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>土木ゲーム 水の試作（4レベル）</title>
 <style>
   :root { --dig:#e07a1c; --fill:#2faa55; --ink:#20303a; --panel:rgba(255,255,255,0.82); --water:#2f7fd6; }
@@ -129,7 +132,7 @@
     const MOVE_SPEED = 7;
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
     const FLAT_TOL = 0.4;
-    const CAM_DIST = 26, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
+    const CAM_DIST = 26, CAM_MIN = 12, CAM_MAX = 46, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
     // 水[追加]
     const WATER_EPS = 0.02, RENDER_EPS = 0.0015, SHALLOW_GROUND = -0.1, PLAIN_MIN = 0.08;
     let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
@@ -236,7 +239,7 @@
     const waterD = new Float32Array(N);
     const fL = new Float32Array(N), fR = new Float32Array(N), fT = new Float32Array(N), fB = new Float32Array(N);
     const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 } };
-    let camYaw = 0, camPitch = 0.95, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
+    let camYaw = 0, camPitch = 0.95, camDist = CAM_DIST, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
 
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) { const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD; }
@@ -369,7 +372,7 @@
     geo.setIndex(indices);
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
     scene.add(ground);
-    const cLow = new THREE.Color(0x6f9a4d), cMid = new THREE.Color(0xb08245), cHigh = new THREE.Color(0x6e4a23), cWet = new THREE.Color(0x4a5f3a), tmpC = new THREE.Color();
+    const cLow = new THREE.Color(0xc2a06c), cMid = new THREE.Color(0x9a6e3e), cHigh = new THREE.Color(0x5f3e1e), cWet = new THREE.Color(0x47301c), tmpC = new THREE.Color();  // 土寄せ[親方FB もっと土っぽく]：低=乾いた土/中=茶土/高=濃い掘りたて土/濡れ=黒っぽい泥
     function colorFor(h, wet, out) {
       const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
       if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
@@ -387,7 +390,7 @@
         const gi = idx % V, gj = (idx / V) | 0;
         const hl = heights[gi > 0 ? idx - 1 : idx], hr = heights[gi < GRID ? idx + 1 : idx], hd = heights[gj > 0 ? idx - V : idx], hu = heights[gj < GRID ? idx + V : idx];
         const slope = (Math.abs(hl - hr) + Math.abs(hd - hu)) * 0.5;
-        const mul = Math.max(0.5, 1 - Math.min(0.3, slope * 0.16) + grain[idx] * (wet ? 0.02 : 0.05));
+        const mul = Math.max(0.42, 1 - Math.min(0.42, slope * 0.24) + grain[idx] * (wet ? 0.04 : 0.09));  // 土寄せ[親方FB]：斜面の陰影と粒のザラつきを強める
         colors[idx * 3] = Math.min(1, tmpC.r * mul); colors[idx * 3 + 1] = Math.min(1, tmpC.g * mul); colors[idx * 3 + 2] = Math.min(1, tmpC.b * mul);
       }
       geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
@@ -620,11 +623,15 @@
       box(bucket, mats.steel, p.bucketW, 0.42, 0.48, 0, 0, 0);
       box(bucket, mats.dark, p.bucketW, 0.08, 0.52, 0, -0.18, 0.08);
       const teeth = p.heavy ? 5 : 3; for (let i = 0; i < teeth; i++) box(bucket, mats.steel, 0.09, 0.12, 0.16, -p.bucketW * 0.36 + i * p.bucketW * 0.72 / Math.max(1, teeth - 1), -0.22, 0.34);
+      // バケット内の土[親方FB バックホウが土を持ってるか分かるように]：game.bucket に応じて見える土の塊。bucket の子なので掘る/運ぶ/下ろすに完全追従。
+      const loadBase = { x: p.bucketW * 0.42, y: 0.2, z: 0.26 };
+      const load = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0x6e481f, flatShading: true, roughness: 1 }));
+      load.position.set(0, 0.04, 0.06); load.scale.set(loadBase.x, loadBase.y, loadBase.z); load.visible = false; bucket.add(load);
       cyl(g, mats.steel, 0.035, 0.92, -0.22, 1.05, 1.0, 'z', 0.38, 0, 0, 8); cyl(g, mats.steel, 0.03, 0.78, 0.22, 0.78, 1.62, 'z', -0.28, 0, 0, 8);
       if (p.snorkel) { cyl(g, mats.dark, 0.055, p.snorkel, 0.52, 1.45 + p.snorkel * 0.5, -0.58, 'y', 0, 0, 0, 8); box(g, mats.water, 0.24, 0.08, 0.18, 0.52, 1.45 + p.snorkel, -0.5); }
       if (p.cover) { box(g, mats.water, 1.0, 0.08, 0.88, 0, 1.23, -0.1); box(g, mats.water, 1.52, 0.12, 0.14, 0, 0.7, 0.94); }
       if (p.waterMark) { addWave(g, mats, -1, 1.02, -0.35); addWave(g, mats, 1, 1.02, -0.35); }
-      g.userData.arm = { boom: boom, stick: stick, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase }; return g;
+      g.userData.arm = { boom: boom, stick: stick, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase, load: load, loadBase: loadBase }; return g;
     }
     function buildLoaderModel(M, mats, p) {
       const g = new THREE.Group(); g.userData.kind = 'loader';
@@ -668,7 +675,7 @@
     // ブレード前の「押した土の山」[本体移植 2026-06-25]：ブル系で持っている土(game.blade)に応じて前に盛り上がる茶色の山。見た目専用（体積は地面/blade側で管理＝二重計上しない）。
     const pileGeo = new THREE.ConeGeometry(1.1, 1, 9);
     { const pa = pileGeo.attributes.position; for (let pk = 0; pk < pa.count; pk++) { const py = pa.getY(pk); if (py < 0.4) { pa.setX(pk, pa.getX(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setZ(pk, pa.getZ(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setY(pk, py + (Math.random() - 0.5) * 0.12); } } pileGeo.computeVertexNormals(); }  // 裾をデコボコに＝積んだ土塊っぽいシルエット（位置/拡縮は updateDozer 側で不変）
-    const bladePile = new THREE.Mesh(pileGeo, new THREE.MeshStandardMaterial({ color: 0x7d5320, flatShading: true, roughness: 1 }));
+    const bladePile = new THREE.Mesh(pileGeo, new THREE.MeshStandardMaterial({ color: 0x6e481f, flatShading: true, roughness: 1 }));
     bladePile.position.y = -999; scene.add(bladePile);
 
     // 粒子（土ぼこり・土塊・水しぶき）。丸くフワッとした見た目にするため、手続き生成の放射状グラデ画像をスプライトに使う（外部ファイル不要）。
@@ -711,20 +718,14 @@
       }
       function build() {
         master = ctx.createGain(); master.gain.value = muted ? 0 : 0.5; master.connect(ctx.destination);
-        engGain = ctx.createGain(); engGain.gain.value = 0.0;
-        engLP = ctx.createBiquadFilter(); engLP.type = 'lowpass'; engLP.frequency.value = 420; engLP.Q.value = 0.7;
-        engOsc = ctx.createOscillator(); engOsc.type = 'sawtooth'; engOsc.frequency.value = 48;
-        engVibGain = ctx.createGain(); engVibGain.gain.value = 6;
-        engVibOsc = ctx.createOscillator(); engVibOsc.type = 'sine'; engVibOsc.frequency.value = 7;
-        engVibOsc.connect(engVibGain); engVibGain.connect(engOsc.frequency);
-        engOsc.connect(engLP); engLP.connect(engGain); engGain.connect(master);
-        engOsc.start(); engVibOsc.start();
+        // エンジン低音（常時の低い唸り）は廃止[親方FB エンジンの低音がずっと鳴っているので消す]＝オシレータ自体を作らない。
         const nz = ctx.createBufferSource(); nz.buffer = makeNoiseBuffer(); nz.loop = true;
         digBus = ctx.createBiquadFilter(); digBus.type = 'bandpass'; digBus.frequency.value = 900; digBus.Q.value = 0.8;
         digGain = ctx.createGain(); digGain.gain.value = 0.0;
         nz.connect(digBus); digBus.connect(digGain); digGain.connect(master);
         nz.start();
         // 走行音＝本物の録音（前進=戦車キャタピラ track-fwd.mp3 / 後退=ブル作業音 track-rev.mp3）。取得→デコード→ループ再生し、gain で鳴らし分け（停止中は0／mute は master 経由）。
+        // 走行音は録音をそのまま使う（前回の170Hz低音カットは低音主体の録音の芯まで削って実質無音化→撤去[親方FB「音が聞こえない」]）。小ささは drive() の VOL で調整。
         fwdGain = ctx.createGain(); fwdGain.gain.value = 0; fwdGain.connect(master);
         revGain = ctx.createGain(); revGain.gain.value = 0; revGain.connect(master);
         loadDrive('track-fwd.mp3', function (b) { fwdSrc = ctx.createBufferSource(); fwdSrc.buffer = b; fwdSrc.loop = true; fwdSrc.connect(fwdGain); fwdSrc.start(); });
@@ -750,7 +751,7 @@
         toggleMute: function () { muted = !muted; try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (_) {} if (ready) master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.02); return muted; },
         drive: function (moving, rev) {
           if (!ready) return;
-          const now = ctx.currentTime, VOL = 0.85;
+          const now = ctx.currentTime, VOL = 0.6;
           // 走行音＝本物の録音を gain で鳴らし分け（前進=track-fwd / 後退=track-rev / 停止=無音）。mute は master が担当。
           if (fwdGain) fwdGain.gain.setTargetAtTime((moving && !rev) ? VOL : 0, now, 0.06);
           if (revGain) revGain.gain.setTargetAtTime((moving && rev) ? VOL : 0, now, 0.06);
@@ -764,7 +765,8 @@
         },
         click: function () { if (!ready || muted) return; beep(880, ctx.currentTime, 0.05, 0.18, 'square'); },
         buy: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(660, t, 0.08, 0.2, 'triangle'); beep(990, t + 0.07, 0.1, 0.2, 'triangle'); },
-        win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); }
+        win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); },
+        _diag: function () { return { ready: ready, ctx: ctx ? ctx.state : 'none', muted: muted, master: master ? +master.gain.value.toFixed(3) : null, fwdLoaded: !!fwdSrc, revLoaded: !!revSrc, fwdGain: fwdGain ? +fwdGain.gain.value.toFixed(3) : null, revGain: revGain ? +revGain.gain.value.toFixed(3) : null }; }
       };
     })();
 
@@ -784,11 +786,24 @@
     window.addEventListener("blur", clearKeys); window.addEventListener("pagehide", clearKeys);
     const el = renderer.domElement;
     let lookId = null, lookX = 0, lookY = 0;
-    el.addEventListener("pointerdown", (e) => { if (lookId !== null) return; lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {} });
-    el.addEventListener("pointermove", (e) => { if (e.pointerId !== lookId) return; e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }); // カメラは手動（ドラッグで左右回転＋上下見下ろし・自動追従なし）
-    const endLook = (e) => { if (e.pointerId === lookId) lookId = null; };
+    const camPtrs = new Map(); let pinchDist = 0;   // canvas上のポインタ追跡（1本=回転/見下ろし・2本=ピンチでズーム）
+    const clampDist = (v) => Math.max(CAM_MIN, Math.min(CAM_MAX, v));
+    const camTwoDist = () => { const a = [...camPtrs.values()]; if (a.length < 2) return 0; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
+    el.addEventListener("pointerdown", (e) => {
+      camPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      if (camPtrs.size === 1) { lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; }
+      else if (camPtrs.size === 2) { lookId = null; pinchDist = camTwoDist(); }   // 2本指=ピンチ開始（回転を止めてズーム）
+    });
+    el.addEventListener("pointermove", (e) => {
+      const p = camPtrs.get(e.pointerId); if (!p) return; p.x = e.clientX; p.y = e.clientY;
+      if (camPtrs.size >= 2) { e.preventDefault(); const d = camTwoDist(); if (pinchDist > 0 && d > 0) camDist = clampDist(camDist - (d - pinchDist) * 0.06); pinchDist = d; }   // 指を広げる=寄る/狭める=引く
+      else if (e.pointerId === lookId) { e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }   // カメラ手動（1本指ドラッグで左右回転＋上下見下ろし）
+    });
+    const endLook = (e) => { camPtrs.delete(e.pointerId); pinchDist = 0; if (e.pointerId === lookId) lookId = null; if (camPtrs.size === 1) { const id = camPtrs.keys().next().value, q = camPtrs.get(id); lookId = id; lookX = q.x; lookY = q.y; } };   // 2本→1本に戻ったら残り1本で回転継続
     el.addEventListener("pointerup", endLook); el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
-    window.addEventListener("touchmove", (e) => { if (lookId !== null) e.preventDefault(); }, { passive: false });
+    el.addEventListener("wheel", (e) => { e.preventDefault(); camDist = clampDist(camDist + e.deltaY * 0.03); }, { passive: false });   // PC=ホイールでズーム（上=寄る/下=引く）
+    window.addEventListener("touchmove", (e) => { if (lookId !== null || camPtrs.size >= 2) e.preventDefault(); }, { passive: false });
     let hintTimer = setTimeout(hideHint, 12000);
     function hideHint() { const h = document.getElementById("hint"); if (h) h.style.opacity = "0"; clearTimeout(hintTimer); }
     function setHint(txt) { const h = document.getElementById("hint"); if (h) { h.innerHTML = txt; h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 12000); } }
@@ -933,6 +948,7 @@
         if (acting && !game.won && bhMode === 'dig' && game.bucket < cap) { backhoeDig(dt); action = 'dig'; }
         else if (acting && !game.won && bhMode === 'dump' && game.bucket > 0.0001) { backhoeDump(dt); action = 'dump'; }
         animateArm(dt, action); pushing = false;
+        if (activeArm && activeArm.load) { const lb = activeArm.loadBase, pf = Math.min(1, game.bucket / cap), f = 0.5 + 0.55 * pf; activeArm.load.visible = game.bucket > 0.05; activeArm.load.scale.set(lb.x * f, lb.y * f, lb.z * f); }   // バケット内の土を量に応じて表示[親方FB]
       } else {
         if (acting && moving && !reversing && !game.won) {
           if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); } // 押し始めの足元の高さを基準に固定（本物ブル・前進時のみ整地）
@@ -950,7 +966,7 @@
     }
     function sampleHeight(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return heights[j * V + i]; }
     function updateCamera() {
-      const aspect = window.innerWidth / Math.max(1, window.innerHeight), f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = CAM_DIST * f, horiz = dist * Math.cos(camPitch);
+      const aspect = window.innerWidth / Math.max(1, window.innerHeight), f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = camDist * f, horiz = dist * Math.cos(camPitch);
       let sx = 0, sy = 0; if (shake > 0.001) { sx = rnd2(shake); sy = rnd2(shake); }
       camera.position.set(game.mx + horiz * Math.sin(camYaw) + sx, dist * Math.sin(camPitch) + sy, game.mz + horiz * Math.cos(camYaw)); camera.lookAt(game.mx, 1, game.mz);
     }
@@ -1203,7 +1219,7 @@
       game, keys, heights, waterD, simWater, syncWater, syncGeometry, gradePush, updateDozer, camera, sampleHeight, sampleWater,
       totalWater, zoneVol, zoneMaxDev, zoneFlatness, levelDone, checkWin, loadLevel, refreshHUD, N, V, GRID,
       getLevel: () => curLevel, getLV: () => LV, getFps: () => fpsEMA,
-      setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, setActing: (v) => { acting = v; }, getActing: () => acting,
+      setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, getCamDist: () => camDist, setCamDist: (v) => { camDist = Math.max(CAM_MIN, Math.min(CAM_MAX, v)); }, CAM_MIN: CAM_MIN, CAM_MAX: CAM_MAX, setActing: (v) => { acting = v; }, getActing: () => acting,
       setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, setGF: (v) => { GF = v; }, setDamp: (v) => { FLUX_DAMP = v; },
       getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, getOwned: () => game.owned.slice(), getBlade: () => game.blade, curM: () => curM(), MACHINES: MACHINES, REWARD: CLEAR_REWARD,
       getBucket: () => game.bucket, backhoeDig: (dt) => backhoeDig(dt || 0.05), backhoeDump: (dt) => backhoeDump(dt || 0.05), kindOf: (id) => machineKind(id ? machineById(id) : curM()), bhMode: () => bhMode,
@@ -1214,12 +1230,13 @@
       look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), id: curM().id, meshCount: activeModel ? countMeshes(activeModel) : 0, blade: !!activeBlade, arm: !!activeArm, loader: !!activeLoader, dump: !!activeDump }),
       bladePilePose: () => ({ y: +bladePile.position.y.toFixed(3), sx: +bladePile.scale.x.toFixed(3), sy: +bladePile.scale.y.toFixed(3), sz: +bladePile.scale.z.toFixed(3), visible: bladePile.position.y > -900, px: +bladePile.position.x.toFixed(2), pz: +bladePile.position.z.toFixed(2) }),
       partPose: () => ({ bladeY: activeBlade ? +activeBlade.position.y.toFixed(4) : null, bladeRx: activeBlade ? +activeBlade.rotation.x.toFixed(4) : null, boomRx: activeArm ? +activeArm.boom.rotation.x.toFixed(4) : null, stickRx: activeArm ? +activeArm.stick.rotation.x.toFixed(4) : null, bucketRx: activeArm ? +activeArm.bucket.rotation.x.toFixed(4) : null }),
+      bucketLoadPose: () => (activeArm && activeArm.load) ? ({ hasArm: true, visible: activeArm.load.visible, sx: +activeArm.load.scale.x.toFixed(3), sy: +activeArm.load.scale.y.toFixed(3) }) : ({ hasArm: false }),
       pulseBlade: () => { digFx(true); updateDozer(0.016); return window.__t.partPose(); },
       armStep: (action, dt) => { animateArm(dt || 0.05, action || null); return window.__t.partPose(); },
       getShake: () => shake,
       getUpg: () => JSON.parse(JSON.stringify(game.upg)), getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
       buyUpgrade: (id) => buyUpgrade(id), upgCostOf: (id) => upgCost(machineById(id), upgLv(id)), upgLvOf: (id) => upgLv(id),
-      effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), MAKERS: MAKERS,
+      effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
     };
