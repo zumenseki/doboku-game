@@ -912,13 +912,11 @@
       bhDumpAmt = Math.max(0, Math.min(1, bhDumpAmt + (dumping ? dt * 5 : -dt * 5)));
       bhPhase += dt * ((digging || dumping) ? 5.5 : 3);
       const A = activeArm; if (!A || !A.boom || !A.stick || !A.bucket) return;
-      const swing = Math.sin(bhPhase) * 0.5 + 0.5;            // 0=下げて地面へ / 1=高く持ち上げ
-      const reach = 1 - swing;                                 // 下げ量
-      const scoopCurl = Math.max(0, Math.sin(bhPhase - 0.9));  // すくうタイミング
-      // 掘る=「下げて地面へ↔高く持ち上げ」を大きく上下[親方FB 高く上げてもっと低く下げて]。下げ時:ブーム倒し+スティック伸ばし、上げ時:ブーム高く+スティック巻く。下ろす:ブーム下げてバケット開く。
-      A.boom.rotation.x = A.boomBase + bhDigAmt * (0.47 * reach - 0.83 * swing) + 0.45 * bhDumpAmt;
-      A.stick.rotation.x = A.stickBase + bhDigAmt * (0.55 * reach - 0.30 * swing) - 0.30 * bhDumpAmt;
-      A.bucket.rotation.x = A.bucketBase + bhDigAmt * (0.15 + 0.55 * scoopCurl) - 1.0 * bhDumpAmt;
+      const scoop = Math.sin(bhPhase) * 0.5 + 0.5;            // 掘る時の小さなすくい往復(0..1)
+      // 掘る=低く下げて地面を掘る[親方FB 掘る時もっと下に]／下ろす=高く上げてバケットを開けて放土[親方FB 下ろす時もっと上に]
+      A.boom.rotation.x = A.boomBase + bhDigAmt * (0.70 + 0.12 * scoop) - bhDumpAmt * 0.85;
+      A.stick.rotation.x = A.stickBase + bhDigAmt * (0.45 + 0.20 * scoop) - bhDumpAmt * 0.55;
+      A.bucket.rotation.x = A.bucketBase + bhDigAmt * (0.10 + 0.30 * scoop) - bhDumpAmt * 1.15;
     }
 
     function updateDozer(dt) {
