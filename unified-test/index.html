@@ -615,23 +615,27 @@
       if (p.round) cyl(g, mats.body2, 0.55, 0.42, 0, p.bodyY + 0.08, -0.62, 'z', 0, 0, 0, 12); else box(g, p.counter ? mats.dark : mats.body2, p.body[0] * 0.72, p.body[1] * 0.75, 0.38, 0, p.bodyY + 0.06, -0.72);
       const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
       addLights(g, mats, 1.12, 0.62, 0.35); addMakerStripe(g, mats, 0.72, 1.0, -0.18, 0.7);
-      const boomBase = p.heavy ? 0.5 : 0.56, stickBase = p.heavy ? -0.42 : -0.48, bucketBase = 0.52;
       const bw = p.heavy ? 0.34 : 0.26, sw = p.heavy ? 0.26 : 0.2;
-      const boom = box(g, mats.body, bw, bw, p.boomL, 0, 1.26, 0.72, boomBase, 0, 0);
-      const stick = box(g, mats.dark, sw, sw, p.stickL, 0, 0.72, 1.45, stickBase, 0, 0);
-      const bucket = new THREE.Group(); bucket.position.set(0, 0.42, p.bucketZ); bucket.rotation.x = bucketBase; g.add(bucket);
-      box(bucket, mats.steel, p.bucketW, 0.42, 0.48, 0, 0, 0);
-      box(bucket, mats.dark, p.bucketW, 0.08, 0.52, 0, -0.18, 0.08);
-      const teeth = p.heavy ? 5 : 3; for (let i = 0; i < teeth; i++) box(bucket, mats.steel, 0.09, 0.12, 0.16, -p.bucketW * 0.36 + i * p.bucketW * 0.72 / Math.max(1, teeth - 1), -0.22, 0.34);
-      // バケット内の土[親方FB バックホウが土を持ってるか分かるように]：game.bucket に応じて見える土の塊。bucket の子なので掘る/運ぶ/下ろすに完全追従。
+      // 腕＝実機式の2セグメント可動チェーン[親方FB「実際の重機のように腕をもっと上に/可動2本」]：肩(boomPivot)→ブーム→肘(stickPivot)→アーム→手首→バケット。肩で上げると全体が高く持ち上がる。
+      const boomBase = -0.62, stickBase = 1.18, bucketBase = 0.55;   // 待機: ブームを上げ気味・肘で曲げ・バケット軽くカール
+      const shoulderY = p.bodyY + 0.48, shoulderZ = p.body[2] * 0.34;
+      const boomPivot = new THREE.Group(); boomPivot.position.set(0.02, shoulderY, shoulderZ); boomPivot.rotation.x = boomBase; g.add(boomPivot);
+      box(boomPivot, mats.body, bw, bw, p.boomL, 0, 0, p.boomL / 2);                                          // ブーム＝肩から前方(+Z)へ
+      box(boomPivot, mats.steel, bw * 0.45, bw * 0.45, p.boomL * 0.66, bw * 0.75, bw * 0.55, p.boomL * 0.45); // 油圧シリンダー風(ブームに追従)
+      const stickPivot = new THREE.Group(); stickPivot.position.set(0, 0, p.boomL); stickPivot.rotation.x = stickBase; boomPivot.add(stickPivot);
+      box(stickPivot, mats.dark, sw, sw, p.stickL, 0, 0, p.stickL / 2);                                       // アーム/スティック＝肘から先
+      const bucket = new THREE.Group(); bucket.position.set(0, 0, p.stickL); bucket.rotation.x = bucketBase; stickPivot.add(bucket);
+      box(bucket, mats.steel, p.bucketW, 0.42, 0.48, 0, -0.08, 0.14);
+      box(bucket, mats.dark, p.bucketW, 0.08, 0.52, 0, -0.26, 0.22);
+      const teeth = p.heavy ? 5 : 3; for (let i = 0; i < teeth; i++) box(bucket, mats.steel, 0.09, 0.12, 0.16, -p.bucketW * 0.36 + i * p.bucketW * 0.72 / Math.max(1, teeth - 1), -0.30, 0.46);
+      // バケット内の土[親方FB バックホウが土を持ってるか分かるように]：game.bucket に応じて見える土の塊。bucket の子なので腕に完全追従。
       const loadBase = { x: p.bucketW * 0.42, y: 0.2, z: 0.26 };
       const load = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0x6e481f, flatShading: true, roughness: 1 }));
-      load.position.set(0, 0.04, 0.06); load.scale.set(loadBase.x, loadBase.y, loadBase.z); load.visible = false; bucket.add(load);
-      cyl(g, mats.steel, 0.035, 0.92, -0.22, 1.05, 1.0, 'z', 0.38, 0, 0, 8); cyl(g, mats.steel, 0.03, 0.78, 0.22, 0.78, 1.62, 'z', -0.28, 0, 0, 8);
+      load.position.set(0, -0.06, 0.12); load.scale.set(loadBase.x, loadBase.y, loadBase.z); load.visible = false; bucket.add(load);
       if (p.snorkel) { cyl(g, mats.dark, 0.055, p.snorkel, 0.52, 1.45 + p.snorkel * 0.5, -0.58, 'y', 0, 0, 0, 8); box(g, mats.water, 0.24, 0.08, 0.18, 0.52, 1.45 + p.snorkel, -0.5); }
       if (p.cover) { box(g, mats.water, 1.0, 0.08, 0.88, 0, 1.23, -0.1); box(g, mats.water, 1.52, 0.12, 0.14, 0, 0.7, 0.94); }
       if (p.waterMark) { addWave(g, mats, -1, 1.02, -0.35); addWave(g, mats, 1, 1.02, -0.35); }
-      g.userData.arm = { boom: boom, stick: stick, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase, load: load, loadBase: loadBase }; return g;
+      g.userData.arm = { boom: boomPivot, stick: stickPivot, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase, load: load, loadBase: loadBase }; return g;
     }
     function buildLoaderModel(M, mats, p) {
       const g = new THREE.Group(); g.userData.kind = 'loader';
@@ -908,11 +912,12 @@
       bhDumpAmt = Math.max(0, Math.min(1, bhDumpAmt + (dumping ? dt * 5 : -dt * 5)));
       bhPhase += dt * ((digging || dumping) ? 5.5 : 3);
       const A = activeArm; if (!A || !A.boom || !A.stick || !A.bucket) return;
-      const cyc = Math.sin(bhPhase);                         // -1=持ち上げ、+1=下ろし
-      const scoopCurl = Math.max(0, Math.sin(bhPhase - 0.9)); // 腕が下りた少し後に掬う
-      A.boom.rotation.x = A.boomBase + bhDigAmt * (0.28 + 0.42 * cyc) - 0.18 * bhDumpAmt;
-      A.stick.rotation.x = A.stickBase - bhDigAmt * (0.22 + 0.30 * cyc) + 0.32 * bhDumpAmt;
-      A.bucket.rotation.x = A.bucketBase + bhDigAmt * (0.18 + 0.55 * scoopCurl) - 1.0 * bhDumpAmt;
+      const lift = Math.sin(bhPhase) * 0.5 + 0.5;            // 0..1 周期的なブーム上げ
+      const scoopCurl = Math.max(0, Math.sin(bhPhase - 0.9)); // 腕が伸びた少し後に掬う
+      // 掘る=肩(ブーム)を高く上げる(負方向へ)→肘(スティック)を動かす→バケットで掬う。下ろす=ブームを下げてバケットを開く。[親方FB 腕を高く・2セグメント可動]
+      A.boom.rotation.x = A.boomBase - bhDigAmt * (0.45 + 0.32 * lift) + 0.30 * bhDumpAmt;
+      A.stick.rotation.x = A.stickBase - bhDigAmt * (0.15 + 0.45 * scoopCurl) - 0.30 * bhDumpAmt;
+      A.bucket.rotation.x = A.bucketBase + bhDigAmt * (0.20 + 0.60 * scoopCurl) - 1.0 * bhDumpAmt;
     }
 
     function updateDozer(dt) {
