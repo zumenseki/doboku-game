@@ -138,13 +138,14 @@
     if (!window.THREE) { document.body.innerHTML = "<p style='color:#fff;padding:20px'>3D部品(Three.js)の読み込みに失敗しました。</p>"; return; }
 
     // ===================== 設定 =====================
-    const GRID = 36, WORLD = 24, V = GRID + 1, N = V * V;
+    const MAP_SCALE = 3;   // マップ拡大[親方FB 面積9倍=一辺3倍]。GRID/WORLD/ゾーン/地形生成を一括スケール。重さは simWater の乾きスキップで対策。
+    const GRID = 36 * MAP_SCALE, WORLD = 24 * MAP_SCALE, V = GRID + 1, N = V * V;
     const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
     const FLAT_TOL = 0.4;
-    const CAM_DIST = 26, CAM_MIN = 12, CAM_MAX = 46, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
+    const CAM_DIST = 34, CAM_MIN = 12, CAM_MAX = 90, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;   // 大マップ[親方FB]：引きを大きく(全体俯瞰可)・初期も少し引き
     // 水[追加]
     const WATER_EPS = 0.02, RENDER_EPS = 0.0015, SHALLOW_GROUND = -0.1, PLAIN_MIN = 0.08;
     let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
@@ -257,7 +258,7 @@
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) { const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD; }
     function gauss(x, z, cx, cz, h, s) { const d2 = (x - cx) * (x - cx) + (z - cz) * (z - cz); return h * Math.exp(-d2 / (2 * s * s)); }
     function rnd2(k) { return (Math.random() - 0.5) * k; }
-    function rect(i0, i1, j0, j1) { return { i0: i0, i1: i1, j0: j0, j1: j1 }; }
+    function rect(i0, i1, j0, j1) { const s = MAP_SCALE; return { i0: Math.round(i0 * s), i1: Math.round(i1 * s), j0: Math.round(j0 * s), j1: Math.round(j1 * s) }; }   // GRIDスケールに合わせ自動拡大[親方FB]
     function inRect(i, j, z) { return i >= z.i0 && i <= z.i1 && j >= z.j0 && j <= z.j1; }
     function worldX(i) { return (i / GRID - 0.5) * WORLD; }
     function worldZ(j) { return (j / GRID - 0.5) * WORLD; }
@@ -276,18 +277,18 @@
     // ===================== レベル地形生成 =====================
     function genDrain(L) { // L0 / L3: 調整池（作業場を排水+整地, ため池に貯水）
       clearWater();
-      const A = L.A, B = L.B, bcx = worldX((B.i0 + B.i1) / 2), bcz = worldZ((B.j0 + B.j1) / 2), sc = L.bumpScale;
+      const s = MAP_SCALE, A = L.A, B = L.B, bcx = worldX((B.i0 + B.i1) / 2), bcz = worldZ((B.j0 + B.j1) / 2), sc = L.bumpScale;
       const bumps = [
-        { x: -3.5 + rnd2(2), z: 5.5 + rnd2(1.5), h: 1.3 * sc, s: 1.2 },
-        { x: 3.0 + rnd2(2), z: 7.5 + rnd2(1.5), h: 1.2 * sc, s: 1.2 },
-        { x: -1.0 + rnd2(2), z: 9.0 + rnd2(1.5), h: 1.1 * sc, s: 1.1 },
-        { x: 3.5 + rnd2(2), z: 4.5 + rnd2(1.5), h: 1.0 * sc, s: 1.1 }
+        { x: -3.5 * s + rnd2(2 * s), z: 5.5 * s + rnd2(1.5 * s), h: 1.3 * sc, s: 1.2 * s },
+        { x: 3.0 * s + rnd2(2 * s), z: 7.5 * s + rnd2(1.5 * s), h: 1.2 * sc, s: 1.2 * s },
+        { x: -1.0 * s + rnd2(2 * s), z: 9.0 * s + rnd2(1.5 * s), h: 1.1 * sc, s: 1.1 * s },
+        { x: 3.5 * s + rnd2(2 * s), z: 4.5 * s + rnd2(1.5 * s), h: 1.0 * sc, s: 1.1 * s }
       ];
       for (let idx = 0; idx < N; idx++) {
         const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
         let h = rnd2(0.1);
-        h -= gauss(x, z, bcx, bcz, 3.4, 2.6);   // ため池の深い穴
-        h += gauss(x, z, 0, 0, 1.2, 2.2);        // 土手
+        h -= gauss(x, z, bcx, bcz, 3.4, 2.6 * s);   // ため池の深い穴
+        h += gauss(x, z, 0, 0, 1.2, 2.2 * s);        // 土手
         if (inRect(i, j, A)) { const t = (j - A.j0) / (A.j1 - A.j0); h = -0.7 + 0.4 * t + rnd2(0.08); for (let b = 0; b < bumps.length; b++) h += gauss(x, z, bumps[b].x, bumps[b].z, bumps[b].h, bumps[b].s); }
         heights[idx] = clamp(h);
       }
@@ -295,28 +296,28 @@
     }
     function genFlow(L) { // L1: 通水（奥の水を尾根を掘って手前へ流す）
       clearWater();
-      const S = L.S, D = L.B, scz = worldZ((S.j0 + S.j1) / 2), dcz = worldZ((D.j0 + D.j1) / 2);
+      const s = MAP_SCALE, S = L.S, D = L.B, scz = worldZ((S.j0 + S.j1) / 2), dcz = worldZ((D.j0 + D.j1) / 2);
       for (let idx = 0; idx < N; idx++) {
         const x = vx[idx], z = vz[idx];
         let h = rnd2(0.1);
-        h -= gauss(x, z, 0, scz, 1.6, 3.0);   // 奥の水たまり（上流）
-        h += gauss(x, z, 0, 0, 2.0, 1.8);      // 中央の尾根（掘る対象）
-        h -= gauss(x, z, 0, dcz, 2.6, 3.0);    // 手前の窪み（下流・より深い）
+        h -= gauss(x, z, 0, scz, 1.6, 3.0 * s);   // 奥の水たまり（上流）
+        h += gauss(x, z, 0, 0, 2.0, 1.8 * s);      // 中央の尾根（掘る対象）
+        h -= gauss(x, z, 0, dcz, 2.6, 3.0 * s);    // 手前の窪み（下流・より深い）
         heights[idx] = clamp(h);
       }
       zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
     }
     function genDam(L) { // L2: ため池づくり（盛土で堤防+水路で引き込み）
       clearWater();
-      const S = L.S, P = L.B;
+      const s = MAP_SCALE, S = L.S, P = L.B;
       for (let idx = 0; idx < N; idx++) {
         const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.1);
-        if (i < 10 || i > 26) h = 0.7 + rnd2(0.1);        // 左右の壁（水路を挟む）
+        if (i < 10 * s || i > 26 * s) h = 0.7 + rnd2(0.1);        // 左右の壁（水路を挟む）
         else if (j >= S.j0 && j <= S.j1) h = -1.5 + rnd2(0.1); // 奥の水たまり（水源）
-        else if (j >= 10 && j <= 14) h = 0.8 + rnd2(0.1);  // 水源とため池の間の土手（掘る）
+        else if (j >= 10 * s && j <= 14 * s) h = 0.8 + rnd2(0.1);  // 水源とため池の間の土手（掘る）
         else if (j >= P.j0 && j <= P.j1) h = -0.8 + rnd2(0.1); // ため池の底（浅い窪み）
-        else if (j >= 27 && j <= 28) h = -0.6 + rnd2(0.05);  // すき間（堤防で盛る対象＝ここから漏れる）
-        else if (j >= 29) h = -2.5 + rnd2(0.1);            // 手前の落ち先（漏れた水が溜まる）
+        else if (j >= 27 * s && j <= 28 * s) h = -0.6 + rnd2(0.05);  // すき間（堤防で盛る対象＝ここから漏れる）
+        else if (j >= 29 * s) h = -2.5 + rnd2(0.1);            // 手前の落ち先（漏れた水が溜まる）
         else h = rnd2(0.1);
         heights[idx] = clamp(h);
       }
@@ -324,11 +325,11 @@
     }
     function genSub(L) { // L5: 水中工事（水没した底の土の山を水中バックホウで掘り下げて平らに）
       clearWater();
-      const A = L.A, m1 = L.m1, m2 = L.m2;
+      const s = MAP_SCALE, A = L.A, m1 = L.m1, m2 = L.m2;
       for (let idx = 0; idx < N; idx++) {
         const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
         let h = rnd2(0.1);
-        if (inRect(i, j, A)) { h = -1.8 + rnd2(0.1); h += gauss(x, z, m1[0], m1[1], 0.9, 1.7) + gauss(x, z, m2[0], m2[1], 0.8, 1.6); } // 深い底＋水中の山
+        if (inRect(i, j, A)) { h = -1.8 + rnd2(0.1); h += gauss(x, z, m1[0] * s, m1[1] * s, 0.9, 1.7 * s) + gauss(x, z, m2[0] * s, m2[1] * s, 0.8, 1.6 * s); } // 深い底＋水中の山
         heights[idx] = clamp(h);
       }
       zoneEach(A, (idx) => { const d = 0.0 - heights[idx]; if (d > 0) waterD[idx] = d; }); // 水面0=深い水(普通のブルは入れない)
@@ -450,7 +451,9 @@
     function simWater(dt) {
       const dtG = dt * GF, inv = dt / CELL_AREA;
       for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
-        const c = j * V + i, surfC = heights[c] + waterD[c];
+        const c = j * V + i;
+        if (waterD[c] <= 1e-7) { fL[c] = fR[c] = fT[c] = fB[c] = 0; continue; }   // 乾きセルは流出0＝大マップ軽量化(水のある所だけ計算)[親方FB]
+        const surfC = heights[c] + waterD[c];
         let l = (i > 0) ? (fL[c] + dtG * (surfC - (heights[c - 1] + waterD[c - 1]))) : 0; if (l < 0) l = 0; else l *= FLUX_DAMP;
         let r = (i < GRID) ? (fR[c] + dtG * (surfC - (heights[c + 1] + waterD[c + 1]))) : 0; if (r < 0) r = 0; else r *= FLUX_DAMP;
         let t = (j > 0) ? (fT[c] + dtG * (surfC - (heights[c - V] + waterD[c - V]))) : 0; if (t < 0) t = 0; else t *= FLUX_DAMP;
@@ -1100,7 +1103,7 @@
       driving = 'machine'; if (truck) { scene.remove(truck); truck = null; } truckLoad = 0; truckTilt = 0; if (typeof updateTruckBtn === 'function') updateTruckBtn();   // レベル切替でトラックはリセット(召喚し直し)[親方FB]
       applyMachine();
       if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
-      else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
+      else { game.mx = 0; game.mz = LV.startZ * MAP_SCALE; game.myaw = Math.PI; findDryStart(); }   // スタートz も拡大[親方FB]
       lvnumEl.textContent = (curLevel + 1);
       workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : '作業場';
       document.getElementById("goalLabel").innerHTML = LV.goal;
