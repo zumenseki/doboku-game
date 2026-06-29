@@ -102,6 +102,15 @@
   .m-card.locked { opacity:.5; cursor:default; }
   .m-card .m-ic { font-size:20px; flex:0 0 auto; }
   .m-card .m-tx { line-height:1.25; font-size:13px; } .m-card .m-tx small { display:block; color:#667; font-size:11px; margin-top:2px; }
+  /* [親方FB] 重機切替リスト（取得済みから選ぶ） */
+  #mchooser { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #mchooser.show { display:flex; animation:fade .3s ease; }
+  #mc-close { margin-top:10px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
+  .mc-tag { display:inline-block; margin-top:3px; font-size:10px; font-weight:800; padding:1px 7px; border-radius:8px; background:#dde6ec; color:#456; }
+  .mc-tag.cur { background:#9ccf9c; color:#143a14; }
+  .mc-tag.field { background:#cfe6f6; color:#114; }
+  #mc-note { display:none; margin-top:8px; background:#ffe1e1; color:#a11; font-weight:800; font-size:12px; padding:8px 10px; border-radius:10px; text-align:center; line-height:1.5; }
+  #mc-note.show { display:block; }
   .g-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
   .g-btn.upg { background:#e89a2a; color:#fff; } .g-btn.maxed { background:#f0d8a0; color:#7a5a10; }
   #badges { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
@@ -138,7 +147,7 @@
   <button id="act">ならす<span>押す</span></button>
   <button id="reset">最初から</button>
   <button id="shop">🛒 ショップ</button>
-  <button id="machineBtn" style="display:none">🚜 ブル<span>切替</span></button>
+  <button id="machineBtn">🚜 ブル<span>切替</span></button>
   <button id="truckBtn">🚛 トラック召喚</button>
   <button id="mute" aria-label="音">🔊</button>
   <button id="achBtn">🏅 実績</button>
@@ -149,6 +158,7 @@
   <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
   <div id="badges"><div class="b-box"><h2>🏅 実績バッジ</h2><div id="b-list"></div><button id="b-close">とじる</button></div></div>
   <div id="mapsel"><div class="b-box"><h2>🗺 マップ選択</h2><div id="m-list" class="m-grid"></div><button id="m-close">とじる</button></div></div>
+  <div id="mchooser"><div class="b-box"><h2>🚜 重機を切り替え</h2><div id="mc-list" class="m-grid"></div><div id="mc-note"></div><button id="mc-close">とじる</button></div></div>
   <div id="achToast"></div>
   <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
 
@@ -1322,7 +1332,7 @@
       dozer.scale.setScalar(machineScale(M));
       updateMachineBtn(); // 置いてある重機があれば「機械チェンジ」表示[親方FB]
       machineBtn.classList.toggle('sub', M.canEnterWater);
-      machineBtn.childNodes[0].nodeValue = M.icon + ' ' + M.name;
+      if (machineBtn.firstChild && machineBtn.firstChild.nodeType === 3) machineBtn.firstChild.nodeValue = M.icon + ' ' + M.name;   // 先頭テキストノードに現在の重機名（保険付き）
       updateActLabel();   // 操作ボタンの文字（ブル=ならす／バックホウ=掘る/下ろす）[本体移植]
     }
     // 操作ボタンの文字を重機の種類で切替[本体移植]：ブル系=ならす／バックホウ系=空なら掘る・土ありなら下ろす。
@@ -1340,7 +1350,7 @@
 
     // ===================== 複数重機の配備（現場に出す＋タップ乗り換え）[親方FB] =====================
     const MAX_DEPLOY = 12;   // [親方FB C2] 場に出せる重機の上限（操作中の1台＋置いてある台数）。8→12へ増量
-    function updateMachineBtn() { machineBtn.style.display = parked.length >= 1 ? 'flex' : 'none'; }   // 乗り換え先(置いてある重機)があれば「機械チェンジ」表示
+    function updateMachineBtn() { machineBtn.style.display = 'flex'; }   // [親方FB] 重機切替ボタンは常時表示（押すと取得済み重機の一覧から選ぶ）
     function disposeModel(m) { m.traverse(function (o) { if (o.geometry) o.geometry.dispose(); }); }   // ジオメトリだけ破棄（マテリアルは全モデル共有ゆえ残す）
     function makeParkedModel(M, x, z, yaw) {
       const m = buildMachineModel(M); m.scale.setScalar(machineScale(M));
@@ -1372,14 +1382,15 @@
       parked.push({ id: id, x: sp[0], z: sp[1], yaw: game.myaw, blade: 0, bucket: 0, model: makeParkedModel(M, sp[0], sp[1], game.myaw) });
       updateMachineBtn(); SND.click(); tryVibrate(20); setHint(M.icon + ' ' + M.name + ' を出した。重機をタップで乗り換え');
     }
-    function deployAndDrive(id) {   // [親方FB] ショップで選んだ重機を現場に出して即その重機に乗る（前の重機は交代せずその場に残る）
-      if (id === game.machine) return;   // 既に操作中
+    function deployAndDrive(id) {   // [親方FB] ショップ/切替リストで選んだ重機を現場に出して即その重機に乗る（前の重機は交代せずその場に残る）。成否(true/false)を返す
+      if (id === game.machine) return true;   // 既に操作中＝成功扱い
       const ex = parked.find(function (p) { return p.id === id; });
-      if (ex) { activateParked(ex); return; }   // 既に出してる→その重機へ乗り換え
-      if (1 + parked.length >= MAX_DEPLOY) { setHint('これ以上は重機を出せません（最大' + MAX_DEPLOY + '台）'); return; }
+      if (ex) { activateParked(ex); return true; }   // 既に出してる→その重機へ乗り換え
+      if (1 + parked.length >= MAX_DEPLOY) { setHint('現場がいっぱいです（最大' + MAX_DEPLOY + '台）。乗り換えるにはマップを切り替えると現場がリセットされます'); SND.click(); return false; }   // 満杯＝出せない（呼び元で表示維持）
       const M = machineById(id), sp = placeSpot();
       const entry = { id: id, x: sp[0], z: sp[1], yaw: game.myaw, blade: 0, bucket: 0, model: makeParkedModel(M, sp[0], sp[1], game.myaw) };
       parked.push(entry); activateParked(entry); tryVibrate(20);   // 出して即乗る（前の重機はparked化＝現場に残る）
+      return true;
     }
     function activateParked(entry) {
       const i = parked.indexOf(entry); if (i < 0) return;
@@ -1477,7 +1488,7 @@
       else if (b.classList.contains('upg')) { buyUpgrade(id); }
       else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); deployAndDrive(id); garage.classList.remove("show"); SND.buy(); tryVibrate(30); checkAchievements(); }   // [親方FB] 購入→現場に出して乗る
     });
-    machineBtn.addEventListener("click", function () { if (!parked.length) return; activateParked(parked[0]); });   // [親方FB] 機械チェンジ=置いてある重機へ順番に乗り換え
+    machineBtn.addEventListener("click", function () { openMachineChooser(); });   // [親方FB] 左上ボタン=取得済み重機の一覧から切り替え
     const badgesEl = document.getElementById("badges");
     document.getElementById("achBtn").addEventListener("click", function () { renderBadges(); badgesEl.classList.add("show"); SND.click(); });
     document.getElementById("b-close").addEventListener("click", function () { badgesEl.classList.remove("show"); SND.click(); });
@@ -1504,6 +1515,31 @@
       const c = e.target.closest ? e.target.closest('.m-card') : null; if (!c || !c.dataset || c.dataset.n == null) return;
       const n = +c.dataset.n; if (n > game.unlocked) { SND.click(); return; }   // ロック中は選べない
       mapselEl.classList.remove("show"); loadLevel(n); SND.click();
+    });
+
+    // ===================== 重機切り替えリスト（取得済みから選ぶ）[親方FB] =====================
+    function renderMachineChooser() {
+      const list = document.getElementById("mc-list"); let html = '';
+      for (let i = 0; i < game.owned.length; i++) {
+        const id = game.owned[i], m = machineById(id); if (!m) continue;
+        const cur = game.machine === id, onField = parked.some(function (p) { return p.id === id; });
+        const cls = 'm-card' + (cur ? ' cur' : '');
+        const tag = cur ? '<span class="mc-tag cur">使用中</span>' : onField ? '<span class="mc-tag field">現場に居る</span>' : '<span class="mc-tag">待機中</span>';
+        html += '<div class="' + cls + '" data-id="' + id + '"><div class="m-ic">' + m.icon + '</div><div class="m-tx"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³<br>' + tag + '</small></div></div>';
+      }
+      list.innerHTML = html;
+    }
+    const mchooserEl = document.getElementById("mchooser"), mcNote = document.getElementById("mc-note");
+    function mcShowNote(msg) { mcNote.textContent = msg; mcNote.classList.add("show"); }
+    function openMachineChooser() { mcNote.classList.remove("show"); renderMachineChooser(); mchooserEl.classList.add("show"); SND.click(); }
+    document.getElementById("mc-close").addEventListener("click", function () { mchooserEl.classList.remove("show"); SND.click(); });
+    mchooserEl.addEventListener("click", function (e) { if (e.target === mchooserEl) { mchooserEl.classList.remove("show"); SND.click(); } }); // 暗転部タップで閉じる
+    document.getElementById("mc-list").addEventListener("click", function (e) {
+      const c = e.target.closest ? e.target.closest('.m-card') : null; if (!c || !c.dataset || !c.dataset.id) return;
+      const id = c.dataset.id;
+      if (id === game.machine) { mchooserEl.classList.remove("show"); SND.click(); return; }   // 既に乗っている＝閉じるだけ
+      if (deployAndDrive(id)) { mchooserEl.classList.remove("show"); }   // [親方FB] 出して乗る（現場に居れば乗り換え・今の重機は現場に残る）。成功でだけ閉じる
+      else { mcShowNote('現場がいっぱいです（最大12台）。マップを切り替えると現場がリセットされます'); renderMachineChooser(); }   // 満杯＝開いたまま注意を表示（裏に隠れない）
     });
 
     // ===================== 右側ボタンの☰メニュー開閉[親方FB] =====================
