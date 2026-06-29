@@ -6,7 +6,17 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>土木ゲーム 水の試作（4レベル）</title>
+<!-- PWA（ホーム画面アプリ化）：全画面表示・アイコン・オフライン対応 -->
+<meta name="theme-color" content="#bfe3f2" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="土木ゲーム" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" type="image/png" href="icon-192.png" />
+<script>if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); }); }</script>
+<title>土木ゲーム</title>
 <style>
   :root { --dig:#e07a1c; --fill:#2faa55; --ink:#20303a; --panel:rgba(255,255,255,0.82); --water:#2f7fd6; }
   * { box-sizing: border-box; }
@@ -17,8 +27,8 @@
   }
   #app { position:fixed; inset:0; }
   canvas { display:block; touch-action:none; }
-  #hud-top { position:fixed; top:env(safe-area-inset-top,8px); left:0; right:0; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; pointer-events:none; padding:8px env(safe-area-inset-right,8px) 0 env(safe-area-inset-left,8px); }
-  .badge { background:var(--panel); color:var(--ink); border-radius:14px; padding:7px 13px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.15); font-variant-numeric:tabular-nums; }
+  #hud-top { position:fixed; top:env(safe-area-inset-top,8px); left:0; right:0; display:flex; justify-content:center; gap:6px; flex-wrap:wrap; pointer-events:none; padding:8px env(safe-area-inset-right,8px) 0 env(safe-area-inset-left,8px); }
+  .badge { background:var(--panel); color:var(--ink); border-radius:13px; padding:6px 10px; font-weight:800; font-size:12.5px; box-shadow:0 2px 8px rgba(0,0,0,.15); font-variant-numeric:tabular-nums; white-space:nowrap; }
   .badge small { font-weight:700; opacity:.7; font-size:.72em; }
   #b-work .v { color:var(--fill); }
   #b-main .v { color:var(--water); }
@@ -43,15 +53,16 @@
   .g-btn.buy { background:var(--fill); color:#fff; } .g-btn.use { background:var(--water); color:#fff; }
   .g-btn.used { background:#cdeccd; color:var(--ink); } .g-btn.ng { background:#e6e6e6; color:#999; }
   #g-close { margin-top:4px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
-  #shop { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #shop { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 96px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #machineBtn { position:fixed; left:calc(env(safe-area-inset-left,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:8px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; display:flex; flex-direction:column; align-items:center; line-height:1.1; }
+  #truckBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 24px); bottom:calc(env(safe-area-inset-bottom,0px) + 128px); background:#caa14a; color:#3a2c0a; border:none; border-radius:14px; padding:11px 14px; font-weight:800; box-shadow:0 4px 12px rgba(0,0,0,.25); cursor:pointer; z-index:4; font-size:14px; }
   #machineBtn span { font-size:9px; opacity:.7; margin-top:1px; }
   #machineBtn.sub { background:#cfe6f6; }
   #shop:active, #machineBtn:active { transform:scale(.95); }
   #lv-badge { background:rgba(32,48,58,.82); color:#fff; }
-  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 52px); left:50%; transform:translateX(-50%); width:min(82vw,380px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); }
+  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 80px); left:50%; transform:translateX(-50%); width:min(82vw,380px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); }
   #goal .label { font-size:12px; font-weight:700; color:var(--ink); opacity:.85; margin-bottom:4px; line-height:1.45; }
-  #bar { height:9px; background:#d6dee2; border-radius:6px; overflow:hidden; }
+  #bar { display:none; }   /* [親方FB] 中央の進捗バーは非表示（進捗はバッジの%で表示） */
   #bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#7db5ec,#2f7fd6); transition:width .2s ease; }
   #dpad { position:fixed; left:calc(env(safe-area-inset-left,0px) + 16px); bottom:calc(env(safe-area-inset-bottom,0px) + 18px); display:grid; grid-template-columns:repeat(3,56px); grid-template-rows:repeat(3,56px); gap:6px; z-index:4; }
   .dbtn { border:none; border-radius:14px; background:var(--panel); color:var(--ink); font-size:24px; font-weight:900; box-shadow:0 3px 10px rgba(0,0,0,.2); display:flex; align-items:center; justify-content:center; touch-action:none; }
@@ -60,7 +71,7 @@
   #act { position:fixed; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 22px); width:96px; height:96px; border-radius:50%; border:none; color:#fff; font-weight:900; font-size:21px; background:var(--dig); box-shadow:0 6px 16px rgba(0,0,0,.28); cursor:pointer; line-height:1.1; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; touch-action:none; }
   #act span { font-size:11px; font-weight:700; opacity:.9; }
   #act.on { transform:scale(.93); filter:brightness(1.12); }
-  #reset { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 12px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:10px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #reset { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 56px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:10px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #reset:active { transform:scale(.95); }
   #hint { position:fixed; left:50%; bottom:96px; transform:translateX(-50%); background:rgba(0,0,0,.55); color:#fff; padding:9px 16px; border-radius:18px; font-weight:700; font-size:13px; pointer-events:none; transition:opacity .5s ease; text-align:center; max-width:86vw; line-height:1.6; }
   #win { position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; background:rgba(10,30,40,.55); color:#fff; text-align:center; z-index:8; gap:14px; }
@@ -71,9 +82,24 @@
   #again { margin-top:6px; background:var(--water); color:#fff; border:none; border-radius:14px; padding:14px 30px; font-weight:900; font-size:18px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,.3); }
   #rotate { position:fixed; top:calc(env(safe-area-inset-top,8px) + 96px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,.6); color:#fff; padding:8px 14px; border-radius:16px; font-weight:700; font-size:13px; pointer-events:none; opacity:0; transition:opacity .4s ease; z-index:6; white-space:nowrap; }
   #rotate.show { opacity:1; }
-  #mute { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 92px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:16px; line-height:1; }
-  #achBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 132px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #mute { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 136px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:16px; line-height:1; }
+  #achBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 176px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #mute:active, #achBtn:active { transform:scale(.95); } #mute.off { opacity:.55; }
+  #mapBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 216px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #mapBtn:active { transform:scale(.95); }
+  /* [親方FB] 右側ボタン(最初から/ショップ/音/実績/マップ)は☰メニューで開閉。普段は隠す＝画面スッキリ */
+  #menuBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 12px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:5; font-size:16px; line-height:1; }
+  #menuBtn:active { transform:scale(.95); }
+  #reset, #shop, #mute, #achBtn, #mapBtn { display:none; }
+  body.menu-open #reset, body.menu-open #shop, body.menu-open #mute, body.menu-open #achBtn, body.menu-open #mapBtn { display:block; }
+  #mapsel { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #mapsel.show { display:flex; animation:fade .3s ease; }
+  .m-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .m-card { display:flex; align-items:center; gap:9px; padding:9px; border-radius:12px; background:#f2f5f7; cursor:pointer; }
+  .m-card.cur { background:#e2f0e2; box-shadow:inset 0 0 0 2px #9ccf9c; }
+  .m-card.locked { opacity:.5; cursor:default; }
+  .m-card .m-ic { font-size:20px; flex:0 0 auto; }
+  .m-card .m-tx { line-height:1.25; font-size:13px; } .m-card .m-tx small { display:block; color:#667; font-size:11px; margin-top:2px; }
   .g-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
   .g-btn.upg { background:#e89a2a; color:#fff; } .g-btn.maxed { background:#f0d8a0; color:#7a5a10; }
   #badges { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
@@ -94,10 +120,11 @@
   <div id="hud-top">
     <div class="badge" id="lv-badge">LV<span id="lvnum">1</span></div>
     <div class="badge" id="b-work">🏗 <span id="workLabel">作業場</span> <span class="v" id="work">0</span><small>%</small></div>
-    <div class="badge" id="b-main">💧 <span id="mainLabel">ため池</span> <span class="v" id="basin">0</span><small>/<span id="basinT">0</span> m³</small></div>
+    <div class="badge" id="b-main"><span id="mainIcon">💧</span> <span id="mainLabel">ため池</span> <span class="v" id="basin">0</span><small>/<span id="basinT">0</span> m³</small></div>
     <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
     <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
     <div class="badge" id="blade-badge">🪣 <span class="v" id="blade">0</span><small>/<span id="bladeCap">12</span> m³</small></div>
+    <div class="badge" id="elev-badge">⛰<span class="v" id="elev">0.0</span><small>m</small></div>
   </div>
   <div id="goal"><div class="label" id="goalLabel">…</div><div id="bar"><i></i></div></div>
   <div id="dpad">
@@ -110,12 +137,16 @@
   <button id="reset">最初から</button>
   <button id="shop">🛒 ショップ</button>
   <button id="machineBtn" style="display:none">🚜 ブル<span>切替</span></button>
+  <button id="truckBtn">🚛 トラック召喚</button>
   <button id="mute" aria-label="音">🔊</button>
   <button id="achBtn">🏅 実績</button>
+  <button id="mapBtn">🗺 マップ</button>
+  <button id="menuBtn" aria-label="メニュー">☰</button>
   <div id="hint">…</div>
   <div id="rotate">📱 横向きがおすすめ</div>
   <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
   <div id="badges"><div class="b-box"><h2>🏅 実績バッジ</h2><div id="b-list"></div><button id="b-close">とじる</button></div></div>
+  <div id="mapsel"><div class="b-box"><h2>🗺 マップ選択</h2><div id="m-list" class="m-grid"></div><button id="m-close">とじる</button></div></div>
   <div id="achToast"></div>
   <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
 
@@ -126,13 +157,15 @@
     if (!window.THREE) { document.body.innerHTML = "<p style='color:#fff;padding:20px'>3D部品(Three.js)の読み込みに失敗しました。</p>"; return; }
 
     // ===================== 設定 =====================
-    const GRID = 36, WORLD = 24, V = GRID + 1, N = V * V;
-    const CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
+    const GRID_MAX = 108, V_MAX = GRID_MAX + 1, N_MAX = V_MAX * V_MAX;   // 大マップ(L6-10)用の最大寸法。全配列はこのサイズで確保し、レベル別の実寸 GRID/WORLD で使う部分だけ使う。
+    let GRID = 36, WORLD = 24, V = GRID + 1, N = V * V;                  // レベル別に可変（L1-5=36/24・L6-10=108/72）。loadLevel→rebuildGrid() で設定。
+    let CELL_AREA = (WORLD / GRID) * (WORLD / GRID);                     // セル面積。WORLD/GRID は常に2/3＝CELL_AREA は全レベル共通(≈0.444)。
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
     const FLAT_TOL = 0.4;
-    const CAM_DIST = 26, CAM_MIN = 12, CAM_MAX = 46, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
+    const CAM_DIST = 26, CAM_MIN = 12, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
+    let CAM_MAX = 46;   // 大マップ(L6-10)では rebuildGrid で広げる（小マップは46）
     // 水[追加]
     const WATER_EPS = 0.02, RENDER_EPS = 0.0015, SHALLOW_GROUND = -0.1, PLAIN_MIN = 0.08;
     let GF = 11.0, FLUX_DAMP = 0.995; const WATER_SUBSTEPS = 4;
@@ -233,12 +266,12 @@
     ];
 
     // ===================== データ =====================
-    const heights = new Float32Array(N), baseHeights = new Float32Array(N);
-    const vx = new Float32Array(N), vz = new Float32Array(N);
-    const passRef = new Float32Array(N), passTag = new Int32Array(N);
-    const waterD = new Float32Array(N);
-    const fL = new Float32Array(N), fR = new Float32Array(N), fT = new Float32Array(N), fB = new Float32Array(N);
-    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 0, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 } };
+    const heights = new Float32Array(N_MAX), baseHeights = new Float32Array(N_MAX);
+    const vx = new Float32Array(N_MAX), vz = new Float32Array(N_MAX);
+    const passRef = new Float32Array(N_MAX), passTag = new Int32Array(N_MAX);
+    const waterD = new Float32Array(N_MAX);
+    const fL = new Float32Array(N_MAX), fR = new Float32Array(N_MAX), fT = new Float32Array(N_MAX), fB = new Float32Array(N_MAX);
+    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {} };
     let camYaw = 0, camPitch = 0.95, camDist = CAM_DIST, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
 
@@ -259,6 +292,8 @@
     function zoneMaxDev(z) { const mean = zoneMean(z); let m = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > m) m = d; }); return m; }
     function zoneFlatness(z) { const mean = zoneMean(z); let s = 0; zoneEach(z, (idx) => { const d = Math.abs(heights[idx] - mean); if (d > FLAT_TOL) { const e = d - FLAT_TOL; s += e * e * CELL_AREA; } }); return s; }
     function zoneExcessAbove(arr, z, thr) { let s = 0; zoneEach(z, (idx) => { const e = arr[idx] - thr; if (e > 0) s += e * CELL_AREA; }); return s; }   // 掘り取り[LV5]：閾値より上に残っている土の量（=残っている山）。穴(閾値以下)は数えない＝バックホウ向き。
+    function zoneDeficitBelow(arr, z, thr) { let s = 0; zoneEach(z, (idx) => { const e = thr - arr[idx]; if (e > 0) s += e * CELL_AREA; }); return s; }   // 埋立[L6]：閾値より下に足りない土の量（=埋めるべき窪み）。盛り上がり(閾値以上)は数えない。
+    function zoneToTarget(arr, z, target) { let work = 0, mx = 0; zoneEach(z, (idx) => { const d = Math.abs(arr[idx] - target); if (d > mx) mx = d; const e = d - FLAT_TOL; if (e > 0) work += e * CELL_AREA; }); return { work: work, maxDev: mx }; }   // 整地[L7/L8/L10]：目標高さから FLAT_TOL 超ぶんのズレ土量(=残る土工量)と最大ズレ
     function totalWater() { let s = 0; for (let idx = 0; idx < N; idx++) s += waterD[idx]; return s * CELL_AREA; }
 
     // ===================== レベル地形生成 =====================
@@ -321,6 +356,58 @@
       }
       zoneEach(A, (idx) => { const d = 0.0 - heights[idx]; if (d > 0) waterD[idx] = d; }); // 水面0=深い水(普通のブルは入れない)
     }
+    function genHaul(L) { // L6: 大規模造成（左奥の山を掘る→トラックで運ぶ→右手前の窪地を埋める・大マップ108）
+      clearWater();
+      const hills = [ { x: -18, z: 16, h: 2.4, s: 4.6 }, { x: -11, z: 23, h: 2.1, s: 4.3 }, { x: -24, z: 9, h: 1.9, s: 4.0 }, { x: -15, z: 8, h: 1.7, s: 3.8 } ];
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        let h = rnd2(0.12);                                   // ほぼ平地（地盤0）
+        for (let k = 0; k < hills.length; k++) h += gauss(x, z, hills[k].x, hills[k].z, hills[k].h, hills[k].s);  // 左奥の山クラスタ（掘る対象）
+        h -= gauss(x, z, 18, -15, 2.7, 7.8);                  // 右手前の広い窪地（埋める対象）
+        heights[idx] = clamp(h);
+      }
+    }
+    function genRoad(L) { // L7: 道路をつくる（脇の山から土を取り、横断する道を盛土で目標高さに・大マップ108）
+      clearWater();
+      const borrow = [ { x: -22, z: -18, h: 3.0, s: 5.0 }, { x: 22, z: 18, h: 2.8, s: 5.2 }, { x: -18, z: 24, h: 2.4, s: 4.4 } ];
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        let h = rnd2(0.1);                                    // ほぼ平地（道はまだ地盤0＝これを盛り上げる）
+        for (let k = 0; k < borrow.length; k++) h += gauss(x, z, borrow[k].x, borrow[k].z, borrow[k].h, borrow[k].s);  // 脇の借土山（掘って道へ運ぶ）
+        heights[idx] = clamp(h);
+      }
+    }
+    function genPlat(L) { // L8: 宅地造成（傾いた広い土地を削り盛りして一枚の平地に・大マップ108）
+      clearWater();
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        let h = (x + z) * 0.05 + rnd2(0.15);                  // 対角に±約3.6mの傾斜（高い側を削り低い側へ盛る＝目標0）
+        heights[idx] = clamp(h);
+      }
+    }
+    function genDamBig(L) { // L9: ダム建設（盛土で堤防を作り、水路を掘って貯水池に貯める・大マップ108＝L2の拡大版）
+      clearWater();
+      const S = L.S, P = L.B;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.1);
+        if (i < 30 || i > 78) h = 0.7 + rnd2(0.1);            // 左右の壁（水路を挟む）
+        else if (j >= S.j0 && j <= S.j1) h = -1.5 + rnd2(0.1); // 奥の水源（上流・j9-27）
+        else if (j >= 28 && j <= 44) h = 0.8 + rnd2(0.1);      // 水源と貯水池の間の土手（掘って水路・j28-44で連続）
+        else if (j >= P.j0 && j <= P.j1) h = -0.8 + rnd2(0.1); // 貯水池の底（浅い窪み・j45-78）
+        else if (j >= 79 && j <= 86) h = -0.95 + rnd2(0.04);   // すき間（堤防で盛る対象＝貯水池の底-0.8より低い→堤防なしだと水は全部ここから漏れて貯まらない＝堤防が必須）
+        else if (j >= 87) h = -2.5 + rnd2(0.1);               // 手前の落ち先（漏れた水が溜まる）
+        else h = rnd2(0.1);                                   // 手前の平地（j0-8）
+        heights[idx] = clamp(h);
+      }
+      zoneEach(S, (idx) => { const d = -0.1 - heights[idx]; if (d > 0) waterD[idx] = d; });
+    }
+    function genQuarry(L) { // L10: 大採掘（広い範囲を目標の深さまで掘り下げ、出た土をトラックで運び出す・大マップ108）
+      clearWater();
+      for (let idx = 0; idx < N; idx++) {
+        let h = 0.5 + rnd2(0.12);                             // ほぼ平地（地盤+0.5）＝採掘場を掘り下げる
+        heights[idx] = clamp(h);
+      }
+    }
 
     // ===================== レベル定義 =====================
     const LEVEL_DEFS = [
@@ -348,7 +435,33 @@
         maxDev: 0.5, tFrac: 0, startZ: 0, subFloor: -1.8, clearTol: 0.3,
         goal: '水中工事：水没した底の<b>土の山</b>を、<b>水中バックホウ</b>で<b>掘り取って撤去</b>しよう（普通のブルは深い水に入れない→🛒で購入を）',
         hint: '深い水で普通のブルは入れない。🛒で水中バックホウを買い、機械チェンジして水中の<b>山を掘り取る</b>（穴ができてもOK）',
-        markers: [['A', 0x9b59b6]], gen: genSub }
+        markers: [['A', 0x9b59b6]], gen: genSub },
+      { type: 'haul', name: '大規模造成', mainLabel: '埋立', grid: 108,
+        A: rect(9, 45, 58, 96), B: rect(63, 99, 13, 49),
+        digRef: 0, fillRef: 0, clearTol: 0.4, startZ: 0,
+        goal: '大規模造成：左奥の<b>山を掘って</b>、🚛トラックで右手前の<b>窪地（青枠）まで運び</b>、埋めて平らに。山（赤枠）を撤去し窪地を埋め立てれば完成',
+        hint: '赤枠＝掘る山／青枠＝埋める窪地。🚛トラックを召喚→山で土を積む→窪地で下ろす。遠いのでトラック運搬が便利',
+        markers: [['A', 0xd06a2f], ['B', 0x2f7fd6]], gen: genHaul },
+      { type: 'grade', name: '道路をつくる', mainLabel: '', grid: 108,
+        A: rect(14, 94, 50, 58), gradeTarget: 1.5, gradeTol: 0.6, startZ: 0,
+        goal: '道路建設：脇の<b>山から土を取り</b>、中央を横断する<b>道（黄枠）を高さ1.5mまで盛って</b>上を平らに仕上げよう',
+        hint: '黄枠＝道路。脇の小山を掘り、トラックやブルで道に運んで盛り、目標の高さで平らに均す',
+        markers: [['A', 0xe0b020]], gen: genRoad },
+      { type: 'grade', name: '宅地造成', mainLabel: '', grid: 108,
+        A: rect(24, 84, 24, 84), gradeTarget: 0, gradeTol: 0.6, startZ: 0,
+        goal: '宅地造成：傾いた広い土地（黄枠）を、<b>高い側を削って低い側へ盛り</b>、一枚の<b>平らな土地（高さ0）</b>に仕上げよう',
+        hint: '黄枠の中を平らに。高い所をブル/バックホウで削り、低い所へ運んで埋める（切土盛土）',
+        markers: [['A', 0xe0b020]], gen: genPlat },
+      { type: 'fill', name: 'ダム建設', mainLabel: '貯水池', grid: 108,
+        S: rect(30, 78, 9, 27), B: rect(30, 78, 45, 78), tFrac: 0.12, startZ: 0,
+        goal: 'ダム建設：手前の<b>すき間を盛土でせき止め（堤防）</b>、奥の水源から<b>水路を掘って水を引き込み</b>、貯水池（緑枠）に貯めよう',
+        hint: '青枠＝水源・緑枠＝貯水池。まず手前のすき間を盛土でふさぎ、水源との間の土手を掘って水を流し込む',
+        markers: [['S', 0x2f7fd6], ['B', 0x2faa55]], gen: genDamBig },
+      { type: 'grade', name: '大採掘', mainLabel: '', grid: 108,
+        A: rect(42, 66, 42, 66), gradeTarget: -2.0, gradeTol: 0.6, startZ: 0,
+        goal: '大採掘：中央の採掘場（黄枠）を<b>深さ-2mまで掘り下げ</b>、出た土を<b>トラックで枠の外へ運び出そう</b>。集大成の大仕事',
+        hint: '黄枠の中をバックホウで掘り下げ、出た土はトラックで枠の外へ運び出す。目標の深さで平らに',
+        markers: [['A', 0xe0b020]], gen: genQuarry }
     ];
     const NLV = LEVEL_DEFS.length;
 
@@ -364,12 +477,11 @@
     scene.add(new THREE.AmbientLight(0xffffff, 0.55));
     const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(-6, 12, 7); scene.add(sun);
 
-    const positions = new Float32Array(N * 3), colors = new Float32Array(N * 3), indices = [];
-    for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) { const a = j * V + i, b = j * V + (i + 1), c = (j + 1) * V + i, d = (j + 1) * V + (i + 1); indices.push(a, c, b, b, c, d); }
+    const positions = new Float32Array(N_MAX * 3), colors = new Float32Array(N_MAX * 3);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    geo.setIndex(indices);
+    // index（三角形）は rebuildGrid() でレベル別の実寸グリッドに合わせて毎回作り直す（L1-5=36格子/L6-10=108格子）。
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
     scene.add(ground);
     const cLow = new THREE.Color(0xc2a06c), cMid = new THREE.Color(0x9a6e3e), cHigh = new THREE.Color(0x5f3e1e), cWet = new THREE.Color(0x47301c), tmpC = new THREE.Color();  // 土寄せ[親方FB もっと土っぽく]：低=乾いた土/中=茶土/高=濃い掘りたて土/濡れ=黒っぽい泥
@@ -380,7 +492,7 @@
     }
     let normalsDone = false;
     // 土の粒状感[見た目専用]：頂点ごとの安定したランダム濃淡（初期化1回）。地面が一様な単色に見えるのを防ぐ。
-    const grain = new Float32Array(N); for (let gk = 0; gk < N; gk++) grain[gk] = Math.random() * 2 - 1;
+    const grain = new Float32Array(N_MAX); for (let gk = 0; gk < N_MAX; gk++) grain[gk] = Math.random() * 2 - 1;
     function syncGeometry() {
       for (let idx = 0; idx < N; idx++) {
         positions[idx * 3] = vx[idx]; positions[idx * 3 + 1] = heights[idx]; positions[idx * 3 + 2] = vz[idx];
@@ -399,12 +511,29 @@
     }
 
     // 水メッシュ
-    const wPos = new Float32Array(N * 3);
+    const wPos = new Float32Array(N_MAX * 3);
     const wGeo = new THREE.BufferGeometry();
     wGeo.setAttribute("position", new THREE.BufferAttribute(wPos, 3));
-    wGeo.setIndex(indices.slice());
+    // 水メッシュの index も rebuildGrid() でレベル別に作り直す。
     const water = new THREE.Mesh(wGeo, new THREE.MeshStandardMaterial({ color: 0x2f7fd6, transparent: true, opacity: 0.72, roughness: 0.2, metalness: 0.05, depthWrite: false }));
     water.renderOrder = 2; water.frustumCulled = false; scene.add(water);
+
+    // ===================== レベル別マップ寸法（忠実版・Plan B） =====================
+    // L1-5 は GRID=36/WORLD=24（原版と完全同一）。L6-10 は GRID=108/WORLD=72（一辺3倍・セルの細かさは同じ）。
+    // 配列は N_MAX で確保済。レベル切替時にここで実寸 GRID/WORLD/V/N/CELL_AREA と頂点座標(vx/vz)・三角形(index) を作り直す。
+    function rebuildGrid(grid) {
+      GRID = grid; WORLD = grid * (2 / 3); V = GRID + 1; N = V * V;
+      CELL_AREA = (WORLD / GRID) * (WORLD / GRID);
+      for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) { const idx = j * V + i; vx[idx] = (i / GRID - 0.5) * WORLD; vz[idx] = (j / GRID - 0.5) * WORLD; }
+      const idxArr = [];
+      for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) { const a = j * V + i, b = j * V + (i + 1), c = (j + 1) * V + i, d = (j + 1) * V + (i + 1); idxArr.push(a, c, b, b, c, d); }
+      geo.setIndex(idxArr); wGeo.setIndex(idxArr.slice());
+      normalsDone = false;
+      // 大マップでも全景が見えるよう、霧・最大ズーム・カメラ遠clip を実寸に追従
+      scene.fog.near = WORLD * 1.75; scene.fog.far = WORLD * 4.0;
+      camera.far = Math.max(500, WORLD * 8); camera.updateProjectionMatrix();
+      CAM_MAX = Math.max(46, WORLD * 1.9);
+    }
     let wt = 0, wframe = 0;
     function syncWater(dt) {
       wt += dt; wframe++;
@@ -615,23 +744,27 @@
       if (p.round) cyl(g, mats.body2, 0.55, 0.42, 0, p.bodyY + 0.08, -0.62, 'z', 0, 0, 0, 12); else box(g, p.counter ? mats.dark : mats.body2, p.body[0] * 0.72, p.body[1] * 0.75, 0.38, 0, p.bodyY + 0.06, -0.72);
       const cab = addCabin(g, mats, { w: p.cab[0], h: p.cab[1], d: p.cab[2], x: p.cab[3], y: p.cab[4], z: p.cab[5] }); g.userData.beacon = cab.beacon;
       addLights(g, mats, 1.12, 0.62, 0.35); addMakerStripe(g, mats, 0.72, 1.0, -0.18, 0.7);
-      const boomBase = p.heavy ? 0.5 : 0.56, stickBase = p.heavy ? -0.42 : -0.48, bucketBase = 0.52;
       const bw = p.heavy ? 0.34 : 0.26, sw = p.heavy ? 0.26 : 0.2;
-      const boom = box(g, mats.body, bw, bw, p.boomL, 0, 1.26, 0.72, boomBase, 0, 0);
-      const stick = box(g, mats.dark, sw, sw, p.stickL, 0, 0.72, 1.45, stickBase, 0, 0);
-      const bucket = new THREE.Group(); bucket.position.set(0, 0.42, p.bucketZ); bucket.rotation.x = bucketBase; g.add(bucket);
-      box(bucket, mats.steel, p.bucketW, 0.42, 0.48, 0, 0, 0);
-      box(bucket, mats.dark, p.bucketW, 0.08, 0.52, 0, -0.18, 0.08);
-      const teeth = p.heavy ? 5 : 3; for (let i = 0; i < teeth; i++) box(bucket, mats.steel, 0.09, 0.12, 0.16, -p.bucketW * 0.36 + i * p.bucketW * 0.72 / Math.max(1, teeth - 1), -0.22, 0.34);
-      // バケット内の土[親方FB バックホウが土を持ってるか分かるように]：game.bucket に応じて見える土の塊。bucket の子なので掘る/運ぶ/下ろすに完全追従。
+      // 腕＝実機式の2セグメント可動チェーン[親方FB「実際の重機のように腕をもっと上に/可動2本」]：肩(boomPivot)→ブーム→肘(stickPivot)→アーム→手首→バケット。肩で上げると全体が高く持ち上がる。
+      const boomBase = -0.62, stickBase = 1.18, bucketBase = 0.55;   // 待機: ブームを上げ気味・肘で曲げ・バケット軽くカール
+      const shoulderY = p.bodyY + 0.48, shoulderZ = p.body[2] * 0.34;
+      const boomPivot = new THREE.Group(); boomPivot.position.set(0.02, shoulderY, shoulderZ); boomPivot.rotation.x = boomBase; g.add(boomPivot);
+      box(boomPivot, mats.body, bw, bw, p.boomL, 0, 0, p.boomL / 2);                                          // ブーム＝肩から前方(+Z)へ
+      box(boomPivot, mats.steel, bw * 0.45, bw * 0.45, p.boomL * 0.66, bw * 0.75, bw * 0.55, p.boomL * 0.45); // 油圧シリンダー風(ブームに追従)
+      const stickPivot = new THREE.Group(); stickPivot.position.set(0, 0, p.boomL); stickPivot.rotation.x = stickBase; boomPivot.add(stickPivot);
+      box(stickPivot, mats.dark, sw, sw, p.stickL, 0, 0, p.stickL / 2);                                       // アーム/スティック＝肘から先
+      const bucket = new THREE.Group(); bucket.position.set(0, 0, p.stickL); bucket.rotation.x = bucketBase; stickPivot.add(bucket);
+      box(bucket, mats.steel, p.bucketW, 0.42, 0.48, 0, -0.08, 0.14);
+      box(bucket, mats.dark, p.bucketW, 0.08, 0.52, 0, -0.26, 0.22);
+      const teeth = p.heavy ? 5 : 3; for (let i = 0; i < teeth; i++) box(bucket, mats.steel, 0.09, 0.12, 0.16, -p.bucketW * 0.36 + i * p.bucketW * 0.72 / Math.max(1, teeth - 1), -0.30, 0.46);
+      // バケット内の土[親方FB バックホウが土を持ってるか分かるように]：game.bucket に応じて見える土の塊。bucket の子なので腕に完全追従。
       const loadBase = { x: p.bucketW * 0.42, y: 0.2, z: 0.26 };
       const load = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0x6e481f, flatShading: true, roughness: 1 }));
-      load.position.set(0, 0.04, 0.06); load.scale.set(loadBase.x, loadBase.y, loadBase.z); load.visible = false; bucket.add(load);
-      cyl(g, mats.steel, 0.035, 0.92, -0.22, 1.05, 1.0, 'z', 0.38, 0, 0, 8); cyl(g, mats.steel, 0.03, 0.78, 0.22, 0.78, 1.62, 'z', -0.28, 0, 0, 8);
+      load.position.set(0, -0.06, 0.12); load.scale.set(loadBase.x, loadBase.y, loadBase.z); load.visible = false; bucket.add(load);
       if (p.snorkel) { cyl(g, mats.dark, 0.055, p.snorkel, 0.52, 1.45 + p.snorkel * 0.5, -0.58, 'y', 0, 0, 0, 8); box(g, mats.water, 0.24, 0.08, 0.18, 0.52, 1.45 + p.snorkel, -0.5); }
       if (p.cover) { box(g, mats.water, 1.0, 0.08, 0.88, 0, 1.23, -0.1); box(g, mats.water, 1.52, 0.12, 0.14, 0, 0.7, 0.94); }
       if (p.waterMark) { addWave(g, mats, -1, 1.02, -0.35); addWave(g, mats, 1, 1.02, -0.35); }
-      g.userData.arm = { boom: boom, stick: stick, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase, load: load, loadBase: loadBase }; return g;
+      g.userData.arm = { boom: boomPivot, stick: stickPivot, bucket: bucket, boomBase: boomBase, stickBase: stickBase, bucketBase: bucketBase, load: load, loadBase: loadBase }; return g;
     }
     function buildLoaderModel(M, mats, p) {
       const g = new THREE.Group(); g.userData.kind = 'loader';
@@ -773,6 +906,7 @@
     // ===================== 入力 =====================
     const keys = { up: false, down: false, left: false, right: false };
     let acting = false;
+    let resetAct = () => {};
     const clearKeys = () => { keys.up = keys.down = keys.left = keys.right = false; acting = false; document.querySelectorAll(".dbtn").forEach((b) => b.classList.remove("on")); const a = document.getElementById("act"); if (a) a.classList.remove("on"); };
     document.querySelectorAll(".dbtn").forEach((b) => {
       const dir = b.getAttribute("data-dir"); const ptrs = new Set();
@@ -851,6 +985,7 @@
     // ブル[本物ブル移植]：ならすを離して移動中＝貯めた土(blade)を前へ少しずつ置いていく（止まると出ない）。土は保存(blade→地面)。
     function bladeUnload(dt) {
       const M = effectiveStats(curM());
+      if (truckNearMachine() && game.blade > 0) { const give = Math.min(game.blade, M.digRate * 0.8 * dt, TRUCK_CAP - truckLoad); if (give > 0) { game.blade -= give; truckLoad += give; updateTruckBed(); SND.dig(false); return; } }   // 近くにトラック→荷台へ積む[親方FB]
       const s = Math.sin(game.myaw), c = Math.cos(game.myaw), fx = game.mx + s * 1.2, fz = game.mz + c * 1.2;
       const amt = Math.min(game.blade, M.digRate * 0.8 * dt); if (amt <= 0) return;
       const ceil = sampleHeight(fx, fz) + 2.0; // 前の地面より少し高く積むまで（満ちたら移動して下ろす）
@@ -864,6 +999,8 @@
     // machineKind=='backhoe' の重機は、押し均しでなく「掘る↔下ろす」でバケットに土を溜めて運ぶ。
     // 容量=その重機の bladeCap（買い替え/強化で増える）／掘る速さ=digRate／範囲=digRadius／足元基準の段切り上限(BH_MAX_CUT/FILL)。
     let bhMode = null, prevActing = false, bhDigAmt = 0, bhDumpAmt = 0, bhPhase = 0;
+    // ===== トラック運搬[親方FB]：バックホウ/ブルで近くに召喚→積む→自分で運転して運ぶ→別場所で下ろす。容量=バックホウ約5倍。別の乗り物として共存。 =====
+    let truck = null, truckX = 0, truckZ = 0, truckYaw = Math.PI, truckLoad = 0, truckTilt = 0, driving = 'machine'; const TRUCK_CAP = 75;
     function bhReach(M) { return Math.max(1.8, M.digRadius + 0.5); }   // 腕の届く距離（機体ごと）
     function backhoeDig(dt) {
       const M = effectiveStats(curM()), reach = bhReach(M), RAD = M.digRadius, cap = M.bladeCap;
@@ -885,6 +1022,7 @@
     }
     function backhoeDump(dt) {
       if (game.bucket <= 0.0001) return false;
+      if (truckNearMachine()) { const M0 = effectiveStats(curM()); const give = Math.min(game.bucket, M0.digRate * dt, TRUCK_CAP - truckLoad); if (give > 0) { game.bucket -= give; truckLoad += give; updateTruckBed(); const gy = sampleHeight(truckX, truckZ); for (let i = 0; i < 2; i++) emit(dust, truckX, gy + 1.2, truckZ, 1.6, 0.9); SND.dig(false); const nw = performance.now(); if (nw - lastVib > 120) { lastVib = nw; tryVibrate(7); } return true; } }   // 近くにトラック→荷台へ積む[親方FB]
       const M = effectiveStats(curM()), reach = bhReach(M), RAD = M.digRadius;
       const fx = game.mx + Math.sin(game.myaw) * reach, fz = game.mz + Math.cos(game.myaw) * reach;
       const ceil = Math.min(MAX_H, sampleHeight(game.mx, game.mz) + BH_MAX_FILL);   // 足元基準の積み上げ上限
@@ -908,14 +1046,69 @@
       bhDumpAmt = Math.max(0, Math.min(1, bhDumpAmt + (dumping ? dt * 5 : -dt * 5)));
       bhPhase += dt * ((digging || dumping) ? 5.5 : 3);
       const A = activeArm; if (!A || !A.boom || !A.stick || !A.bucket) return;
-      const cyc = Math.sin(bhPhase);                         // -1=持ち上げ、+1=下ろし
-      const scoopCurl = Math.max(0, Math.sin(bhPhase - 0.9)); // 腕が下りた少し後に掬う
-      A.boom.rotation.x = A.boomBase + bhDigAmt * (0.28 + 0.42 * cyc) - 0.18 * bhDumpAmt;
-      A.stick.rotation.x = A.stickBase - bhDigAmt * (0.22 + 0.30 * cyc) + 0.32 * bhDumpAmt;
-      A.bucket.rotation.x = A.bucketBase + bhDigAmt * (0.18 + 0.55 * scoopCurl) - 1.0 * bhDumpAmt;
+      const scoop = Math.sin(bhPhase) * 0.5 + 0.5;            // 掘る時の小さなすくい往復(0..1)
+      // 掘る=低く下げて地面を掘る[親方FB 掘る時もっと下に]／下ろす=高く上げてバケットを開けて放土[親方FB 下ろす時もっと上に]
+      A.boom.rotation.x = A.boomBase + bhDigAmt * (0.70 + 0.12 * scoop) - bhDumpAmt * 0.85;
+      A.stick.rotation.x = A.stickBase + bhDigAmt * (0.45 + 0.20 * scoop) - bhDumpAmt * 0.55;
+      A.bucket.rotation.x = A.bucketBase + bhDigAmt * (0.10 + 0.30 * scoop) - bhDumpAmt * 1.15;
     }
 
+    // ===== トラック（ダンプ）本体・運転・積込[親方FB] =====
+    function buildTruck() {
+      const g = new THREE.Group();
+      const M = { dark: makeMat(0x2f3338), steel: makeMat(0x9aa3ad, 0.5, 0.3), body: makeMat(0xd6a020), bed: makeMat(0x556070), glass: makeMat(0x9fd0e8, 0.3, 0.2) };
+      addWheels(g, M, { zs: [-1.25, -0.15, 1.2], sep: 1.5, r: 0.4, w: 0.3 });
+      box(g, M.dark, 1.34, 0.26, 3.5, 0, 0.5, 0);                  // シャシ
+      box(g, M.body, 1.24, 0.82, 0.95, 0, 1.06, 1.3);             // 運転席
+      box(g, M.glass, 0.96, 0.44, 0.06, 0, 1.16, 1.79);          // 窓
+      box(g, M.body, 1.3, 0.3, 0.5, 0, 0.78, 1.98);              // ボンネット前
+      const bedG = new THREE.Group(); bedG.position.set(0, 0.74, -1.7); g.add(bedG); g.userData.bedPivot = bedG;   // 後端ヒンジ＝ダンプアップ回転軸[親方FB]。子は前へ+1.25シフトで世界座標は据置。
+      box(bedG, M.bed, 1.4, 0.12, 2.5, 0, -0.02, 1.25);          // 荷台床
+      box(bedG, M.bed, 1.4, 0.55, 0.12, 0, 0.28, 0.0);           // 後あおり(ヒンジ側)
+      box(bedG, M.bed, 0.1, 0.55, 2.5, -0.68, 0.28, 1.25);       // 左あおり
+      box(bedG, M.bed, 0.1, 0.55, 2.5, 0.68, 0.28, 1.25);        // 右あおり
+      const load = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.6, 2.2), makeMat(0x6e481f));   // 荷台の土(量で高さ)
+      load.position.set(0, 0.34, 1.25); load.visible = false; bedG.add(load); g.userData.load = load;
+      return g;
+    }
+    function updateTruckBed() {
+      if (!truck) return; const load = truck.userData.load;
+      if (load) { const pf = Math.min(1, truckLoad / TRUCK_CAP); load.visible = truckLoad > 0.05; load.scale.y = Math.max(0.08, pf); load.position.y = 0.04 + 0.30 * pf; }
+      if (truck.userData.bedPivot) truck.userData.bedPivot.rotation.x = -truckTilt * 0.85;   // ダンプアップ：後端ヒンジで荷台前部が持ち上がる[親方FB]
+    }
+    function summonTruck() {
+      if (!truck) { truck = buildTruck(); scene.add(truck); }
+      const s = Math.sin(game.myaw), c = Math.cos(game.myaw);                 // 重機の横(優先)→前後に空きを探す
+      const cand = [[game.mx - c * 3.0, game.mz + s * 3.0], [game.mx + c * 3.0, game.mz - s * 3.0], [game.mx + s * 3.4, game.mz + c * 3.4], [game.mx - s * 3.4, game.mz - c * 3.4]];
+      truckX = game.mx; truckZ = game.mz;
+      for (let i = 0; i < cand.length; i++) { if (canStand(cand[i][0], cand[i][1])) { truckX = cand[i][0]; truckZ = cand[i][1]; break; } }
+      truckYaw = game.myaw; truckTilt = 0;
+      const ty = sampleHeight(truckX, truckZ); truck.position.set(truckX, ty, truckZ); truck.rotation.y = truckYaw; updateTruckBed();
+    }
+    function truckNearMachine() { return truck && truckLoad < TRUCK_CAP && Math.hypot(truckX - game.mx, truckZ - game.mz) < 4.2; }
+    function updateTruck(dt) {
+      const TURN = 1.5;
+      if (keys.left) truckYaw -= TURN * dt;
+      if (keys.right) truckYaw += TURN * dt;
+      const drive = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
+      if (drive !== 0) {
+        const sp = 8 * (1 - 0.45 * (truckLoad / TRUCK_CAP)) * (drive < 0 ? 0.7 : 1);   // 積むほど遅い・後退遅め
+        const fwd = [Math.sin(truckYaw), Math.cos(truckYaw)], half = WORLD / 2 - 0.6;
+        const cx = Math.max(-half, Math.min(half, truckX + fwd[0] * sp * dt * drive)), cz = Math.max(-half, Math.min(half, truckZ + fwd[1] * sp * dt * drive));
+        if (canStand(cx, cz)) { truckX = cx; truckZ = cz; } else if (canStand(cx, truckZ)) { truckX = cx; } else if (canStand(truckX, cz)) { truckZ = cz; }
+      }
+      const dumping = acting && truckLoad > 0.0001 && !game.won;
+      truckTilt = Math.max(0, Math.min(1, truckTilt + (dumping ? dt * 3 : -dt * 3)));   // ダンプアップ動作[親方FB]
+      if (dumping) {                          // 下ろす：荷台の土を後方へ放出（ダンプは後ろに落とす・荷台を持ち上げながら）[親方FB]
+        const s = Math.sin(truckYaw), c = Math.cos(truckYaw), fx = truckX - s * 3.2, fz = truckZ - c * 3.2;   // 車体後方に明確に落とす[親方FB]
+        const ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(truckLoad, 45 * dt);
+        const left = depositInto(fx, fz, 2.1, amt, ceil); truckLoad = Math.max(0, truckLoad - (amt - left));
+        const gy = sampleHeight(fx, fz); for (let i = 0; i < 2; i++) emit(dust, fx, gy, fz, 2.2, 1.2); SND.dig(false); shake = Math.min(0.08, shake + 0.02); syncGeometry();
+      }
+      const ty = sampleHeight(truckX, truckZ); truck.position.set(truckX, ty, truckZ); truck.rotation.y = truckYaw; updateTruckBed();
+    }
     function updateDozer(dt) {
+      if (driving === 'truck' && truck) { updateTruck(dt); const tgy = sampleHeight(game.mx, game.mz); dozer.position.set(game.mx, tgy, game.mz); dozer.rotation.y = game.myaw; bladePile.position.y = -999; if (activeArm) resetArmPose(activeArm); return; }
       // 実際の重機式の操作：左右＝その場で旋回（向きを変える）／上＝前進・下＝後退（向いてる方向のまま）
       const TURN = 1.8; // 旋回速度(rad/s)
       if (keys.left) game.myaw -= TURN * dt;
@@ -963,26 +1156,42 @@
         digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32;
         if (activeBlade) { const by = activeBlade.userData.baseY == null ? 0.62 : activeBlade.userData.baseY; activeBlade.position.y = by - 0.18 - Math.sin(bladePhase) * 0.06; activeBlade.rotation.x = (activeBlade.userData.baseRx || 0) + Math.sin(bladePhase) * 0.22; }
       } else if (activeBlade) resetBladePart(activeBlade);
+      if (truck) { truckTilt = Math.max(0, truckTilt - dt * 3); const ty2 = sampleHeight(truckX, truckZ); truck.position.set(truckX, ty2, truckZ); truck.rotation.y = truckYaw; updateTruckBed(); }   // 待機中のトラックも配置(ダンプは下がる)
     }
     function sampleHeight(x, z) { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return heights[j * V + i]; }
     function updateCamera() {
       const aspect = window.innerWidth / Math.max(1, window.innerHeight), f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = camDist * f, horiz = dist * Math.cos(camPitch);
       let sx = 0, sy = 0; if (shake > 0.001) { sx = rnd2(shake); sy = rnd2(shake); }
-      camera.position.set(game.mx + horiz * Math.sin(camYaw) + sx, dist * Math.sin(camPitch) + sy, game.mz + horiz * Math.cos(camYaw)); camera.lookAt(game.mx, 1, game.mz);
+      const fcx = (driving === 'truck' && truck) ? truckX : game.mx, fcz = (driving === 'truck' && truck) ? truckZ : game.mz;   // 運転中の乗り物を追う[親方FB]
+      camera.position.set(fcx + horiz * Math.sin(camYaw) + sx, dist * Math.sin(camPitch) + sy, fcz + horiz * Math.cos(camYaw)); camera.lookAt(fcx, 1, fcz);
     }
 
     // ===================== HUD・クリア判定・レベル進行 =====================
-    const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge");
+    const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge"), elevEl = document.getElementById("elev");
     const workBadge = document.getElementById("b-work"), basinBadge = document.getElementById("b-main"), barEl = document.querySelector("#bar > i"), machineBtn = document.getElementById("machineBtn");
     function drainOf(z, w0) { return w0 > 0 ? Math.max(0, Math.min(1, 1 - zoneVol(z) / w0)) : 0; }
     function levelDone() {
       if (LV.type === 'drain') return drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev && zoneVol(LV.B) >= LV.tB;
       if (LV.type === 'level') return LV.A0exc > 0 ? (zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol) <= 0.05 * LV.A0exc) : true;   // 掘り取り＝残っている山が初期の5%以下[本体移植・バックホウ向き]
+      if (LV.type === 'haul') return zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol) <= 0.05 * LV.A0exc && zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol) <= 0.05 * LV.A0def;   // 造成＝山の撤去95%以上 かつ 窪地の埋立95%以上
+      if (LV.type === 'grade') return zoneToTarget(heights, LV.A, LV.gradeTarget).work <= 0.05 * LV.A0work;   // 整地＝目標高さからのズレ土量が初期の5%以下
       return zoneVol(LV.B) >= LV.tB;
     }
     function refreshHUD() {
-      totalEl.textContent = totalWater().toFixed(0); moneyEl.textContent = game.money;
-      const M = curM(); const carry = (machineKind(M) === 'backhoe') ? game.bucket : game.blade; bladeEl.textContent = carry.toFixed(1); bladeCapEl.textContent = M.bladeCap; bladeBadge.classList.toggle("over", carry > M.bladeCap + 0.01);   // バックホウはバケット/ブルはブレードの土[本体移植]
+      totalEl.textContent = totalWater().toFixed(0); moneyEl.textContent = game.money; elevEl.textContent = sampleHeight(game.mx, game.mz).toFixed(1);
+      const M = curM(); const dvT = (driving === 'truck' && truck); const carry = dvT ? truckLoad : ((machineKind(M) === 'backhoe') ? game.bucket : game.blade); const cCap = dvT ? TRUCK_CAP : M.bladeCap; bladeEl.textContent = carry.toFixed(1); bladeCapEl.textContent = cCap; bladeBadge.classList.toggle("over", carry > cCap + 0.01);   // トラック運転中=荷台/バックホウ=バケット/ブル=ブレード[親方FB]
+      if (LV.type === 'haul') {   // 大規模造成＝掘削%(b-work) と 埋立 m³(b-main) の2目標
+        const exc = zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol), dig = LV.A0exc > 0 ? Math.max(0, Math.min(1, 1 - exc / LV.A0exc)) : 1;
+        const def = zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol), fill = LV.A0def > 0 ? Math.max(0, Math.min(1, 1 - def / LV.A0def)) : 1;
+        workEl.textContent = Math.round(dig * 100); workBadge.classList.toggle("done", exc <= 0.05 * LV.A0exc);
+        basinEl.textContent = (LV.A0def - def).toFixed(0); basinTEl.textContent = LV.A0def.toFixed(0); basinBadge.classList.toggle("done", def <= 0.05 * LV.A0def);
+        barEl.style.width = (Math.min(dig, fill) * 100).toFixed(0) + "%"; return;
+      }
+      if (LV.type === 'grade') {   // 整地＝目標高さへの達成%(b-work)
+        const g = zoneToTarget(heights, LV.A, LV.gradeTarget), p = LV.A0work > 0 ? Math.max(0, Math.min(1, 1 - g.work / LV.A0work)) : 1;
+        workEl.textContent = Math.round(p * 100); workBadge.classList.toggle("done", g.work <= 0.05 * LV.A0work);
+        barEl.style.width = (p * 100).toFixed(0) + "%"; return;
+      }
       let overall = 0;
       if (LV.type === 'level') {
         const ex = zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol);   // 掘り取り[本体移植]：残っている山の量→進捗
@@ -1004,6 +1213,7 @@
     function checkWin() { if (game.won) return; if (levelDone()) { game.won = true; game.cum.cleared++; checkAchievements(); showWin(); } }
     function showWin() {
       const last = curLevel >= NLV - 1;
+      game.clearedLv[curLevel] = true; game.unlocked = Math.max(game.unlocked, Math.min(NLV - 1, curLevel + 1));   // クリア記録＆次レベル解放[マップ選択]
       game.money += CLEAR_REWARD; refreshHUD(); save();
       document.getElementById("win-title").textContent = LV.name + " 完成！";
       document.getElementById("win-text").textContent = "報酬 +" + CLEAR_REWARD + "万円（所持金 " + game.money + "万円）" + (last ? " ／ 全レベルクリア！" : "");
@@ -1016,19 +1226,28 @@
     function loadLevel(n, saved) {
       clearTimeout(winTimer); curLevel = ((n % NLV) + NLV) % NLV; game.level = curLevel;
       const D = LEVEL_DEFS[curLevel]; LV = {}; for (const k in D) LV[k] = D[k];
+      rebuildGrid(D.grid || 36);   // レベル別マップ寸法へ（L1-5=36・L6-10=108）。vx/vz/index/N/CELL_AREA を作り直す
+      camDist = Math.max(CAM_MIN, Math.min(CAM_MAX, WORLD * (GRID >= 108 ? 1.0 : 1.08)));   // マップ全景が入るよう寄り引きを再設定
+      { const hf = WORLD / 2 - 0.5; if (Math.abs(game.mx) > hf) game.mx = 0; if (Math.abs(game.mz) > hf) game.mz = Math.min(hf, 6.3); }   // 縮小時に機械が場外なら中へ
       if (saved) { heights.set(saved.h); baseHeights.set(saved.b); clearWater(); waterD.set(saved.w); LV.A0water = saved.a0; LV.A0flat = saved.af; LV.tB = saved.tB; }
       else { D.gen(LV); baseHeights.set(heights); LV.A0water = LV.type === 'drain' ? Math.max(0.001, zoneVol(LV.A)) : 0; LV.A0flat = (LV.type === 'drain' || LV.type === 'level') ? Math.max(1, zoneFlatness(LV.A)) : 1; LV.tB = LV.tFrac * totalWater(); }
-      LV.A0exc = (LV.type === 'level') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.subFloor + LV.clearTol)) : 0;   // 掘り取り[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
-      game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null;
+      LV.A0exc = (LV.type === 'level') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.subFloor + LV.clearTol))
+               : (LV.type === 'haul') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.digRef + LV.clearTol)) : 0;   // 掘り取り/造成[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
+      if (LV.type === 'haul') LV.A0def = Math.max(0.001, zoneDeficitBelow(baseHeights, LV.B, LV.fillRef - LV.clearTol));   // 造成：初期の窪地の量(=埋立目標 m³)
+      if (LV.type === 'grade') LV.A0work = Math.max(0.001, zoneToTarget(baseHeights, LV.A, LV.gradeTarget).work);   // 整地：初期の目標高さからのズレ土量(=整地の総仕事)
+      game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();
+      driving = 'machine'; if (truck) { scene.remove(truck); truck = null; } truckLoad = 0; truckTilt = 0; if (typeof updateTruckBtn === 'function') updateTruckBtn();   // レベル切替でトラックはリセット(召喚し直し)[親方FB]
       applyMachine();
       if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
       else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
       lvnumEl.textContent = (curLevel + 1);
-      workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : '作業場';
+      workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : LV.type === 'haul' ? '山の撤去' : LV.type === 'grade' ? '整地' : '作業場';
       document.getElementById("goalLabel").innerHTML = LV.goal;
       document.getElementById("mainLabel").textContent = LV.mainLabel;
-      document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level') ? '' : 'none';
-      document.getElementById("b-main").style.display = LV.type === 'level' ? 'none' : '';
+      document.getElementById("mainIcon").textContent = (LV.type === 'haul') ? '⛰' : '💧';
+      document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level' || LV.type === 'haul' || LV.type === 'grade') ? '' : 'none';
+      document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade') ? 'none' : '';
+      document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade') ? 'none' : '';   // 造成/整地は水なし＝水バッジを隠す
       document.getElementById("win").classList.remove("show");
       rebuildMarkers(LV.markers); setHint(LV.hint);
       syncGeometry(); syncWater(0); refreshHUD(); save();
@@ -1038,10 +1257,17 @@
     const actBtn = document.getElementById("act");
     (function () {
       const ptrs = new Set();
+      const clear = () => { ptrs.clear(); acting = false; actBtn.classList.remove("on"); };
+      resetAct = clear;
       const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && actBtn.setPointerCapture) { try { actBtn.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); acting = true; actBtn.classList.add("on"); hideHint(); };
       const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { acting = false; actBtn.classList.remove("on"); } };
       actBtn.addEventListener("pointerdown", on); actBtn.addEventListener("pointerup", off); actBtn.addEventListener("pointercancel", off); actBtn.addEventListener("pointerleave", off);
+      actBtn.addEventListener("lostpointercapture", clear);
     })();
+    const truckBtn = document.getElementById('truckBtn');
+    function updateTruckBtn() { if (!truckBtn) return; truckBtn.textContent = (driving === 'truck') ? '🚜 重機に戻る' : (truck ? '🚛 トラックに乗る' : '🚛 トラック召喚'); }
+    truckBtn.addEventListener('click', function () { SND.unlock(); SND.click(); hideHint(); if (!truck) { summonTruck(); } else { driving = (driving === 'truck') ? 'machine' : 'truck'; } acting = false; clearKeys(); updateActLabel(); updateTruckBtn(); refreshHUD(); });   // [親方FB] 召喚→乗り換えトグル
+    updateTruckBtn();
     document.getElementById("reset").addEventListener("click", () => { if (window.confirm("このレベルを最初からやり直しますか？")) loadLevel(curLevel); });
     (function () { const mb = document.getElementById('mute'); function paint() { mb.textContent = SND.isMuted() ? '🔇' : '🔊'; mb.classList.toggle('off', SND.isMuted()); } mb.addEventListener('click', function () { SND.unlock(); SND.toggleMute(); paint(); }); paint(); })();
     document.getElementById("again").addEventListener("click", nextLevel);
@@ -1081,7 +1307,8 @@
     function updateActLabel() {
       const ab = document.getElementById('act'); if (!ab) return;
       let html;
-      if (machineKind(curM()) !== 'backhoe') html = 'ならす<span>押す</span>';
+      if (driving === 'truck') html = '下ろす<span>押す</span>';
+      else if (machineKind(curM()) !== 'backhoe') html = 'ならす<span>押す</span>';
       else { let lbl; if (bhMode === 'dig') lbl = '掘る'; else if (bhMode === 'dump') lbl = '下ろす'; else lbl = (game.bucket > 0.05) ? '下ろす' : '掘る'; html = lbl + '<span>押す</span>'; }
       if (html !== _actLabelCur) { _actLabelCur = html; ab.innerHTML = html; }
     }
@@ -1165,14 +1392,44 @@
     document.getElementById("b-close").addEventListener("click", function () { badgesEl.classList.remove("show"); SND.click(); });
     badgesEl.addEventListener("click", function (e) { if (e.target === badgesEl) { badgesEl.classList.remove("show"); SND.click(); } }); // 暗転部（パネル外）タップで閉じる
 
+    // ===================== マップ選択（クリア済み選択・未到達ロック）[親方FB] =====================
+    function renderMapSelect() {
+      const list = document.getElementById("m-list"); let html = '';
+      for (let n = 0; n < NLV; n++) {
+        const D = LEVEL_DEFS[n], unlocked = n <= game.unlocked, cleared = !!game.clearedLv[n], cur = n === curLevel;
+        const cls = 'm-card' + (unlocked ? '' : ' locked') + (cur ? ' cur' : '');
+        const ic = !unlocked ? '🔒' : cleared ? '✅' : '▶';
+        const sub = !unlocked ? 'ロック中' : cleared ? 'クリア済み' : (cur ? 'プレイ中' : '未クリア');
+        const big = (D.grid >= 108) ? ' 🗺大' : '';
+        html += '<div class="' + cls + '" data-n="' + n + '"><div class="m-ic">' + ic + '</div><div class="m-tx"><b>LV' + (n + 1) + '</b>' + big + '<br>' + D.name + '<small>' + sub + '</small></div></div>';
+      }
+      list.innerHTML = html;
+    }
+    const mapselEl = document.getElementById("mapsel");
+    document.getElementById("mapBtn").addEventListener("click", function () { renderMapSelect(); mapselEl.classList.add("show"); SND.click(); });
+    document.getElementById("m-close").addEventListener("click", function () { mapselEl.classList.remove("show"); SND.click(); });
+    mapselEl.addEventListener("click", function (e) { if (e.target === mapselEl) { mapselEl.classList.remove("show"); SND.click(); } }); // 暗転部タップで閉じる
+    document.getElementById("m-list").addEventListener("click", function (e) {
+      const c = e.target.closest ? e.target.closest('.m-card') : null; if (!c || !c.dataset || c.dataset.n == null) return;
+      const n = +c.dataset.n; if (n > game.unlocked) { SND.click(); return; }   // ロック中は選べない
+      mapselEl.classList.remove("show"); loadLevel(n); SND.click();
+    });
+
+    // ===================== 右側ボタンの☰メニュー開閉[親方FB] =====================
+    document.getElementById("menuBtn").addEventListener("click", function () { document.body.classList.toggle("menu-open"); SND.click(); });
+    ['reset', 'shop', 'mute', 'achBtn', 'mapBtn'].forEach(function (id) { const b = document.getElementById(id); if (b) b.addEventListener("click", function () { document.body.classList.remove("menu-open"); }); });   // メニュー項目を押したら自動で閉じる＝画面スッキリ
+
     // 保存
-    const KEY = "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
-    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 6, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine, upg: game.upg, ach: game.unlockedAch, cum: game.cum, bucket: game.bucket })); } catch (e) {} }
+    const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
+    const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 7, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine, upg: game.upg, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket })); } catch (e) {} }
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
         if (!raw) return false; const s = JSON.parse(raw);
-        if (!s || s.g !== GRID || !s.h || s.h.length !== N || s.level == null || s.level >= NLV) return false;
+        if (!s || s.level == null || s.level >= NLV || !s.h) return false;
+        const eg = (LEVEL_DEFS[s.level].grid || 36);   // 保存レベルの実寸グリッド（L1-5=36・L6-10=108）
+        if (s.g !== eg || s.h.length !== (eg + 1) * (eg + 1)) return false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
         game.money = s.money || 0;
         game.owned = Array.isArray(s.owned) ? s.owned.slice() : ['dozer'].concat(s.hasSub ? ['sub'] : []); // 旧v4(hasSub)からも移行
@@ -1182,6 +1439,8 @@
         game.upg = (s.upg && typeof s.upg === 'object') ? sanitizeUpg(s.upg) : {};
         game.unlockedAch = (s.ach && typeof s.ach === 'object') ? s.ach : {};
         game.cum = (s.cum && typeof s.cum === 'object') ? { dugAll: +s.cum.dugAll || 0, cleared: (s.cum.cleared | 0) } : { dugAll: 0, cleared: 0 };
+        game.unlocked = Math.max(0, Math.min(NLV - 1, Math.max(s.unlocked | 0, s.level | 0)));   // 解放済み最高レベル[マップ選択]。旧セーブ(unlocked無し)も現在レベルまでは解放扱い
+        game.clearedLv = (s.clearedLv && typeof s.clearedLv === 'object') ? s.clearedLv : {};
         loadLevel(s.level, s);
         checkAchievements(true); // 移行直後＝既に条件を満たす所有/メーカー系バッジを静かに解禁（トースト無し）
         return true;
@@ -1212,18 +1471,20 @@
 
     // 起動
     if (!load()) loadLevel(0);
+    if (UNLOCK_ALL) { game.owned = MACHINES.map(function (m) { return m.id; }); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); }   // 検証用(?all)：18台全解放+資金潤沢[親方FB]
     normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
 
     // デバッグ用フック
     if (/[?&]test\b/.test(location.search)) window.__t = {
       game, keys, heights, waterD, simWater, syncWater, syncGeometry, gradePush, updateDozer, camera, sampleHeight, sampleWater,
-      totalWater, zoneVol, zoneMaxDev, zoneFlatness, levelDone, checkWin, loadLevel, refreshHUD, N, V, GRID,
+      totalWater, zoneVol, zoneMaxDev, zoneFlatness, levelDone, checkWin, loadLevel, refreshHUD, getN: () => N, getV: () => V, getGrid: () => GRID,
       getLevel: () => curLevel, getLV: () => LV, getFps: () => fpsEMA,
       setYaw: (y) => { camYaw = y; }, getYaw: () => camYaw, getCamDist: () => camDist, setCamDist: (v) => { camDist = Math.max(CAM_MIN, Math.min(CAM_MAX, v)); }, CAM_MIN: CAM_MIN, CAM_MAX: CAM_MAX, setActing: (v) => { acting = v; }, getActing: () => acting,
       setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, setGF: (v) => { GF = v; }, setDamp: (v) => { FLUX_DAMP = v; },
       getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, getOwned: () => game.owned.slice(), getBlade: () => game.blade, curM: () => curM(), MACHINES: MACHINES, REWARD: CLEAR_REWARD,
       getBucket: () => game.bucket, backhoeDig: (dt) => backhoeDig(dt || 0.05), backhoeDump: (dt) => backhoeDump(dt || 0.05), kindOf: (id) => machineKind(id ? machineById(id) : curM()), bhMode: () => bhMode,
-      soilTotal: () => { let s = 0; for (let i = 0; i < N; i++) s += heights[i]; return s * CELL_AREA + game.blade + game.bucket; },
+      soilTotal: () => { let s = 0; for (let i = 0; i < N; i++) s += heights[i]; return s * CELL_AREA + game.blade + game.bucket + truckLoad; },
+      getTruckLoad: () => truckLoad, setTruckLoad: (v) => { truckLoad = v; updateTruckBed(); }, getDriving: () => driving, setDriving: (d) => { driving = d; }, hasTruck: () => !!truck, callTruck: () => summonTruck(), truckPos: () => truck ? { x: +truckX.toFixed(2), z: +truckZ.toFixed(2), load: +truckLoad.toFixed(1), cap: TRUCK_CAP, tilt: +truckTilt.toFixed(2), bedRx: truck.userData.bedPivot ? +truck.userData.bedPivot.rotation.x.toFixed(2) : null } : null,
       setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, setBlade: (v) => { game.blade = v; }, setBucket: (v) => { game.bucket = v; },
       buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
       setMachine: (id) => { if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); },
@@ -1238,7 +1499,7 @@
       buyUpgrade: (id) => buyUpgrade(id), upgCostOf: (id) => upgCost(machineById(id), upgLv(id)), upgLvOf: (id) => upgLv(id),
       effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
-      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
+      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
     };
   })();
   </script>
