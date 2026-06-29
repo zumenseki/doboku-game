@@ -1703,9 +1703,11 @@
       const rec = e.target.closest ? e.target.closest('[data-recall]') : null;
       if (rec) { recallUnit(+rec.dataset.recall); renderMachineChooser(); return; }   // その1台を回収（待機中へ）
       const c = e.target.closest ? e.target.closest('.g-card') : null; if (!c || !c.dataset || c.dataset.u == null) return;
-      const u = +c.dataset.u;
-      if (u === game.driveU) { mchooserEl.classList.remove("show"); SND.click(); return; }   // 既に乗っている＝閉じるだけ
-      if (deployUnit(u, true)) { mchooserEl.classList.remove("show"); }   // [親方FB] 出して乗る（現場に居れば乗り換え・今の重機は現場に残る）。成功でだけ閉じる
+      const u = +c.dataset.u, f = unitById(u), m = f ? machineById(f.id) : null; if (!m) return;
+      if (u === game.driveU) { mchooserEl.classList.remove("show"); SND.click(); return; }   // 使用中＝閉じるだけ
+      if (unitState(u) === 'field') { if (deployUnit(u, true)) mchooserEl.classList.remove("show"); return; }   // 現場に居る＝その台に乗り換えて閉じる
+      // [親方FB] 待機中＝「配置」：現場に出すだけ（乗らない）・窓は閉じない・「○○ 配置」バナー（続けて何台でも配置できる）
+      if (deployUnit(u, false)) { showBuyToast(m.icon + ' ' + m.name + ' 配置'); renderMachineChooser(); }
       else { mcShowNote('現場がいっぱいです（最大12台）。「現場を片付ける」か、現場の重機を回収してください'); renderMachineChooser(); }   // 満杯＝開いたまま注意を表示
     });
     document.getElementById("mc-recall-all").addEventListener("click", function () { recallAll(); mcNote.classList.remove("show"); renderMachineChooser(); });   // [親方FB] 現場の重機を全部回収（開いたまま再描画）
