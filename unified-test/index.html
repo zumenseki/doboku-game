@@ -79,8 +79,12 @@
   #win h1 { font-size:42px; margin:0; text-shadow:0 3px 16px rgba(0,0,0,.5); }
   #win p { margin:0; font-size:17px; font-weight:700; }
   #again { margin-top:6px; background:var(--water); color:#fff; border:none; border-radius:14px; padding:14px 30px; font-weight:900; font-size:18px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,.3); }
-  #rotate { position:fixed; top:calc(env(safe-area-inset-top,8px) + 96px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,.6); color:#fff; padding:8px 14px; border-radius:16px; font-weight:700; font-size:13px; pointer-events:none; opacity:0; transition:opacity .4s ease; z-index:6; white-space:nowrap; }
-  #rotate.show { opacity:1; }
+  /* [親方FB] スマホ縦持ち時は全画面オーバーレイで横向きを促す（横にすると自動で消える＝実質強制） */
+  #rotate { position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px; text-align:center; background:rgba(8,22,30,.97); color:#fff; font-weight:800; font-size:20px; line-height:1.7; padding:28px; z-index:60; }
+  #rotate.show { display:flex; animation:fade .3s ease; }
+  #rotate .rot-ic { font-size:64px; animation:rotwig 1.6s ease-in-out infinite; }
+  #rotate .rot-sub { font-size:13px; font-weight:700; opacity:.8; }
+  @keyframes rotwig { 0%,100%{ transform:rotate(-12deg); } 50%{ transform:rotate(78deg); } }
   #mute { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 136px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:16px; line-height:1; }
   #achBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 176px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #mute:active, #achBtn:active { transform:scale(.95); } #mute.off { opacity:.55; }
@@ -120,6 +124,25 @@
   #mc-recall-all:active { transform:scale(.97); }
   .g-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
   .g-btn.upg { background:#e89a2a; color:#fff; } .g-btn.maxed { background:#f0d8a0; color:#7a5a10; }
+  /* [親方FB] 切替窓は左右2列（左=待機中 / 右=出動中）。重機窓・トラック窓 共通 */
+  #mchooser .b-box, #tchooser .b-box { width:min(96vw,720px); }
+  .mc-cols { display:flex; gap:10px; align-items:flex-start; }
+  .mc-col { flex:1 1 0; min-width:0; }
+  .mc-col-h { font-size:13px; font-weight:800; text-align:center; padding:6px 4px; border-radius:10px; margin-bottom:8px; }
+  .mc-col-standby { background:#e6edf2; color:#456; }
+  .mc-col-field { background:#cfe6f6; color:#114; }
+  .mc-empty { font-size:12px; color:#8aa; text-align:center; padding:18px 6px; }
+  #tchooser { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
+  #tchooser.show { display:flex; animation:fade .3s ease; }
+  #tc-list { display:flex; flex-direction:column; gap:6px; }
+  #tc-close { margin-top:10px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
+  #tc-note { display:none; margin-top:8px; background:#ffe1e1; color:#a11; font-weight:800; font-size:12px; padding:8px 10px; border-radius:10px; text-align:center; line-height:1.5; }
+  #tc-note.show { display:block; }
+  #tc-recall-all { display:none; width:100%; margin-bottom:10px; background:#e0795a; color:#fff; border:none; border-radius:12px; padding:11px; font-weight:800; font-size:14px; cursor:pointer; }
+  #tc-recall-all:active { transform:scale(.97); }
+  #truckBtn { position:fixed; left:calc(env(safe-area-inset-left,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 104px); background:#dbeaf6; color:var(--ink); border:none; border-radius:12px; padding:8px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; display:flex; flex-direction:column; align-items:center; line-height:1.1; }
+  #truckBtn span { font-size:9px; opacity:.7; margin-top:1px; }
+  #truckBtn:active { transform:scale(.95); }
   #badges { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
   #badges.show { display:flex; animation:fade .3s ease; }
   .b-box { background:#fff; border-radius:16px; padding:16px; width:min(94vw,440px); max-height:84vh; overflow:auto; box-shadow:0 8px 30px rgba(0,0,0,.4); }
@@ -158,17 +181,19 @@
   <button id="act">ならす<span>押す</span></button>
   <button id="reset">最初から</button>
   <button id="shop">🛒 ショップ</button>
-  <button id="machineBtn">🚜 ブル<span>切替</span></button>
+  <button id="machineBtn">🚜 重機<span>切替</span></button>
+  <button id="truckBtn">🚛 トラック<span>切替</span></button>
   <button id="mute" aria-label="音">🔊</button>
   <button id="achBtn">🏅 実績</button>
   <button id="mapBtn">🗺 マップ</button>
   <button id="menuBtn" aria-label="メニュー">☰</button>
   <div id="hint">…</div>
-  <div id="rotate">📱 横向きがおすすめ</div>
+  <div id="rotate"><div class="rot-ic">📱</div><div>横向きにしてください</div><div class="rot-sub">スマホを横にすると始まります</div></div>
   <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
   <div id="badges"><div class="b-box"><h2>🏅 実績バッジ</h2><div id="b-list"></div><button id="b-close">とじる</button></div></div>
   <div id="mapsel"><div class="b-box"><h2>🗺 マップ選択</h2><div id="m-list" class="m-grid"></div><button id="m-close">とじる</button></div></div>
   <div id="mchooser"><div class="b-box"><h2>🚜 重機を切り替え</h2><button id="mc-recall-all">🧹 現場を片付ける</button><div id="mc-list"></div><div id="mc-note"></div><button id="mc-close">とじる</button></div></div>
+  <div id="tchooser"><div class="b-box"><h2>🚛 トラックを切り替え</h2><button id="tc-recall-all">🧹 トラックを片付ける</button><div id="tc-list"></div><div id="tc-note"></div><button id="tc-close">とじる</button></div></div>
   <div id="achToast"></div>
   <div id="buyToast"></div>
   <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
@@ -185,6 +210,7 @@
     let CELL_AREA = (WORLD / GRID) * (WORLD / GRID);                     // セル面積。WORLD/GRID は常に2/3＝CELL_AREA は全レベル共通(≈0.444)。
     const MIN_H = -4, MAX_H = 9;
     const MOVE_SPEED = 7;
+    const TRUCK_SPEED_BOOST = 1.3;   // [親方FB] トラックの走りを+30%（数字だけ調整可。1.0=従来 / 1.5=さらに速く）
     const DIG_RADIUS = 2.2, DIG_RATE = 18, LAYER = 0.8, STROKE_DIST = 5.0;
     const FLAT_TOL = 0.4;
     const CAM_DIST = 26, CAM_MIN = 12, LOOK_SENS = 0.005, PITCH_MIN = 0.45, PITCH_MAX = 1.30;
@@ -1232,7 +1258,7 @@
       if (keys.right) game.myaw += TURN * dt;
       const drive = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
       if (drive !== 0) {
-        const sp = stats.moveSpeed * (1 - 0.45 * (game.blade / Math.max(1, cap))) * (drive < 0 ? 0.7 : 1);   // 積むほど遅い・後退遅め
+        const sp = stats.moveSpeed * TRUCK_SPEED_BOOST * (1 - 0.45 * (game.blade / Math.max(1, cap))) * (drive < 0 ? 0.7 : 1);   // [親方FB] トラックは+30%・積むほど遅い・後退遅め
         const fwd = [Math.sin(game.myaw), Math.cos(game.myaw)], half = WORLD / 2 - 0.6;
         const cx = Math.max(-half, Math.min(half, game.mx + fwd[0] * sp * dt * drive)), cz = Math.max(-half, Math.min(half, game.mz + fwd[1] * sp * dt * drive));
         if (canStand(cx, cz)) { game.mx = cx; game.mz = cz; } else if (canStand(cx, game.mz)) game.mx = cx; else if (canStand(game.mx, cz)) game.mz = cz;
@@ -1464,7 +1490,7 @@
       dozer.scale.setScalar(machineScale(M));
       updateMachineBtn(); // 置いてある重機があれば「機械チェンジ」表示[親方FB]
       machineBtn.classList.toggle('sub', M.canEnterWater);
-      if (machineBtn.firstChild && machineBtn.firstChild.nodeType === 3) machineBtn.firstChild.nodeValue = M.icon + ' ' + M.name;   // 先頭テキストノードに現在の重機名（保険付き）
+      // [親方FB] 2窓分離後は左上ボタンは固定ラベル（🚜重機 / 🚛トラック）。操作中の車種は足元の光る輪＋窓の「使用中」で示す
       updateActLabel();   // 操作ボタンの文字（ブル=ならす／バックホウ=掘る/下ろす）[本体移植]
     }
     // 操作ボタンの文字を重機の種類で切替[本体移植]：ブル系=ならす／バックホウ系=空なら掘る・土ありなら下ろす。
@@ -1668,49 +1694,89 @@
       mapselEl.classList.remove("show"); loadLevel(n); SND.click();
     });
 
-    // ===================== 重機切り替えリスト（取得済みから選ぶ）[親方FB] =====================
-    function renderMachineChooser() {
-      const list = document.getElementById("mc-list"); let html = '';
-      // [親方FB] 種類ごとに「×N台」見出しでまとめる（型はfleetの出現順／各型の中はfleet順。1台ずつの行＋各自レベルは維持）
-      const order = [], byType = {};
-      for (let i = 0; i < game.fleet.length; i++) { const f = game.fleet[i]; if (!byType[f.id]) { byType[f.id] = []; order.push(f.id); } byType[f.id].push(f); }
-      for (let k = 0; k < order.length; k++) {
-        const id = order[k], m = machineById(id), units = byType[id], onField = units.filter(function (f) { return unitState(f.u) !== 'storage'; }).length;
-        html += '<div class="mc-group">' + m.icon + ' <b>' + m.name + '</b> <span class="mc-count">×' + units.length + '台</span>' + (onField ? '<span class="mc-onfield">現場' + onField + '</span>' : '') + '</div>';
-        for (let j = 0; j < units.length; j++) {
-          const f = units[j], st = unitState(f.u), lv = Math.max(0, Math.min(UPG_MAX, f.lv | 0));
-          const statusTag = st === 'active' ? '<span class="mc-tag cur">使用中</span>' : st === 'field' ? '<span class="mc-tag field">現場に居る</span>' : '<span class="mc-tag">待機中</span>';
-          const lvTag = '<span class="mc-lv">' + (lv >= UPG_MAX ? '強化MAX' : '強化Lv' + lv) + '</span>';
-          const idxTag = units.length > 1 ? (j + 1) + '台目 ' : '';
-          let acts = '';
-          if (lv < UPG_MAX) { const c = upgCost(m, lv); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
-          else acts += '<button class="g-btn maxed" disabled>強化MAX</button>';
-          if (st === 'field') acts += '<button class="g-btn recall" data-recall="' + f.u + '">🧹回収</button>';
-          html += '<div class="g-card mc-unit' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + idxTag + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
+    // ===================== 重機/トラック 切り替え窓（左=待機中 / 右=出動中・2窓に分離）[親方FB] =====================
+    function isTruckUnit(f) { return machineKind(machineById(f.id)) === 'truck'; }   // そのユニットがトラックか
+    function unitCardHTML(f, ord) {   // 1台分のカード（ord>0なら「N台目」を付ける）
+      const m = machineById(f.id), st = unitState(f.u), lv = Math.max(0, Math.min(UPG_MAX, f.lv | 0));
+      const statusTag = st === 'active' ? '<span class="mc-tag cur">使用中</span>' : st === 'field' ? '<span class="mc-tag field">現場に居る</span>' : '<span class="mc-tag">待機中</span>';
+      const lvTag = '<span class="mc-lv">' + (lv >= UPG_MAX ? '強化MAX' : '強化Lv' + lv) + '</span>';
+      const idxTag = ord ? ord + '台目 ' : '';
+      let acts = '';
+      if (lv < UPG_MAX) { const c = upgCost(m, lv); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
+      else acts += '<button class="g-btn maxed" disabled>強化MAX</button>';
+      if (st === 'field') acts += '<button class="g-btn recall" data-recall="' + f.u + '">🧹回収</button>';
+      return '<div class="g-card mc-unit' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + idxTag + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
+    }
+    function renderChooserInto(listEl, isTruck) {   // listEl に「左=待機中 / 右=出動中」の2列を描く（isTruck=トラック窓か）
+      const fleet = game.fleet.filter(function (f) { return isTruckUnit(f) === isTruck; });
+      const ord = {}, cnt = {};   // 種類ごとの通し番号（窓内の出現順で安定・同型が複数のときだけ表示）
+      for (let i = 0; i < fleet.length; i++) { const f = fleet[i]; cnt[f.id] = (cnt[f.id] || 0) + 1; ord[f.u] = cnt[f.id]; }
+      function colHTML(units) {
+        if (!units.length) return '<div class="mc-empty">なし</div>';
+        const order = [], byType = {};
+        for (let i = 0; i < units.length; i++) { const f = units[i]; if (!byType[f.id]) { byType[f.id] = []; order.push(f.id); } byType[f.id].push(f); }
+        let html = '';
+        for (let k = 0; k < order.length; k++) {
+          const id = order[k], m = machineById(id), us = byType[id];
+          html += '<div class="mc-group">' + m.icon + ' <b>' + m.name + '</b> <span class="mc-count">×' + us.length + '</span></div>';
+          for (let j = 0; j < us.length; j++) html += unitCardHTML(us[j], cnt[id] > 1 ? ord[us[j].u] : 0);
         }
+        return html;
       }
-      list.innerHTML = html;
-      const ra = document.getElementById("mc-recall-all"); if (ra) { ra.textContent = '🧹 現場を片付ける (' + parked.length + '台)'; ra.style.display = parked.length ? 'block' : 'none'; }
+      const standby = fleet.filter(function (f) { return unitState(f.u) === 'storage'; });
+      const onfield = fleet.filter(function (f) { return unitState(f.u) !== 'storage'; });
+      listEl.innerHTML = '<div class="mc-cols">'
+        + '<div class="mc-col"><div class="mc-col-h mc-col-standby">待機中 (' + standby.length + ')</div>' + colHTML(standby) + '</div>'
+        + '<div class="mc-col"><div class="mc-col-h mc-col-field">出動中 (' + onfield.length + ')</div>' + colHTML(onfield) + '</div>'
+        + '</div>';
+    }
+    function parkedCount(isTruck) { let n = 0; for (let i = 0; i < parked.length; i++) if ((machineKind(machineById(parked[i].id)) === 'truck') === isTruck) n++; return n; }
+    function recallKind(isTruck) {   // その窓の種別（重機 or トラック）だけ全回収。操作中の1台は残る
+      let any = false;
+      for (let k = parked.length - 1; k >= 0; k--) { const p = parked[k]; if ((machineKind(machineById(p.id)) === 'truck') === isTruck) { recallEntry(p); any = true; } }
+      if (!any) return;
+      updateMachineBtn(); syncGeometry(); refreshHUD(); save(); SND.click(); tryVibrate(20);
+    }
+    function renderMachineChooser() {
+      renderChooserInto(document.getElementById("mc-list"), false);
+      const ra = document.getElementById("mc-recall-all"), n = parkedCount(false);
+      if (ra) { ra.textContent = '🧹 現場を片付ける (' + n + '台)'; ra.style.display = n ? 'block' : 'none'; }
+    }
+    function renderTruckChooser() {
+      renderChooserInto(document.getElementById("tc-list"), true);
+      const ra = document.getElementById("tc-recall-all"), n = parkedCount(true);
+      if (ra) { ra.textContent = '🧹 トラックを片付ける (' + n + '台)'; ra.style.display = n ? 'block' : 'none'; }
     }
     const mchooserEl = document.getElementById("mchooser"), mcNote = document.getElementById("mc-note");
+    const tchooserEl = document.getElementById("tchooser"), tcNote = document.getElementById("tc-note");
     function mcShowNote(msg) { mcNote.textContent = msg; mcNote.classList.add("show"); }
-    function openMachineChooser() { mcNote.classList.remove("show"); renderMachineChooser(); mchooserEl.classList.add("show"); SND.click(); }
-    document.getElementById("mc-close").addEventListener("click", function () { mchooserEl.classList.remove("show"); SND.click(); });
-    mchooserEl.addEventListener("click", function (e) { if (e.target === mchooserEl) { mchooserEl.classList.remove("show"); SND.click(); } }); // 暗転部タップで閉じる
-    document.getElementById("mc-list").addEventListener("click", function (e) {
+    function tcShowNote(msg) { tcNote.textContent = msg; tcNote.classList.add("show"); }
+    function openMachineChooser() { tchooserEl.classList.remove("show"); mcNote.classList.remove("show"); renderMachineChooser(); mchooserEl.classList.add("show"); SND.click(); }
+    function openTruckChooser() { mchooserEl.classList.remove("show"); tcNote.classList.remove("show"); renderTruckChooser(); tchooserEl.classList.add("show"); SND.click(); }
+    function chooserCardClick(e, isTruck) {   // 1台タップの共通処理（isTruck=どちらの窓か）
+      const reRender = isTruck ? renderTruckChooser : renderMachineChooser;
+      const winEl = isTruck ? tchooserEl : mchooserEl, showNote = isTruck ? tcShowNote : mcShowNote;
       const upg = e.target.closest ? e.target.closest('[data-upg]') : null;
-      if (upg) { buyUnitUpgrade(+upg.dataset.upg); renderMachineChooser(); return; }   // その1台だけ強化
+      if (upg) { buyUnitUpgrade(+upg.dataset.upg); reRender(); return; }   // その1台だけ強化
       const rec = e.target.closest ? e.target.closest('[data-recall]') : null;
-      if (rec) { recallUnit(+rec.dataset.recall); renderMachineChooser(); return; }   // その1台を回収（待機中へ）
+      if (rec) { recallUnit(+rec.dataset.recall); reRender(); return; }   // その1台を回収（待機中へ）
       const c = e.target.closest ? e.target.closest('.g-card') : null; if (!c || !c.dataset || c.dataset.u == null) return;
       const u = +c.dataset.u, f = unitById(u), m = f ? machineById(f.id) : null; if (!m) return;
-      if (u === game.driveU) { mchooserEl.classList.remove("show"); SND.click(); return; }   // 使用中＝閉じるだけ
-      if (unitState(u) === 'field') { if (deployUnit(u, true)) mchooserEl.classList.remove("show"); return; }   // 現場に居る＝その台に乗り換えて閉じる
-      // [親方FB] 待機中＝「配置」：現場に出すだけ（乗らない）・窓は閉じない・「○○ 配置」バナー（続けて何台でも配置できる）
-      if (deployUnit(u, false)) { showBuyToast(m.icon + ' ' + m.name + ' 配置'); renderMachineChooser(); }
-      else { mcShowNote('現場がいっぱいです（最大12台）。「現場を片付ける」か、現場の重機を回収してください'); renderMachineChooser(); }   // 満杯＝開いたまま注意を表示
-    });
-    document.getElementById("mc-recall-all").addEventListener("click", function () { recallAll(); mcNote.classList.remove("show"); renderMachineChooser(); });   // [親方FB] 現場の重機を全部回収（開いたまま再描画）
+      if (u === game.driveU) { winEl.classList.remove("show"); SND.click(); return; }   // 使用中＝閉じるだけ
+      if (unitState(u) === 'field') { if (deployUnit(u, true)) winEl.classList.remove("show"); return; }   // 現場に居る＝その台に乗り換えて閉じる
+      // 待機中＝「配置」：現場に出すだけ（乗らない）・窓は閉じない・続けて何台でも配置できる
+      if (deployUnit(u, false)) { showBuyToast(m.icon + ' ' + m.name + ' 配置'); reRender(); }
+      else { showNote('現場がいっぱいです（最大' + MAX_DEPLOY + '台）。「片付ける」か、現場の車両を回収してください'); reRender(); }   // 満杯＝開いたまま注意を表示
+    }
+    document.getElementById("mc-close").addEventListener("click", function () { mchooserEl.classList.remove("show"); SND.click(); });
+    document.getElementById("tc-close").addEventListener("click", function () { tchooserEl.classList.remove("show"); SND.click(); });
+    mchooserEl.addEventListener("click", function (e) { if (e.target === mchooserEl) { mchooserEl.classList.remove("show"); SND.click(); } }); // 暗転部タップで閉じる
+    tchooserEl.addEventListener("click", function (e) { if (e.target === tchooserEl) { tchooserEl.classList.remove("show"); SND.click(); } });
+    document.getElementById("mc-list").addEventListener("click", function (e) { chooserCardClick(e, false); });
+    document.getElementById("tc-list").addEventListener("click", function (e) { chooserCardClick(e, true); });
+    document.getElementById("mc-recall-all").addEventListener("click", function () { recallKind(false); mcNote.classList.remove("show"); renderMachineChooser(); });   // 重機だけ全回収（開いたまま再描画）
+    document.getElementById("tc-recall-all").addEventListener("click", function () { recallKind(true); tcNote.classList.remove("show"); renderTruckChooser(); });   // トラックだけ全回収
+    document.getElementById("truckBtn").addEventListener("click", function () { openTruckChooser(); });   // 左上「🚛トラック切替」＝トラック専用窓
 
     // ===================== 右側ボタンの☰メニュー開閉[親方FB] =====================
     document.getElementById("menuBtn").addEventListener("click", function () { document.body.classList.toggle("menu-open"); SND.click(); });
@@ -1747,7 +1813,7 @@
 
     // リサイズ・ループ
     let lastW = 0, lastH = 0, rotateTimer = 0;
-    function resize() { const w = window.innerWidth, h = window.innerHeight; if (w === 0 || h === 0) return; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); lastW = w; lastH = h; const rot = document.getElementById("rotate"); if (h > w + 40) { rot.classList.add("show"); clearTimeout(rotateTimer); rotateTimer = setTimeout(() => rot.classList.remove("show"), 3500); } else rot.classList.remove("show"); }
+    function resize() { const w = window.innerWidth, h = window.innerHeight; if (w === 0 || h === 0) return; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); lastW = w; lastH = h; const rot = document.getElementById("rotate"); if (h > w + 40) rot.classList.add("show"); else rot.classList.remove("show"); }   // [親方FB] 縦持ちの間ずっと全画面で横向きを促す（横にすると自動で消える＝実質強制）
     window.addEventListener("resize", resize); window.addEventListener("orientationchange", resize);
     let last = performance.now(), running = true, hudAccum = 0, fpsEMA = 60;
     function loop(now) {
