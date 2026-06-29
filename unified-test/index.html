@@ -1357,6 +1357,15 @@
       parked.push({ id: id, x: sp[0], z: sp[1], yaw: game.myaw, blade: 0, bucket: 0, model: makeParkedModel(M, sp[0], sp[1], game.myaw) });
       updateMachineBtn(); SND.click(); tryVibrate(20); setHint(M.icon + ' ' + M.name + ' を出した。重機をタップで乗り換え');
     }
+    function deployAndDrive(id) {   // [親方FB] ショップで選んだ重機を現場に出して即その重機に乗る（前の重機は交代せずその場に残る）
+      if (id === game.machine) return;   // 既に操作中
+      const ex = parked.find(function (p) { return p.id === id; });
+      if (ex) { activateParked(ex); return; }   // 既に出してる→その重機へ乗り換え
+      if (1 + parked.length >= MAX_DEPLOY) { setHint('これ以上は重機を出せません（最大' + MAX_DEPLOY + '台）'); return; }
+      const M = machineById(id), sp = placeSpot();
+      const entry = { id: id, x: sp[0], z: sp[1], yaw: game.myaw, blade: 0, bucket: 0, model: makeParkedModel(M, sp[0], sp[1], game.myaw) };
+      parked.push(entry); activateParked(entry); tryVibrate(20);   // 出して即乗る（前の重機はparked化＝現場に残る）
+    }
     function activateParked(entry) {
       const i = parked.indexOf(entry); if (i < 0) return;
       if (driving === 'truck') { driving = 'machine'; if (typeof updateTruckBtn === 'function') updateTruckBtn(); }   // トラック運転中なら重機操作へ戻す
@@ -1449,9 +1458,9 @@
     gList.addEventListener("click", function (e) {
       const b = e.target.closest ? e.target.closest('.g-btn') : null; if (!b || !b.dataset || !b.dataset.id) return;
       const id = b.dataset.id, m = machineById(id);
-      if (b.classList.contains('use')) { setMachine(id); renderGarage(); SND.click(); }
+      if (b.classList.contains('use')) { deployAndDrive(id); garage.classList.remove("show"); SND.click(); }   // [親方FB] 交代でなく現場に出して乗る（前の重機は残る）
       else if (b.classList.contains('upg')) { buyUpgrade(id); }
-      else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); setMachine(id); renderGarage(); SND.buy(); tryVibrate(30); checkAchievements(); }
+      else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); deployAndDrive(id); garage.classList.remove("show"); SND.buy(); tryVibrate(30); checkAchievements(); }   // [親方FB] 購入→現場に出して乗る
     });
     machineBtn.addEventListener("click", function () { if (!parked.length) return; activateParked(parked[0]); });   // [親方FB] 機械チェンジ=置いてある重機へ順番に乗り換え
     const badgesEl = document.getElementById("badges");
