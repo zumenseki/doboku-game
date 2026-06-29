@@ -56,6 +56,8 @@
   #shop { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 96px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #machineBtn { position:fixed; left:calc(env(safe-area-inset-left,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 52px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:8px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; display:flex; flex-direction:column; align-items:center; line-height:1.1; }
   #truckBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 24px); bottom:calc(env(safe-area-inset-bottom,0px) + 128px); background:#caa14a; color:#3a2c0a; border:none; border-radius:14px; padding:11px 14px; font-weight:800; box-shadow:0 4px 12px rgba(0,0,0,.25); cursor:pointer; z-index:4; font-size:14px; }
+  #deployBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 24px); bottom:calc(env(safe-area-inset-bottom,0px) + 184px); background:#6f9152; color:#fff; border:none; border-radius:14px; padding:11px 14px; font-weight:800; box-shadow:0 4px 12px rgba(0,0,0,.25); cursor:pointer; z-index:4; font-size:14px; }
+  #deployBtn:active, #truckBtn:active { transform:scale(.95); }
   #machineBtn span { font-size:9px; opacity:.7; margin-top:1px; }
   #machineBtn.sub { background:#cfe6f6; }
   #shop:active, #machineBtn:active { transform:scale(.95); }
@@ -138,6 +140,7 @@
   <button id="shop">🛒 ショップ</button>
   <button id="machineBtn" style="display:none">🚜 ブル<span>切替</span></button>
   <button id="truckBtn">🚛 トラック召喚</button>
+  <button id="deployBtn">🚜 重機を出す</button>
   <button id="mute" aria-label="音">🔊</button>
   <button id="achBtn">🏅 実績</button>
   <button id="mapBtn">🗺 マップ</button>
@@ -920,22 +923,24 @@
     window.addEventListener("blur", clearKeys); window.addEventListener("pagehide", clearKeys);
     const el = renderer.domElement;
     let lookId = null, lookX = 0, lookY = 0;
+    let tapId = null, tapSX = 0, tapSY = 0, tapMoved = false;   // [親方FB] タップ(重機選択)とドラッグ(カメラ回転)の区別
     const camPtrs = new Map(); let pinchDist = 0;   // canvas上のポインタ追跡（1本=回転/見下ろし・2本=ピンチでズーム）
     const clampDist = (v) => Math.max(CAM_MIN, Math.min(CAM_MAX, v));
     const camTwoDist = () => { const a = [...camPtrs.values()]; if (a.length < 2) return 0; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
     el.addEventListener("pointerdown", (e) => {
       camPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (el.setPointerCapture) try { el.setPointerCapture(e.pointerId); } catch (_) {}
-      if (camPtrs.size === 1) { lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; }
-      else if (camPtrs.size === 2) { lookId = null; pinchDist = camTwoDist(); }   // 2本指=ピンチ開始（回転を止めてズーム）
+      if (camPtrs.size === 1) { lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; tapId = e.pointerId; tapSX = e.clientX; tapSY = e.clientY; tapMoved = false; }
+      else if (camPtrs.size === 2) { lookId = null; pinchDist = camTwoDist(); tapMoved = true; }   // 2本指=ピンチ開始（回転止めてズーム・タップ扱いしない）
     });
     el.addEventListener("pointermove", (e) => {
       const p = camPtrs.get(e.pointerId); if (!p) return; p.x = e.clientX; p.y = e.clientY;
       if (camPtrs.size >= 2) { e.preventDefault(); const d = camTwoDist(); if (pinchDist > 0 && d > 0) camDist = clampDist(camDist - (d - pinchDist) * 0.06); pinchDist = d; }   // 指を広げる=寄る/狭める=引く
-      else if (e.pointerId === lookId) { e.preventDefault(); camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }   // カメラ手動（1本指ドラッグで左右回転＋上下見下ろし）
+      else if (e.pointerId === lookId) { e.preventDefault(); if (Math.abs(e.clientX - tapSX) > 8 || Math.abs(e.clientY - tapSY) > 8) tapMoved = true; camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }   // カメラ手動（1本指ドラッグで左右回転＋上下見下ろし）
     });
     const endLook = (e) => { camPtrs.delete(e.pointerId); pinchDist = 0; if (e.pointerId === lookId) lookId = null; if (camPtrs.size === 1) { const id = camPtrs.keys().next().value, q = camPtrs.get(id); lookId = id; lookX = q.x; lookY = q.y; } };   // 2本→1本に戻ったら残り1本で回転継続
-    el.addEventListener("pointerup", endLook); el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
+    el.addEventListener("pointerup", (e) => { if (e.pointerId === tapId && !tapMoved && camPtrs.size === 1) tapSelectMachine(e.clientX, e.clientY); tapId = null; endLook(e); });   // [親方FB] 動かさず離した=タップ→重機選択
+    el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
     el.addEventListener("wheel", (e) => { e.preventDefault(); camDist = clampDist(camDist + e.deltaY * 0.03); }, { passive: false });   // PC=ホイールでズーム（上=寄る/下=引く）
     window.addEventListener("touchmove", (e) => { if (lookId !== null || camPtrs.size >= 2) e.preventDefault(); }, { passive: false });
     let hintTimer = setTimeout(hideHint, 12000);
@@ -1001,6 +1006,7 @@
     let bhMode = null, prevActing = false, bhDigAmt = 0, bhDumpAmt = 0, bhPhase = 0;
     // ===== トラック運搬[親方FB]：バックホウ/ブルで近くに召喚→積む→自分で運転して運ぶ→別場所で下ろす。容量=バックホウ約5倍。別の乗り物として共存。 =====
     let truck = null, truckX = 0, truckZ = 0, truckYaw = Math.PI, truckLoad = 0, truckTilt = 0, driving = 'machine'; const TRUCK_CAP = 75;
+    let parked = []; const _ray = new THREE.Raycaster();   // [親方FB] 現場に出した重機(乗っていない方)＋タップ判定用レイ
     function bhReach(M) { return Math.max(1.8, M.digRadius + 0.5); }   // 腕の届く距離（機体ごと）
     function backhoeDig(dt) {
       const M = effectiveStats(curM()), reach = bhReach(M), RAD = M.digRadius, cap = M.bladeCap;
@@ -1108,6 +1114,7 @@
       const ty = sampleHeight(truckX, truckZ); truck.position.set(truckX, ty, truckZ); truck.rotation.y = truckYaw; updateTruckBed();
     }
     function updateDozer(dt) {
+      for (let pi = 0; pi < parked.length; pi++) parked[pi].model.position.y = sampleHeight(parked[pi].x, parked[pi].z);   // 置いてある重機は地面の高さに追従[親方FB]
       if (driving === 'truck' && truck) { updateTruck(dt); const tgy = sampleHeight(game.mx, game.mz); dozer.position.set(game.mx, tgy, game.mz); dozer.rotation.y = game.myaw; bladePile.position.y = -999; if (activeArm) resetArmPose(activeArm); return; }
       // 実際の重機式の操作：左右＝その場で旋回（向きを変える）／上＝前進・下＝後退（向いてる方向のまま）
       const TURN = 1.8; // 旋回速度(rad/s)
@@ -1237,6 +1244,7 @@
       if (LV.type === 'grade') LV.A0work = Math.max(0.001, zoneToTarget(baseHeights, LV.A, LV.gradeTarget).work);   // 整地：初期の目標高さからのズレ土量(=整地の総仕事)
       game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();
       driving = 'machine'; if (truck) { scene.remove(truck); truck = null; } truckLoad = 0; truckTilt = 0; if (typeof updateTruckBtn === 'function') updateTruckBtn();   // レベル切替でトラックはリセット(召喚し直し)[親方FB]
+      if (typeof clearParked === 'function') clearParked();   // レベル切替で出した重機もリセット[親方FB]
       applyMachine();
       if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
       else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
@@ -1267,6 +1275,7 @@
     const truckBtn = document.getElementById('truckBtn');
     function updateTruckBtn() { if (!truckBtn) return; truckBtn.textContent = (driving === 'truck') ? '🚜 重機に戻る' : (truck ? '🚛 トラックに乗る' : '🚛 トラック召喚'); }
     truckBtn.addEventListener('click', function () { SND.unlock(); SND.click(); hideHint(); if (!truck) { summonTruck(); } else { driving = (driving === 'truck') ? 'machine' : 'truck'; } acting = false; clearKeys(); updateActLabel(); updateTruckBtn(); refreshHUD(); });   // [親方FB] 召喚→乗り換えトグル
+    document.getElementById('deployBtn').addEventListener('click', function () { SND.unlock(); hideHint(); deployMachine(); });   // [親方FB] 所有重機を現場へ1台出す（乗り換えず設置）
     updateTruckBtn();
     document.getElementById("reset").addEventListener("click", () => { if (window.confirm("このレベルを最初からやり直しますか？")) loadLevel(curLevel); });
     (function () { const mb = document.getElementById('mute'); function paint() { mb.textContent = SND.isMuted() ? '🔇' : '🔊'; mb.classList.toggle('off', SND.isMuted()); } mb.addEventListener('click', function () { SND.unlock(); SND.toggleMute(); paint(); }); paint(); })();
@@ -1297,7 +1306,7 @@
       activeBeacon = model.userData.beacon || null;
       if (activeBlade) resetBladePart(activeBlade); if (activeArm) resetArmPose(activeArm);
       dozer.scale.setScalar(machineScale(M));
-      machineBtn.style.display = game.owned.length > 1 ? 'flex' : 'none'; // 2台以上持っていれば切替ボタン表示
+      updateMachineBtn(); // 置いてある重機があれば「機械チェンジ」表示[親方FB]
       machineBtn.classList.toggle('sub', M.canEnterWater);
       machineBtn.childNodes[0].nodeValue = M.icon + ' ' + M.name;
       updateActLabel();   // 操作ボタンの文字（ブル=ならす／バックホウ=掘る/下ろす）[本体移植]
@@ -1314,6 +1323,64 @@
     }
     function ownsMachine(id) { return game.owned.indexOf(id) >= 0; }
     function setMachine(id) { if (!ownsMachine(id)) return; game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); save(); }
+
+    // ===================== 複数重機の配備（現場に出す＋タップ乗り換え）[親方FB] =====================
+    const MAX_DEPLOY = 8;   // 場に出せる重機の上限（操作中の1台＋置いてある台数）
+    function updateMachineBtn() { machineBtn.style.display = parked.length >= 1 ? 'flex' : 'none'; }   // 乗り換え先(置いてある重機)があれば「機械チェンジ」表示
+    function disposeModel(m) { m.traverse(function (o) { if (o.geometry) o.geometry.dispose(); }); }   // ジオメトリだけ破棄（マテリアルは全モデル共有ゆえ残す）
+    function makeParkedModel(M, x, z, yaw) {
+      const m = buildMachineModel(M); m.scale.setScalar(machineScale(M));
+      m.position.set(x, sampleHeight(x, z), z); m.rotation.y = yaw; m.userData.isParked = true; scene.add(m); m.updateMatrixWorld(true); return m;
+    }
+    function machineOccupied(x, z) {   // その場所に別の重機(操作中/置いてある)が居るか＝重なり防止
+      if (Math.hypot(x - game.mx, z - game.mz) < 2.4) return true;
+      for (let i = 0; i < parked.length; i++) if (Math.hypot(x - parked[i].x, z - parked[i].z) < 2.4) return true;
+      return false;
+    }
+    function placeSpot() {   // 操作中の重機の周りで「立てる＆他の重機と重ならない」空きを螺旋状に探す
+      const half = WORLD / 2 - 1;
+      for (let r = 3.0; r <= 10; r += 1.4) for (let a = 0; a < 8; a++) {
+        const ang = game.myaw + a * Math.PI / 4, x = game.mx + Math.sin(ang) * r, z = game.mz + Math.cos(ang) * r;
+        if (Math.abs(x) < half && Math.abs(z) < half && canStand(x, z) && !machineOccupied(x, z)) return [x, z];
+      }
+      return [Math.max(-half, Math.min(half, game.mx + 3.2)), Math.max(-half, Math.min(half, game.mz))];
+    }
+    function nextDeployId() {
+      const onField = {}; onField[game.machine] = 1; parked.forEach(function (p) { onField[p.id] = 1; });
+      for (let i = 0; i < game.owned.length; i++) if (!onField[game.owned[i]]) return game.owned[i];   // まだ出してない所有重機を優先
+      return game.owned[parked.length % Math.max(1, game.owned.length)];   // 全部出てる→順番に重複で出す
+    }
+    function deployMachine() {
+      if (1 + parked.length >= MAX_DEPLOY) { setHint('これ以上は重機を出せません（最大' + MAX_DEPLOY + '台）'); SND.click(); return; }
+      const id = nextDeployId(); if (!id) return;
+      const M = machineById(id), sp = placeSpot();
+      parked.push({ id: id, x: sp[0], z: sp[1], yaw: game.myaw, blade: 0, bucket: 0, model: makeParkedModel(M, sp[0], sp[1], game.myaw) });
+      updateMachineBtn(); SND.click(); tryVibrate(20); setHint(M.icon + ' ' + M.name + ' を出した。重機をタップで乗り換え');
+    }
+    function activateParked(entry) {
+      const i = parked.indexOf(entry); if (i < 0) return;
+      if (driving === 'truck') { driving = 'machine'; if (typeof updateTruckBtn === 'function') updateTruckBtn(); }   // トラック運転中なら重機操作へ戻す
+      const cur = curM();   // 今操作中の重機を、その場に置く（parked化）
+      parked.splice(i, 1);
+      parked.push({ id: game.machine, x: game.mx, z: game.mz, yaw: game.myaw, blade: game.blade, bucket: game.bucket, model: makeParkedModel(cur, game.mx, game.mz, game.myaw) });
+      scene.remove(entry.model); disposeModel(entry.model);   // 乗り込む重機の置きモデルは撤去
+      game.machine = entry.id; game.mx = entry.x; game.mz = entry.z; game.myaw = entry.yaw; game.blade = entry.blade; game.bucket = entry.bucket;
+      bhMode = null; pushing = false; acting = false; resetAct();
+      applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart();
+      updateMachineBtn(); refreshHUD(); save(); SND.click(); tryVibrate(25);
+    }
+    function clearParked() { parked.forEach(function (p) { scene.remove(p.model); disposeModel(p.model); }); parked = []; updateMachineBtn(); }
+    function tapSelectMachine(clientX, clientY) {
+      if (!parked.length) return false;
+      const rect = el.getBoundingClientRect();
+      _ray.setFromCamera(new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1), camera);
+      const hits = _ray.intersectObjects(parked.map(function (p) { return p.model; }), true);
+      if (!hits.length) return false;
+      let o = hits[0].object; while (o && !o.userData.isParked) o = o.parent;
+      if (!o) return false;
+      const entry = parked.find(function (p) { return p.model === o; }); if (entry) { activateParked(entry); return true; }
+      return false;
+    }
     // ===== 重機レベルアップ＆実績バッジ =====
     function buyUpgrade(id) {
       if (game.owned.indexOf(id) < 0) return;
@@ -1386,7 +1453,7 @@
       else if (b.classList.contains('upg')) { buyUpgrade(id); }
       else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); setMachine(id); renderGarage(); SND.buy(); tryVibrate(30); checkAchievements(); }
     });
-    machineBtn.addEventListener("click", function () { if (game.owned.length <= 1) return; const i = game.owned.indexOf(game.machine); setMachine(game.owned[(i + 1) % game.owned.length]); SND.click(); });
+    machineBtn.addEventListener("click", function () { if (!parked.length) return; activateParked(parked[0]); });   // [親方FB] 機械チェンジ=置いてある重機へ順番に乗り換え
     const badgesEl = document.getElementById("badges");
     document.getElementById("achBtn").addEventListener("click", function () { renderBadges(); badgesEl.classList.add("show"); SND.click(); });
     document.getElementById("b-close").addEventListener("click", function () { badgesEl.classList.remove("show"); SND.click(); });
@@ -1483,8 +1550,10 @@
       setCanEnterWater: (v) => { WATER_CAN_ENTER = v; }, setGF: (v) => { GF = v; }, setDamp: (v) => { FLUX_DAMP = v; },
       getMoney: () => game.money, setMoney: (v) => { game.money = v; refreshHUD(); }, getMachine: () => game.machine, getOwned: () => game.owned.slice(), getBlade: () => game.blade, curM: () => curM(), MACHINES: MACHINES, REWARD: CLEAR_REWARD,
       getBucket: () => game.bucket, backhoeDig: (dt) => backhoeDig(dt || 0.05), backhoeDump: (dt) => backhoeDump(dt || 0.05), kindOf: (id) => machineKind(id ? machineById(id) : curM()), bhMode: () => bhMode,
-      soilTotal: () => { let s = 0; for (let i = 0; i < N; i++) s += heights[i]; return s * CELL_AREA + game.blade + game.bucket + truckLoad; },
-      getTruckLoad: () => truckLoad, setTruckLoad: (v) => { truckLoad = v; updateTruckBed(); }, getDriving: () => driving, setDriving: (d) => { driving = d; }, hasTruck: () => !!truck, callTruck: () => summonTruck(), truckPos: () => truck ? { x: +truckX.toFixed(2), z: +truckZ.toFixed(2), load: +truckLoad.toFixed(1), cap: TRUCK_CAP, tilt: +truckTilt.toFixed(2), bedRx: truck.userData.bedPivot ? +truck.userData.bedPivot.rotation.x.toFixed(2) : null } : null,
+      soilTotal: () => { let s = 0; for (let i = 0; i < N; i++) s += heights[i]; let pk = 0; for (let k = 0; k < parked.length; k++) pk += parked[k].blade + parked[k].bucket; return s * CELL_AREA + game.blade + game.bucket + truckLoad + pk; },
+      getTruckLoad: () => truckLoad, setTruckLoad: (v) => { truckLoad = v; updateTruckBed(); }, getDriving: () => driving, setDriving: (d) => { driving = d; }, hasTruck: () => !!truck, callTruck: () => summonTruck(),
+      deployMachine: () => deployMachine(), parkedCount: () => parked.length, parkedIds: () => parked.map((p) => p.id), activateNext: () => { if (parked.length) activateParked(parked[0]); }, parkedPos: () => parked.map((p) => ({ id: p.id, x: +p.x.toFixed(2), z: +p.z.toFixed(2) })), tapAt: (x, y) => tapSelectMachine(x, y),
+      tapWorld: (x, z) => { _ray.set(new THREE.Vector3(x, 80, z), new THREE.Vector3(0, -1, 0)); const hh = _ray.intersectObjects(parked.map((p) => p.model), true); if (!hh.length) return false; let o = hh[0].object; while (o && !o.userData.isParked) o = o.parent; if (!o) return false; const e = parked.find((p) => p.model === o); if (e) { activateParked(e); return true; } return false; }, truckPos: () => truck ? { x: +truckX.toFixed(2), z: +truckZ.toFixed(2), load: +truckLoad.toFixed(1), cap: TRUCK_CAP, tilt: +truckTilt.toFixed(2), bedRx: truck.userData.bedPivot ? +truck.userData.bedPivot.rotation.x.toFixed(2) : null } : null,
       setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, setBlade: (v) => { game.blade = v; }, setBucket: (v) => { game.bucket = v; },
       buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
       setMachine: (id) => { if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); },
