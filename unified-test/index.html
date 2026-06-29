@@ -140,7 +140,6 @@
   <button id="shop">🛒 ショップ</button>
   <button id="machineBtn" style="display:none">🚜 ブル<span>切替</span></button>
   <button id="truckBtn">🚛 トラック召喚</button>
-  <button id="deployBtn">🚜 重機を出す</button>
   <button id="mute" aria-label="音">🔊</button>
   <button id="achBtn">🏅 実績</button>
   <button id="mapBtn">🗺 マップ</button>
@@ -808,6 +807,13 @@
     }
     function getMachineModel(M) { if (!modelCache[M.id]) modelCache[M.id] = buildMachineModel(M); return modelCache[M.id]; }
     scene.add(dozer);
+    // [親方FB C1] 操作中の重機の足元に光る輪（今どれを操作中か一目で分かる目印）。本体とは別オブジェクト＝動き/当たり判定に不干渉。位置/明滅は updateDozer 側で毎フレーム更新。
+    const selRing = (function () {
+      const rg = new THREE.RingGeometry(1.5, 2.0, 40);
+      const rm = new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
+      const r = new THREE.Mesh(rg, rm); r.rotation.x = -Math.PI / 2; r.renderOrder = 2; scene.add(r); return r;
+    })();
+    let selRingT = 0;
     // ブレード前の「押した土の山」[本体移植 2026-06-25]：ブル系で持っている土(game.blade)に応じて前に盛り上がる茶色の山。見た目専用（体積は地面/blade側で管理＝二重計上しない）。
     const pileGeo = new THREE.ConeGeometry(1.1, 1, 9);
     { const pa = pileGeo.attributes.position; for (let pk = 0; pk < pa.count; pk++) { const py = pa.getY(pk); if (py < 0.4) { pa.setX(pk, pa.getX(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setZ(pk, pa.getZ(pk) * (1 + (Math.random() - 0.5) * 0.3)); pa.setY(pk, py + (Math.random() - 0.5) * 0.12); } } pileGeo.computeVertexNormals(); }  // 裾をデコボコに＝積んだ土塊っぽいシルエット（位置/拡縮は updateDozer 側で不変）
@@ -1115,6 +1121,14 @@
     }
     function updateDozer(dt) {
       for (let pi = 0; pi < parked.length; pi++) parked[pi].model.position.y = sampleHeight(parked[pi].x, parked[pi].z);   // 置いてある重機は地面の高さに追従[親方FB]
+      // [親方FB C1] 操作中の重機(トラック運転中はトラック)の足元に光る輪を追従＋ゆっくり明滅
+      selRingT += dt;
+      const _rpulse = Math.sin(selRingT * 5);
+      selRing.material.opacity = 0.4 + 0.22 * _rpulse;
+      const _rscale = (1 + 0.07 * _rpulse) * ((driving === 'truck' && truck) ? 1.4 : machineScale(curM()));
+      selRing.scale.set(_rscale, _rscale, _rscale);
+      if (driving === 'truck' && truck) selRing.position.set(truckX, sampleHeight(truckX, truckZ) + 0.06, truckZ);
+      else selRing.position.set(game.mx, sampleHeight(game.mx, game.mz) + 0.06, game.mz);
       if (driving === 'truck' && truck) { updateTruck(dt); const tgy = sampleHeight(game.mx, game.mz); dozer.position.set(game.mx, tgy, game.mz); dozer.rotation.y = game.myaw; bladePile.position.y = -999; if (activeArm) resetArmPose(activeArm); return; }
       // 実際の重機式の操作：左右＝その場で旋回（向きを変える）／上＝前進・下＝後退（向いてる方向のまま）
       const TURN = 1.8; // 旋回速度(rad/s)
@@ -1275,7 +1289,7 @@
     const truckBtn = document.getElementById('truckBtn');
     function updateTruckBtn() { if (!truckBtn) return; truckBtn.textContent = (driving === 'truck') ? '🚜 重機に戻る' : (truck ? '🚛 トラックに乗る' : '🚛 トラック召喚'); }
     truckBtn.addEventListener('click', function () { SND.unlock(); SND.click(); hideHint(); if (!truck) { summonTruck(); } else { driving = (driving === 'truck') ? 'machine' : 'truck'; } acting = false; clearKeys(); updateActLabel(); updateTruckBtn(); refreshHUD(); });   // [親方FB] 召喚→乗り換えトグル
-    document.getElementById('deployBtn').addEventListener('click', function () { SND.unlock(); hideHint(); deployMachine(); });   // [親方FB] 所有重機を現場へ1台出す（乗り換えず設置）
+    // [親方FB C3] 「🚜重機を出す」ボタンは撤去（ショップに一本化＝機種を選んで出して乗る/現場の乗り換えは「機械チェンジ」）。deployMachine() 関数はテスト確認用に残置。
     updateTruckBtn();
     document.getElementById("reset").addEventListener("click", () => { if (window.confirm("このレベルを最初からやり直しますか？")) loadLevel(curLevel); });
     (function () { const mb = document.getElementById('mute'); function paint() { mb.textContent = SND.isMuted() ? '🔇' : '🔊'; mb.classList.toggle('off', SND.isMuted()); } mb.addEventListener('click', function () { SND.unlock(); SND.toggleMute(); paint(); }); paint(); })();
@@ -1325,7 +1339,7 @@
     function setMachine(id) { if (!ownsMachine(id)) return; game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); save(); }
 
     // ===================== 複数重機の配備（現場に出す＋タップ乗り換え）[親方FB] =====================
-    const MAX_DEPLOY = 8;   // 場に出せる重機の上限（操作中の1台＋置いてある台数）
+    const MAX_DEPLOY = 12;   // [親方FB C2] 場に出せる重機の上限（操作中の1台＋置いてある台数）。8→12へ増量
     function updateMachineBtn() { machineBtn.style.display = parked.length >= 1 ? 'flex' : 'none'; }   // 乗り換え先(置いてある重機)があれば「機械チェンジ」表示
     function disposeModel(m) { m.traverse(function (o) { if (o.geometry) o.geometry.dispose(); }); }   // ジオメトリだけ破棄（マテリアルは全モデル共有ゆえ残す）
     function makeParkedModel(M, x, z, yaw) {
@@ -1337,10 +1351,11 @@
       for (let i = 0; i < parked.length; i++) if (Math.hypot(x - parked[i].x, z - parked[i].z) < 2.4) return true;
       return false;
     }
-    function placeSpot() {   // 操作中の重機の周りで「立てる＆他の重機と重ならない」空きを螺旋状に探す
+    function placeSpot() {   // [親方FB C2] 操作中の重機の近く・前方寄り(見やすい側)から空きを探す。重なり防止はそのまま
       const half = WORLD / 2 - 1;
-      for (let r = 3.0; r <= 10; r += 1.4) for (let a = 0; a < 8; a++) {
-        const ang = game.myaw + a * Math.PI / 4, x = game.mx + Math.sin(ang) * r, z = game.mz + Math.cos(ang) * r;
+      const offs = [0, 0.7, -0.7, 1.4, -1.4, 2.1, -2.1, Math.PI];   // 前方(0)→斜め前→横→後ろ の順で試す＝出した重機が見える側に置く
+      for (let r = 2.6; r <= 11; r += 1.3) for (let k = 0; k < offs.length; k++) {
+        const ang = game.myaw + offs[k], x = game.mx + Math.sin(ang) * r, z = game.mz + Math.cos(ang) * r;
         if (Math.abs(x) < half && Math.abs(z) < half && canStand(x, z) && !machineOccupied(x, z)) return [x, z];
       }
       return [Math.max(-half, Math.min(half, game.mx + 3.2)), Math.max(-half, Math.min(half, game.mz))];
@@ -1561,7 +1576,7 @@
       getBucket: () => game.bucket, backhoeDig: (dt) => backhoeDig(dt || 0.05), backhoeDump: (dt) => backhoeDump(dt || 0.05), kindOf: (id) => machineKind(id ? machineById(id) : curM()), bhMode: () => bhMode,
       soilTotal: () => { let s = 0; for (let i = 0; i < N; i++) s += heights[i]; let pk = 0; for (let k = 0; k < parked.length; k++) pk += parked[k].blade + parked[k].bucket; return s * CELL_AREA + game.blade + game.bucket + truckLoad + pk; },
       getTruckLoad: () => truckLoad, setTruckLoad: (v) => { truckLoad = v; updateTruckBed(); }, getDriving: () => driving, setDriving: (d) => { driving = d; }, hasTruck: () => !!truck, callTruck: () => summonTruck(),
-      deployMachine: () => deployMachine(), parkedCount: () => parked.length, parkedIds: () => parked.map((p) => p.id), activateNext: () => { if (parked.length) activateParked(parked[0]); }, parkedPos: () => parked.map((p) => ({ id: p.id, x: +p.x.toFixed(2), z: +p.z.toFixed(2) })), tapAt: (x, y) => tapSelectMachine(x, y),
+      deployMachine: () => deployMachine(), ring: () => ({ x: +selRing.position.x.toFixed(2), z: +selRing.position.z.toFixed(2), op: +selRing.material.opacity.toFixed(2), vis: selRing.visible }), MAX_DEPLOY: () => MAX_DEPLOY, parkedCount: () => parked.length, parkedIds: () => parked.map((p) => p.id), activateNext: () => { if (parked.length) activateParked(parked[0]); }, parkedPos: () => parked.map((p) => ({ id: p.id, x: +p.x.toFixed(2), z: +p.z.toFixed(2) })), tapAt: (x, y) => tapSelectMachine(x, y),
       tapWorld: (x, z) => { _ray.set(new THREE.Vector3(x, 80, z), new THREE.Vector3(0, -1, 0)); const hh = _ray.intersectObjects(parked.map((p) => p.model), true); if (!hh.length) return false; let o = hh[0].object; while (o && !o.userData.isParked) o = o.parent; if (!o) return false; const e = parked.find((p) => p.model === o); if (e) { activateParked(e); return true; } return false; }, truckPos: () => truck ? { x: +truckX.toFixed(2), z: +truckZ.toFixed(2), load: +truckLoad.toFixed(1), cap: TRUCK_CAP, tilt: +truckTilt.toFixed(2), bedRx: truck.userData.bedPivot ? +truck.userData.bedPivot.rotation.x.toFixed(2) : null } : null,
       setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, setBlade: (v) => { game.blade = v; }, setBucket: (v) => { game.bucket = v; },
       buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
