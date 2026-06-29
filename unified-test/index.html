@@ -134,6 +134,9 @@
   #b-close { margin-top:10px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
   #achToast { position:fixed; left:50%; top:calc(env(safe-area-inset-top,8px) + 150px); transform:translateX(-50%); background:rgba(184,134,11,.96); color:#fff; padding:10px 18px; border-radius:18px; font-weight:800; font-size:14px; box-shadow:0 4px 14px rgba(0,0,0,.3); opacity:0; transition:opacity .4s ease; pointer-events:none; z-index:7; text-align:center; white-space:nowrap; }
   #achToast.show { opacity:1; }
+  /* [親方FB] 購入成功バナー（中央にポンと一瞬） */
+  #buyToast { position:fixed; left:50%; top:42%; transform:translate(-50%,-50%) scale(.85); background:rgba(44,122,44,.97); color:#fff; padding:14px 26px; border-radius:18px; font-weight:900; font-size:18px; box-shadow:0 6px 22px rgba(0,0,0,.35); opacity:0; pointer-events:none; z-index:10; text-align:center; white-space:nowrap; transition:opacity .22s ease, transform .22s ease; }
+  #buyToast.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
 </style>
 </head>
 <body>
@@ -170,6 +173,7 @@
   <div id="mapsel"><div class="b-box"><h2>🗺 マップ選択</h2><div id="m-list" class="m-grid"></div><button id="m-close">とじる</button></div></div>
   <div id="mchooser"><div class="b-box"><h2>🚜 重機を切り替え</h2><button id="mc-recall-all">🧹 現場を片付ける</button><div id="mc-list"></div><div id="mc-note"></div><button id="mc-close">とじる</button></div></div>
   <div id="achToast"></div>
+  <div id="buyToast"></div>
   <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -1495,6 +1499,8 @@
       const fl = []; let u = 0; for (let i = 0; i < ow.length; i++) { if (!isValidMachineId(ow[i])) continue; let lv = up[ow[i]] | 0; if (lv < 0) lv = 0; if (lv > UPG_MAX) lv = UPG_MAX; fl.push({ u: ++u, id: ow[i], lv: lv }); }
       return sanitizeFleet(fl);
     }
+    let buyToastTimer = 0;
+    function showBuyToast(msg) { const el = document.getElementById("buyToast"); if (!el) return; el.innerHTML = msg; el.classList.add("show"); clearTimeout(buyToastTimer); buyToastTimer = setTimeout(function () { el.classList.remove("show"); }, 1500); }   // [親方FB] 購入成功バナー
     const garage = document.getElementById("garage"), gList = document.getElementById("g-list");
     function renderGarage() {
       let html = '', lastMaker = '';
@@ -1517,6 +1523,7 @@
       const id = b.dataset.id, m = machineById(id);
       if (b.classList.contains('buy') && game.money >= m.price) {   // [親方FB] 購入＝新しい1台を持ち物に追加→現場に出して乗る（何台でも買える）
         game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); SND.buy(); tryVibrate(30); checkAchievements();
+        showBuyToast('✅ ' + m.icon + ' ' + m.name + ' を購入！');   // [親方FB] 購入成功＝中央バナー
         garage.classList.remove("show");
         if (!deployUnit(f.u, true)) setHint('現場が満杯（最大' + MAX_DEPLOY + '台）。買った「' + m.name + '」は待機中です。🧹現場を片付けてから「切替」で出してください');   // 満杯時は買えたが出せない→待機中＋明確に案内
       }
