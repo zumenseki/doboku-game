@@ -111,6 +111,11 @@
   .mc-tag.field { background:#cfe6f6; color:#114; }
   #mc-note { display:none; margin-top:8px; background:#ffe1e1; color:#a11; font-weight:800; font-size:12px; padding:8px 10px; border-radius:10px; text-align:center; line-height:1.5; }
   #mc-note.show { display:block; }
+  #mc-list { display:flex; flex-direction:column; gap:8px; }   /* [親方FB] 1台ごと＝1列で並べる（ボタンが入る幅を確保） */
+  .mc-lv { display:inline-block; margin-left:6px; font-size:10px; font-weight:800; padding:1px 7px; border-radius:8px; background:#fde8c4; color:#8a5a10; }
+  .g-btn.recall { background:#e0795a; color:#fff; }
+  #mc-recall-all { display:none; width:100%; margin-bottom:10px; background:#e0795a; color:#fff; border:none; border-radius:12px; padding:11px; font-weight:800; font-size:14px; cursor:pointer; }
+  #mc-recall-all:active { transform:scale(.97); }
   .g-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
   .g-btn.upg { background:#e89a2a; color:#fff; } .g-btn.maxed { background:#f0d8a0; color:#7a5a10; }
   #badges { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
@@ -158,7 +163,7 @@
   <div id="garage"><div class="g-box"><h2>🛒 重機ショップ</h2><div id="g-list"></div><button id="g-close">とじる</button></div></div>
   <div id="badges"><div class="b-box"><h2>🏅 実績バッジ</h2><div id="b-list"></div><button id="b-close">とじる</button></div></div>
   <div id="mapsel"><div class="b-box"><h2>🗺 マップ選択</h2><div id="m-list" class="m-grid"></div><button id="m-close">とじる</button></div></div>
-  <div id="mchooser"><div class="b-box"><h2>🚜 重機を切り替え</h2><div id="mc-list" class="m-grid"></div><div id="mc-note"></div><button id="mc-close">とじる</button></div></div>
+  <div id="mchooser"><div class="b-box"><h2>🚜 重機を切り替え</h2><button id="mc-recall-all">🧹 現場を片付ける</button><div id="mc-list"></div><div id="mc-note"></div><button id="mc-close">とじる</button></div></div>
   <div id="achToast"></div>
   <div id="win"><h1 id="win-title">完成！</h1><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
 
@@ -248,11 +253,16 @@
     ];
     function machineById(id) { for (let k = 0; k < MACHINES.length; k++) if (MACHINES[k].id === id) return MACHINES[k]; return MACHINES[0]; }
     function curM() { return machineById(game.machine); }
-    // 重機の現強化Lv（0..UPG_MAX）。実効ステータス＝BASE×倍率（毎フレーム呼ばれるので使い回しオブジェクトで割当ゼロ）
-    function upgLv(id) { const v = game.upg[id]; return v ? (v > UPG_MAX ? UPG_MAX : v) : 0; }
+    // [親方FB] fleet補助。強化は「1台ごと」(unit.lv)。実効ステータス＝BASE×倍率（毎フレーム呼ばれるので使い回しオブジェクトで割当ゼロ）
+    function isValidMachineId(id) { for (let k = 0; k < MACHINES.length; k++) if (MACHINES[k].id === id) return true; return false; }
+    function unitById(u) { for (let i = 0; i < game.fleet.length; i++) if (game.fleet[i].u === u) return game.fleet[i]; return null; }
+    function activeUnit() { return unitById(game.driveU) || game.fleet[0] || null; }
+    function activeLv() { const u = activeUnit(); return u ? Math.max(0, Math.min(UPG_MAX, u.lv | 0)) : 0; }
+    function fleetCount(id) { let n = 0; for (let i = 0; i < game.fleet.length; i++) if (game.fleet[i].id === id) n++; return n; }
+    function syncOwned() { const seen = {}, out = []; for (let i = 0; i < game.fleet.length; i++) { const id = game.fleet[i].id; if (!seen[id]) { seen[id] = 1; out.push(id); } } game.owned = out.length ? out : ['dozer']; }
     const _eff = {};
     function effectiveStats(M) {
-      const lv = upgLv(M.id);
+      const lv = activeLv();   // 今乗ってる台の強化Lv（移動/掘削はactiveのみ呼ぶ）
       _eff.digRadius = M.digRadius * UPG_RAD[lv];
       _eff.digRate = M.digRate * UPG_RATE[lv];
       _eff.moveSpeed = M.moveSpeed * UPG_SPD[lv];
@@ -274,7 +284,7 @@
       { id: 'own6',    icon: '🏭', name: '大車両基地',     desc: '重機を6台所有',     cond: g => distinctOwned() >= 6 },
       { id: 'mk4',     icon: '🌐', name: 'メーカー通',     desc: '4メーカー集める',   cond: g => distinctMakers() >= 4 },
       { id: 'mkAll',   icon: '💠', name: '全メーカー制覇', desc: '全メーカー集める',  cond: g => distinctMakers() >= MAKERS.length },
-      { id: 'maxupg',  icon: '⭐', name: 'フルチューン',   desc: '1台をLv5まで強化',  cond: g => { for (const k in g.upg) if (g.upg[k] >= UPG_MAX) return true; return false; } }
+      { id: 'maxupg',  icon: '⭐', name: 'フルチューン',   desc: '1台をLv5まで強化',  cond: g => { for (let i = 0; i < g.fleet.length; i++) if ((g.fleet[i].lv | 0) >= UPG_MAX) return true; return false; } }
     ];
 
     // ===================== データ =====================
@@ -283,7 +293,8 @@
     const passRef = new Float32Array(N_MAX), passTag = new Int32Array(N_MAX);
     const waterD = new Float32Array(N_MAX);
     const fL = new Float32Array(N_MAX), fR = new Float32Array(N_MAX), fT = new Float32Array(N_MAX), fB = new Float32Array(N_MAX);
-    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer'], machine: 'dozer', upg: {}, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {} };
+    // [親方FB] 持ち物は「1台ごと」(fleet)。各ユニット={u:固有番号, id:機種, lv:その台の強化Lv}。driveU=今乗ってる台のu。owned/machineはfleetから同期する互換用。
+    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer'], machine: 'dozer', fleet: [{ u: 1, id: 'dozer', lv: 0 }], driveU: 1, nextUid: 2, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {} };
     let camYaw = 0, camPitch = 0.95, camDist = CAM_DIST, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
 
@@ -1370,40 +1381,49 @@
       }
       return [Math.max(-half, Math.min(half, game.mx + 3.2)), Math.max(-half, Math.min(half, game.mz))];
     }
-    function nextDeployId() {
-      const onField = {}; onField[game.machine] = 1; parked.forEach(function (p) { onField[p.id] = 1; });
-      for (let i = 0; i < game.owned.length; i++) if (!onField[game.owned[i]]) return game.owned[i];   // まだ出してない所有重機を優先
-      return game.owned[parked.length % Math.max(1, game.owned.length)];   // 全部出てる→順番に重複で出す
+    function unitState(u) { if (u === game.driveU) return 'active'; for (let i = 0; i < parked.length; i++) if (parked[i].u === u) return 'field'; return 'storage'; }   // active=操作中 / field=現場に居る / storage=待機中
+    function nextStorageUnit() { for (let i = 0; i < game.fleet.length; i++) if (unitState(game.fleet[i].u) === 'storage') return game.fleet[i]; return null; }
+    function placeUnit(f) {   // 待機中ユニットfを現場へ置く（parkedエントリ生成）。lvはfleet側(unit.lv)が正、parkedはuだけ持つ
+      const M = machineById(f.id), sp = placeSpot();
+      const e = { u: f.u, id: f.id, x: sp[0], z: sp[1], yaw: game.myaw, blade: 0, bucket: 0, model: makeParkedModel(M, sp[0], sp[1], game.myaw) };
+      parked.push(e); return e;
     }
-    function deployMachine() {
+    function deployMachine() {   // 待機中の重機を1台、現場に出す（乗り換えず設置）。テスト/レガシー用
       if (1 + parked.length >= MAX_DEPLOY) { setHint('これ以上は重機を出せません（最大' + MAX_DEPLOY + '台）'); SND.click(); return; }
-      const id = nextDeployId(); if (!id) return;
-      const M = machineById(id), sp = placeSpot();
-      parked.push({ id: id, x: sp[0], z: sp[1], yaw: game.myaw, blade: 0, bucket: 0, model: makeParkedModel(M, sp[0], sp[1], game.myaw) });
+      const f = nextStorageUnit(); if (!f) return;
+      const M = machineById(f.id); placeUnit(f);
       updateMachineBtn(); SND.click(); tryVibrate(20); setHint(M.icon + ' ' + M.name + ' を出した。重機をタップで乗り換え');
     }
-    function deployAndDrive(id) {   // [親方FB] ショップ/切替リストで選んだ重機を現場に出して即その重機に乗る（前の重機は交代せずその場に残る）。成否(true/false)を返す
-      if (id === game.machine) return true;   // 既に操作中＝成功扱い
-      const ex = parked.find(function (p) { return p.id === id; });
-      if (ex) { activateParked(ex); return true; }   // 既に出してる→その重機へ乗り換え
-      if (1 + parked.length >= MAX_DEPLOY) { setHint('現場がいっぱいです（最大' + MAX_DEPLOY + '台）。乗り換えるにはマップを切り替えると現場がリセットされます'); SND.click(); return false; }   // 満杯＝出せない（呼び元で表示維持）
-      const M = machineById(id), sp = placeSpot();
-      const entry = { id: id, x: sp[0], z: sp[1], yaw: game.myaw, blade: 0, bucket: 0, model: makeParkedModel(M, sp[0], sp[1], game.myaw) };
-      parked.push(entry); activateParked(entry); tryVibrate(20);   // 出して即乗る（前の重機はparked化＝現場に残る）
+    function deployUnit(u, drive) {   // [親方FB] ユニットuを現場へ。drive=true→即その台に乗る。成否(true/false)を返す
+      if (u === game.driveU) return true;   // 既に操作中＝成功扱い
+      const ex = parked.find(function (p) { return p.u === u; });
+      if (ex) { if (drive) activateParked(ex); return true; }   // 既に現場に居る→（drive時）その台へ乗り換え
+      if (1 + parked.length >= MAX_DEPLOY) { setHint('現場がいっぱいです（最大' + MAX_DEPLOY + '台）'); SND.click(); return false; }   // 満杯＝出せない（呼び元で注意表示を維持）
+      const f = unitById(u); if (!f) return false;
+      const e = placeUnit(f);
+      if (drive) activateParked(e); else { updateMachineBtn(); SND.click(); }
       return true;
     }
     function activateParked(entry) {
       const i = parked.indexOf(entry); if (i < 0) return;
       if (driving === 'truck') { driving = 'machine'; if (typeof updateTruckBtn === 'function') updateTruckBtn(); }   // トラック運転中なら重機操作へ戻す
-      const cur = curM();   // 今操作中の重機を、その場に置く（parked化）
+      const cur = curM();   // 今操作中の重機を、その場に置く（parked化・ユニットu/積載を保持）
       parked.splice(i, 1);
-      parked.push({ id: game.machine, x: game.mx, z: game.mz, yaw: game.myaw, blade: game.blade, bucket: game.bucket, model: makeParkedModel(cur, game.mx, game.mz, game.myaw) });
+      parked.push({ u: game.driveU, id: game.machine, x: game.mx, z: game.mz, yaw: game.myaw, blade: game.blade, bucket: game.bucket, model: makeParkedModel(cur, game.mx, game.mz, game.myaw) });
       scene.remove(entry.model); disposeModel(entry.model);   // 乗り込む重機の置きモデルは撤去
-      game.machine = entry.id; game.mx = entry.x; game.mz = entry.z; game.myaw = entry.yaw; game.blade = entry.blade; game.bucket = entry.bucket;
+      game.driveU = entry.u; game.machine = entry.id; game.mx = entry.x; game.mz = entry.z; game.myaw = entry.yaw; game.blade = entry.blade; game.bucket = entry.bucket;
       bhMode = null; pushing = false; acting = false; resetAct();
       applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart();
       updateMachineBtn(); refreshHUD(); save(); SND.click(); tryVibrate(25);
     }
+    function recallEntry(entry) {   // [親方FB] 回収：抱えてる土を足元の地面に戻し（土量保存）、モデル撤去→ユニットは待機中へ
+      let left = entry.blade + entry.bucket, R = 2.2;
+      while (left > 0.001 && R < 9) { const ceil = Math.min(MAX_H, sampleHeight(entry.x, entry.z) + 4.5); left = depositInto(entry.x, entry.z, R, left, ceil); R += 1.6; }   // 半径を広げて確実に戻す
+      const i = parked.indexOf(entry); if (i >= 0) parked.splice(i, 1);
+      scene.remove(entry.model); disposeModel(entry.model);
+    }
+    function recallUnit(u) { const e = parked.find(function (p) { return p.u === u; }); if (!e) return; recallEntry(e); updateMachineBtn(); syncGeometry(); refreshHUD(); save(); SND.click(); tryVibrate(15); }   // 1台ずつ回収
+    function recallAll() { if (!parked.length) return; for (let k = parked.length - 1; k >= 0; k--) recallEntry(parked[k]); updateMachineBtn(); syncGeometry(); refreshHUD(); save(); SND.click(); tryVibrate(20); }   // 現場の置いてある重機を全部回収（操作中の1台は残る）
     function clearParked() { parked.forEach(function (p) { scene.remove(p.model); disposeModel(p.model); }); parked = []; updateMachineBtn(); }
     function tapSelectMachine(clientX, clientY) {
       if (!parked.length) return false;
@@ -1416,16 +1436,16 @@
       const entry = parked.find(function (p) { return p.model === o; }); if (entry) { activateParked(entry); return true; }
       return false;
     }
-    // ===== 重機レベルアップ＆実績バッジ =====
-    function buyUpgrade(id) {
-      if (game.owned.indexOf(id) < 0) return;
-      const M = machineById(id), lv = upgLv(id);
+    // ===== 重機レベルアップ（1台ごと）＆実績バッジ =====
+    function buyUnitUpgrade(u) {
+      const f = unitById(u); if (!f) return;
+      const m = machineById(f.id), lv = Math.max(0, Math.min(UPG_MAX, f.lv | 0));
       if (lv >= UPG_MAX) return;
-      const cost = upgCost(M, lv);
+      const cost = upgCost(m, lv);
       if (game.money < cost) return;
-      game.money -= cost; game.upg[id] = lv + 1;
-      if (id === game.machine) applyMachine(); // 現行機なら整合（見た目は不変）
-      checkAchievements(); refreshHUD(); save(); renderGarage(); SND.buy(); tryVibrate(20);
+      game.money -= cost; f.lv = lv + 1;
+      if (u === game.driveU) applyMachine(); // 今乗ってる台なら実効ステータス整合（見た目は不変）
+      checkAchievements(); refreshHUD(); save(); SND.buy(); tryVibrate(20);
     }
     let achQueue = [], achToastTimer = 0;
     function checkAchievements(silent) { // 解禁チェックは「変化イベント時のみ」呼ぶ（毎フレーム禁止）。silent=移行時など静かに解禁
@@ -1455,26 +1475,32 @@
       const n = Object.keys(game.unlockedAch).length, h2 = document.querySelector("#badges h2");
       if (h2) h2.textContent = '🏅 実績バッジ (' + n + '/' + ACHIEVEMENTS.length + ')';
     }
-    function sanitizeUpg(o) { const out = {}; for (const id in o) { if (game.owned.indexOf(id) < 0) continue; let lv = o[id] | 0; if (lv < 1) continue; if (lv > UPG_MAX) lv = UPG_MAX; out[id] = lv; } return out; }
+    function sanitizeFleet(arr) {   // セーブから読んだfleetを検証（機種妥当・u正・lv 0..MAX）。空ならdozer1台を保証
+      const out = []; let mu = 0;
+      if (Array.isArray(arr)) for (let i = 0; i < arr.length; i++) { const f = arr[i]; if (!f || !isValidMachineId(f.id)) continue; let u = f.u | 0; if (u <= 0) u = mu + 1; let lv = f.lv | 0; if (lv < 0) lv = 0; if (lv > UPG_MAX) lv = UPG_MAX; out.push({ u: u, id: f.id, lv: lv }); if (u > mu) mu = u; }
+      if (!out.length) out.push({ u: 1, id: 'dozer', lv: 0 });
+      if (!out.some(function (f) { return f.id === 'dozer'; })) { mu++; out.unshift({ u: mu, id: 'dozer', lv: 0 }); }
+      return out;
+    }
+    function buildFleetFromSave(s) {   // セーブ→fleet。v8(fleet)はそのまま／旧(owned+upg)は所有種類ごとに1台へ変換（旧Lv引き継ぎ）
+      if (s && Array.isArray(s.fleet)) return sanitizeFleet(s.fleet);
+      const ow = (s && Array.isArray(s.owned)) ? s.owned.slice() : ['dozer'].concat((s && s.hasSub) ? ['sub'] : []);   // 旧v4(hasSub)からも移行
+      if (ow.indexOf('dozer') < 0) ow.unshift('dozer');
+      const up = (s && s.upg && typeof s.upg === 'object') ? s.upg : {};
+      const fl = []; let u = 0; for (let i = 0; i < ow.length; i++) { if (!isValidMachineId(ow[i])) continue; let lv = up[ow[i]] | 0; if (lv < 0) lv = 0; if (lv > UPG_MAX) lv = UPG_MAX; fl.push({ u: ++u, id: ow[i], lv: lv }); }
+      return sanitizeFleet(fl);
+    }
     const garage = document.getElementById("garage"), gList = document.getElementById("g-list");
     function renderGarage() {
       let html = '', lastMaker = '';
       for (let k = 0; k < MACHINES.length; k++) {
         const m = MACHINES[k];
         if (m.maker !== lastMaker) { lastMaker = m.maker; const mk = makerById(m.maker); html += '<div class="g-maker">' + mk.dot + ' ' + mk.name + ' <small>' + mk.sub + '</small></div>'; }
-        const own = ownsMachine(m.id), cur = game.machine === m.id; let btn;
-        if (cur) btn = '<button class="g-btn used" disabled>使用中</button>';
-        else if (own) btn = '<button class="g-btn use" data-id="' + m.id + '">使う</button>';
-        else if (game.money >= m.price) btn = '<button class="g-btn buy" data-id="' + m.id + '">' + m.price + '万円 購入</button>';
+        const n = fleetCount(m.id), cur = game.machine === m.id; let btn;   // [親方FB] ショップは買う専用＝何台でも購入可（使う/強化は左上「切替」リストへ）
+        if (game.money >= m.price) btn = '<button class="g-btn buy" data-id="' + m.id + '">' + m.price + '万円 購入</button>';
         else btn = '<button class="g-btn ng" disabled>' + m.price + '万円<br><small>あと' + (m.price - game.money) + '</small></button>';
-        let upgBtn = '', upgTag = '';
-        if (own) {
-          const lv = upgLv(m.id);
-          if (lv > 0) upgTag = ' <b style="color:#b8860b">+強化Lv' + lv + '</b>';
-          if (lv >= UPG_MAX) upgBtn = '<button class="g-btn maxed" disabled>強化MAX</button>';
-          else { const c = upgCost(m, lv); upgBtn = game.money >= c ? '<button class="g-btn upg" data-id="' + m.id + '">⬆強化 Lv' + lv + '→' + (lv + 1) + '<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
-        }
-        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³' + upgTag + '</small></div><div class="g-btns">' + btn + upgBtn + '</div></div>';
+        const ownTag = n > 0 ? ' <b style="color:#2c7a2c">所有' + n + '台</b>' : '';
+        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³' + ownTag + '</small></div><div class="g-btns">' + btn + '</div></div>';
       }
       gList.innerHTML = html;
     }
@@ -1484,9 +1510,11 @@
     gList.addEventListener("click", function (e) {
       const b = e.target.closest ? e.target.closest('.g-btn') : null; if (!b || !b.dataset || !b.dataset.id) return;
       const id = b.dataset.id, m = machineById(id);
-      if (b.classList.contains('use')) { deployAndDrive(id); garage.classList.remove("show"); SND.click(); }   // [親方FB] 交代でなく現場に出して乗る（前の重機は残る）
-      else if (b.classList.contains('upg')) { buyUpgrade(id); }
-      else if (b.classList.contains('buy') && game.money >= m.price) { game.money -= m.price; game.owned.push(id); deployAndDrive(id); garage.classList.remove("show"); SND.buy(); tryVibrate(30); checkAchievements(); }   // [親方FB] 購入→現場に出して乗る
+      if (b.classList.contains('buy') && game.money >= m.price) {   // [親方FB] 購入＝新しい1台を持ち物に追加→現場に出して乗る（何台でも買える）
+        game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); SND.buy(); tryVibrate(30); checkAchievements();
+        garage.classList.remove("show");
+        if (!deployUnit(f.u, true)) setHint('現場が満杯（最大' + MAX_DEPLOY + '台）。買った「' + m.name + '」は待機中です。🧹現場を片付けてから「切替」で出してください');   // 満杯時は買えたが出せない→待機中＋明確に案内
+      }
     });
     machineBtn.addEventListener("click", function () { openMachineChooser(); });   // [親方FB] 左上ボタン=取得済み重機の一覧から切り替え
     const badgesEl = document.getElementById("badges");
@@ -1520,14 +1548,19 @@
     // ===================== 重機切り替えリスト（取得済みから選ぶ）[親方FB] =====================
     function renderMachineChooser() {
       const list = document.getElementById("mc-list"); let html = '';
-      for (let i = 0; i < game.owned.length; i++) {
-        const id = game.owned[i], m = machineById(id); if (!m) continue;
-        const cur = game.machine === id, onField = parked.some(function (p) { return p.id === id; });
-        const cls = 'm-card' + (cur ? ' cur' : '');
-        const tag = cur ? '<span class="mc-tag cur">使用中</span>' : onField ? '<span class="mc-tag field">現場に居る</span>' : '<span class="mc-tag">待機中</span>';
-        html += '<div class="' + cls + '" data-id="' + id + '"><div class="m-ic">' + m.icon + '</div><div class="m-tx"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³<br>' + tag + '</small></div></div>';
+      for (let i = 0; i < game.fleet.length; i++) {
+        const f = game.fleet[i], m = machineById(f.id), st = unitState(f.u);
+        const lv = Math.max(0, Math.min(UPG_MAX, f.lv | 0));
+        const statusTag = st === 'active' ? '<span class="mc-tag cur">使用中</span>' : st === 'field' ? '<span class="mc-tag field">現場に居る</span>' : '<span class="mc-tag">待機中</span>';
+        const lvTag = '<span class="mc-lv">' + (lv >= UPG_MAX ? '強化MAX' : '強化Lv' + lv) + '</span>';
+        let acts = '';
+        if (lv < UPG_MAX) { const c = upgCost(m, lv); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
+        else acts += '<button class="g-btn maxed" disabled>強化MAX</button>';
+        if (st === 'field') acts += '<button class="g-btn recall" data-recall="' + f.u + '">🧹回収</button>';
+        html += '<div class="g-card' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
       }
       list.innerHTML = html;
+      const ra = document.getElementById("mc-recall-all"); if (ra) { ra.textContent = '🧹 現場を片付ける (' + parked.length + '台)'; ra.style.display = parked.length ? 'block' : 'none'; }
     }
     const mchooserEl = document.getElementById("mchooser"), mcNote = document.getElementById("mc-note");
     function mcShowNote(msg) { mcNote.textContent = msg; mcNote.classList.add("show"); }
@@ -1535,12 +1568,17 @@
     document.getElementById("mc-close").addEventListener("click", function () { mchooserEl.classList.remove("show"); SND.click(); });
     mchooserEl.addEventListener("click", function (e) { if (e.target === mchooserEl) { mchooserEl.classList.remove("show"); SND.click(); } }); // 暗転部タップで閉じる
     document.getElementById("mc-list").addEventListener("click", function (e) {
-      const c = e.target.closest ? e.target.closest('.m-card') : null; if (!c || !c.dataset || !c.dataset.id) return;
-      const id = c.dataset.id;
-      if (id === game.machine) { mchooserEl.classList.remove("show"); SND.click(); return; }   // 既に乗っている＝閉じるだけ
-      if (deployAndDrive(id)) { mchooserEl.classList.remove("show"); }   // [親方FB] 出して乗る（現場に居れば乗り換え・今の重機は現場に残る）。成功でだけ閉じる
-      else { mcShowNote('現場がいっぱいです（最大12台）。マップを切り替えると現場がリセットされます'); renderMachineChooser(); }   // 満杯＝開いたまま注意を表示（裏に隠れない）
+      const upg = e.target.closest ? e.target.closest('[data-upg]') : null;
+      if (upg) { buyUnitUpgrade(+upg.dataset.upg); renderMachineChooser(); return; }   // その1台だけ強化
+      const rec = e.target.closest ? e.target.closest('[data-recall]') : null;
+      if (rec) { recallUnit(+rec.dataset.recall); renderMachineChooser(); return; }   // その1台を回収（待機中へ）
+      const c = e.target.closest ? e.target.closest('.g-card') : null; if (!c || !c.dataset || c.dataset.u == null) return;
+      const u = +c.dataset.u;
+      if (u === game.driveU) { mchooserEl.classList.remove("show"); SND.click(); return; }   // 既に乗っている＝閉じるだけ
+      if (deployUnit(u, true)) { mchooserEl.classList.remove("show"); }   // [親方FB] 出して乗る（現場に居れば乗り換え・今の重機は現場に残る）。成功でだけ閉じる
+      else { mcShowNote('現場がいっぱいです（最大12台）。「現場を片付ける」か、現場の重機を回収してください'); renderMachineChooser(); }   // 満杯＝開いたまま注意を表示
     });
+    document.getElementById("mc-recall-all").addEventListener("click", function () { recallAll(); mcNote.classList.remove("show"); renderMachineChooser(); });   // [親方FB] 現場の重機を全部回収（開いたまま再描画）
 
     // ===================== 右側ボタンの☰メニュー開閉[親方FB] =====================
     document.getElementById("menuBtn").addEventListener("click", function () { document.body.classList.toggle("menu-open"); SND.click(); });
@@ -1549,7 +1587,7 @@
     // 保存
     const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
-    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 7, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, owned: game.owned, machine: game.machine, upg: game.upg, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket })); } catch (e) {} }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket })); } catch (e) {} }
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
@@ -1559,11 +1597,12 @@
         if (s.g !== eg || s.h.length !== (eg + 1) * (eg + 1)) return false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
         game.money = s.money || 0;
-        game.owned = Array.isArray(s.owned) ? s.owned.slice() : ['dozer'].concat(s.hasSub ? ['sub'] : []); // 旧v4(hasSub)からも移行
-        if (game.owned.indexOf('dozer') < 0) game.owned.unshift('dozer');
-        game.machine = (s.machine && game.owned.indexOf(s.machine) >= 0) ? s.machine : 'dozer';
-        // --- v4→v5 マイグレーション（旧セーブは新フィールド欠落→安全デフォルト） ---
-        game.upg = (s.upg && typeof s.upg === 'object') ? sanitizeUpg(s.upg) : {};
+        game.fleet = buildFleetFromSave(s);   // 持ち物の移行：v8(fleet)はそのまま／旧(owned+upg)は1台ごとへ変換（旧Lv引き継ぎ）
+        let mu = 0; for (let i = 0; i < game.fleet.length; i++) if (game.fleet[i].u > mu) mu = game.fleet[i].u;
+        game.nextUid = Math.max((s.nextUid | 0), mu + 1);
+        syncOwned();
+        const dv = (s.driveU != null && unitById(s.driveU)) ? s.driveU : (game.fleet[0] ? game.fleet[0].u : 1);
+        game.driveU = dv; game.machine = unitById(dv) ? unitById(dv).id : 'dozer';
         game.unlockedAch = (s.ach && typeof s.ach === 'object') ? s.ach : {};
         game.cum = (s.cum && typeof s.cum === 'object') ? { dugAll: +s.cum.dugAll || 0, cleared: (s.cum.cleared | 0) } : { dugAll: 0, cleared: 0 };
         game.unlocked = Math.max(0, Math.min(NLV - 1, Math.max(s.unlocked | 0, s.level | 0)));   // 解放済み最高レベル[マップ選択]。旧セーブ(unlocked無し)も現在レベルまでは解放扱い
@@ -1598,7 +1637,7 @@
 
     // 起動
     if (!load()) loadLevel(0);
-    if (UNLOCK_ALL) { game.owned = MACHINES.map(function (m) { return m.id; }); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); }   // 検証用(?all)：18台全解放+資金潤沢[親方FB]
+    if (UNLOCK_ALL) { game.fleet = MACHINES.map(function (m, i) { return { u: i + 1, id: m.id, lv: 0 }; }); game.nextUid = MACHINES.length + 1; game.driveU = 1; game.machine = MACHINES[0].id; syncOwned(); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); }   // 検証用(?all)：全機種を1台ずつ付与+資金潤沢[親方FB]
     normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
 
     // デバッグ用フック
@@ -1615,8 +1654,8 @@
       deployMachine: () => deployMachine(), ring: () => ({ x: +selRing.position.x.toFixed(2), z: +selRing.position.z.toFixed(2), op: +selRing.material.opacity.toFixed(2), vis: selRing.visible }), MAX_DEPLOY: () => MAX_DEPLOY, parkedCount: () => parked.length, parkedIds: () => parked.map((p) => p.id), activateNext: () => { if (parked.length) activateParked(parked[0]); }, parkedPos: () => parked.map((p) => ({ id: p.id, x: +p.x.toFixed(2), z: +p.z.toFixed(2) })), tapAt: (x, y) => tapSelectMachine(x, y),
       tapWorld: (x, z) => { _ray.set(new THREE.Vector3(x, 80, z), new THREE.Vector3(0, -1, 0)); const hh = _ray.intersectObjects(parked.map((p) => p.model), true); if (!hh.length) return false; let o = hh[0].object; while (o && !o.userData.isParked) o = o.parent; if (!o) return false; const e = parked.find((p) => p.model === o); if (e) { activateParked(e); return true; } return false; }, truckPos: () => truck ? { x: +truckX.toFixed(2), z: +truckZ.toFixed(2), load: +truckLoad.toFixed(1), cap: TRUCK_CAP, tilt: +truckTilt.toFixed(2), bedRx: truck.userData.bedPivot ? +truck.userData.bedPivot.rotation.x.toFixed(2) : null } : null,
       setPos: (x, z, y) => { game.mx = x; game.mz = z; if (y != null) game.myaw = y; }, setBlade: (v) => { game.blade = v; }, setBucket: (v) => { game.bucket = v; },
-      buyMachine: (id) => { const m = machineById(id); game.money -= m.price; if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); refreshHUD(); },
-      setMachine: (id) => { if (game.owned.indexOf(id) < 0) game.owned.push(id); game.machine = id; applyMachine(); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); },
+      buyMachine: (id) => { const m = machineById(id); game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); deployUnit(f.u, true); refreshHUD(); return f.u; },
+      setMachine: (id) => { let f = game.fleet.find((x) => x.id === id); if (!f) { f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); } deployUnit(f.u, true); if (!canStand(game.mx, game.mz)) findDryStart(); refreshHUD(); return f.u; },
       look: () => ({ scale: +dozer.scale.x.toFixed(3), kind: machineKind(curM()), id: curM().id, meshCount: activeModel ? countMeshes(activeModel) : 0, blade: !!activeBlade, arm: !!activeArm, loader: !!activeLoader, dump: !!activeDump }),
       bladePilePose: () => ({ y: +bladePile.position.y.toFixed(3), sx: +bladePile.scale.x.toFixed(3), sy: +bladePile.scale.y.toFixed(3), sz: +bladePile.scale.z.toFixed(3), visible: bladePile.position.y > -900, px: +bladePile.position.x.toFixed(2), pz: +bladePile.position.z.toFixed(2) }),
       partPose: () => ({ bladeY: activeBlade ? +activeBlade.position.y.toFixed(4) : null, bladeRx: activeBlade ? +activeBlade.rotation.x.toFixed(4) : null, boomRx: activeArm ? +activeArm.boom.rotation.x.toFixed(4) : null, stickRx: activeArm ? +activeArm.stick.rotation.x.toFixed(4) : null, bucketRx: activeArm ? +activeArm.bucket.rotation.x.toFixed(4) : null }),
@@ -1624,8 +1663,11 @@
       pulseBlade: () => { digFx(true); updateDozer(0.016); return window.__t.partPose(); },
       armStep: (action, dt) => { animateArm(dt || 0.05, action || null); return window.__t.partPose(); },
       getShake: () => shake,
-      getUpg: () => JSON.parse(JSON.stringify(game.upg)), getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
-      buyUpgrade: (id) => buyUpgrade(id), upgCostOf: (id) => upgCost(machineById(id), upgLv(id)), upgLvOf: (id) => upgLv(id),
+      fleet: () => game.fleet.map((f) => ({ u: f.u, id: f.id, lv: f.lv })), driveU: () => game.driveU, unitState: (u) => unitState(u), fleetCount: (id) => fleetCount(id), activeLv: () => activeLv(), nextUidVal: () => game.nextUid,
+      deployUnit: (u, d) => deployUnit(u, d !== false), recallUnit: (u) => recallUnit(u), recallAll: () => recallAll(), recallCount: () => parked.length, buyUnitUpgrade: (u) => buyUnitUpgrade(u), upgCostOfUnit: (u) => { const f = unitById(u); return f ? upgCost(machineById(f.id), Math.min(UPG_MAX, f.lv | 0)) : 0; },
+      buyUnit: (id) => { const m = machineById(id); game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); checkAchievements(); return f.u; },
+      migrate: (s) => buildFleetFromSave(s),
+      getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
       effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
