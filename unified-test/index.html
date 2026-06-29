@@ -111,7 +111,12 @@
   .mc-tag.field { background:#cfe6f6; color:#114; }
   #mc-note { display:none; margin-top:8px; background:#ffe1e1; color:#a11; font-weight:800; font-size:12px; padding:8px 10px; border-radius:10px; text-align:center; line-height:1.5; }
   #mc-note.show { display:block; }
-  #mc-list { display:flex; flex-direction:column; gap:8px; }   /* [親方FB] 1台ごと＝1列で並べる（ボタンが入る幅を確保） */
+  #mc-list { display:flex; flex-direction:column; gap:6px; }   /* [親方FB] 1台ごと＝1列で並べる（ボタンが入る幅を確保） */
+  .mc-group { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:800; color:var(--ink); margin:8px 0 0; }   /* [親方FB] 種類ごとの見出し（×N台で一目） */
+  .mc-group:first-child { margin-top:0; }
+  .mc-count { font-size:12px; font-weight:800; color:#2c7a2c; background:#e2f0e2; padding:1px 9px; border-radius:9px; }
+  .mc-onfield { font-size:10px; font-weight:800; color:#114; background:#cfe6f6; padding:1px 7px; border-radius:8px; }
+  .mc-unit { margin-left:10px; }   /* 見出しの下にぶら下がる感じで少しインデント */
   .mc-lv { display:inline-block; margin-left:6px; font-size:10px; font-weight:800; padding:1px 7px; border-radius:8px; background:#fde8c4; color:#8a5a10; }
   .g-btn.recall { background:#e0795a; color:#fff; }
   #mc-recall-all { display:none; width:100%; margin-bottom:10px; background:#e0795a; color:#fff; border:none; border-radius:12px; padding:11px; font-weight:800; font-size:14px; cursor:pointer; }
@@ -1548,16 +1553,23 @@
     // ===================== 重機切り替えリスト（取得済みから選ぶ）[親方FB] =====================
     function renderMachineChooser() {
       const list = document.getElementById("mc-list"); let html = '';
-      for (let i = 0; i < game.fleet.length; i++) {
-        const f = game.fleet[i], m = machineById(f.id), st = unitState(f.u);
-        const lv = Math.max(0, Math.min(UPG_MAX, f.lv | 0));
-        const statusTag = st === 'active' ? '<span class="mc-tag cur">使用中</span>' : st === 'field' ? '<span class="mc-tag field">現場に居る</span>' : '<span class="mc-tag">待機中</span>';
-        const lvTag = '<span class="mc-lv">' + (lv >= UPG_MAX ? '強化MAX' : '強化Lv' + lv) + '</span>';
-        let acts = '';
-        if (lv < UPG_MAX) { const c = upgCost(m, lv); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
-        else acts += '<button class="g-btn maxed" disabled>強化MAX</button>';
-        if (st === 'field') acts += '<button class="g-btn recall" data-recall="' + f.u + '">🧹回収</button>';
-        html += '<div class="g-card' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
+      // [親方FB] 種類ごとに「×N台」見出しでまとめる（型はfleetの出現順／各型の中はfleet順。1台ずつの行＋各自レベルは維持）
+      const order = [], byType = {};
+      for (let i = 0; i < game.fleet.length; i++) { const f = game.fleet[i]; if (!byType[f.id]) { byType[f.id] = []; order.push(f.id); } byType[f.id].push(f); }
+      for (let k = 0; k < order.length; k++) {
+        const id = order[k], m = machineById(id), units = byType[id], onField = units.filter(function (f) { return unitState(f.u) !== 'storage'; }).length;
+        html += '<div class="mc-group">' + m.icon + ' <b>' + m.name + '</b> <span class="mc-count">×' + units.length + '台</span>' + (onField ? '<span class="mc-onfield">現場' + onField + '</span>' : '') + '</div>';
+        for (let j = 0; j < units.length; j++) {
+          const f = units[j], st = unitState(f.u), lv = Math.max(0, Math.min(UPG_MAX, f.lv | 0));
+          const statusTag = st === 'active' ? '<span class="mc-tag cur">使用中</span>' : st === 'field' ? '<span class="mc-tag field">現場に居る</span>' : '<span class="mc-tag">待機中</span>';
+          const lvTag = '<span class="mc-lv">' + (lv >= UPG_MAX ? '強化MAX' : '強化Lv' + lv) + '</span>';
+          const idxTag = units.length > 1 ? (j + 1) + '台目 ' : '';
+          let acts = '';
+          if (lv < UPG_MAX) { const c = upgCost(m, lv); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
+          else acts += '<button class="g-btn maxed" disabled>強化MAX</button>';
+          if (st === 'field') acts += '<button class="g-btn recall" data-recall="' + f.u + '">🧹回収</button>';
+          html += '<div class="g-card mc-unit' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + idxTag + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
+        }
       }
       list.innerHTML = html;
       const ra = document.getElementById("mc-recall-all"); if (ra) { ra.textContent = '🧹 現場を片付ける (' + parked.length + '台)'; ra.style.display = parked.length ? 'block' : 'none'; }
