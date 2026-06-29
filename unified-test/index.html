@@ -1254,8 +1254,8 @@
     }
     function updateActiveTruck(dt) {   // [親方FB] 操作中がトラックの時の運転＝走る＋「押す」で荷台ダンプ（積載=game.blade・容量=bladeCap）
       const M = curM(), cap = M.bladeCap, stats = effectiveStats(M), TURN = 1.5;
-      if (keys.left) game.myaw -= TURN * dt;
-      if (keys.right) game.myaw += TURN * dt;
+      if (keys.left) game.myaw += TURN * dt;   // [親方FB] 左キー=左旋回（符号は表示と一致するよう反転）
+      if (keys.right) game.myaw -= TURN * dt;   // [親方FB] 右キー=右旋回
       const drive = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
       if (drive !== 0) {
         const sp = stats.moveSpeed * TRUCK_SPEED_BOOST * (1 - 0.45 * (game.blade / Math.max(1, cap))) * (drive < 0 ? 0.7 : 1);   // [親方FB] トラックは+30%・積むほど遅い・後退遅め
@@ -1287,8 +1287,8 @@
       if (machineKind(curM()) === 'truck') { updateActiveTruck(dt); return; }   // 操作中がトラック＝トラック運転（走る＋押すでダンプ）
       // 実際の重機式の操作：左右＝その場で旋回（向きを変える）／上＝前進・下＝後退（向いてる方向のまま）
       const TURN = 1.8; // 旋回速度(rad/s)
-      if (keys.left) game.myaw -= TURN * dt;
-      if (keys.right) game.myaw += TURN * dt;
+      if (keys.left) game.myaw += TURN * dt;   // [親方FB] 左キー=左旋回（符号は表示と一致するよう反転）
+      if (keys.right) game.myaw -= TURN * dt;   // [親方FB] 右キー=右旋回
       let moving = false; const reversing = keys.down && !keys.up; const drive = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
       if (drive !== 0) {
         const M = effectiveStats(curM()); // 強化倍率を反映（移動速さ）
