@@ -323,6 +323,7 @@
 
     // ===================== データ =====================
     const heights = new Float32Array(N_MAX), baseHeights = new Float32Array(N_MAX);
+    const hard = new Float32Array(N_MAX);   // [親方FB] 地盤の硬さ(0=普通土〜1=硬い岩)。レベル定義のhardZoneから毎回算出＝セーブ復元でも維持。削る速度だけ落とす(土量保存は不変)
     const vx = new Float32Array(N_MAX), vz = new Float32Array(N_MAX);
     const passRef = new Float32Array(N_MAX), passTag = new Int32Array(N_MAX);
     const waterD = new Float32Array(N_MAX);
@@ -469,6 +470,14 @@
       clearWater();
       for (let idx = 0; idx < N; idx++) {
         let h = 0.5 + rnd2(0.12);                             // ほぼ平地（地盤+0.5）＝採掘場を掘り下げる
+        heights[idx] = clamp(h);
+      }
+    }
+    function genQuarryRock(L) { // L16 採石場：中央の硬い岩山(A)を掘り崩して撤去（小マップ36・岩=パワー依存メカの見せ場）。硬さはsetHardness(hardZone)で別途付与
+      clearWater();
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        const h = rnd2(0.1) + gauss(x, z, 0, 0, 3.0, 4.6);   // 中央の岩山（撤去対象）。周りはほぼ平地
         heights[idx] = clamp(h);
       }
     }
@@ -624,7 +633,14 @@
         A: rect(9, 45, 58, 96), B: rect(63, 99, 13, 49), digRef: 0, fillRef: 0, clearTol: 0.4, startZ: 0, koki: 320, reward: 300,
         goal: '土砂崩れ復旧：道路をふさいだ<b>土砂（赤枠）を撤去</b>し、🚛トラックでその土を運んで、えぐれた<b>路盤（青枠）を埋め戻して</b>復旧しよう。<b>工期内</b>でボーナス',
         hint: '赤枠＝崩れた土砂／青枠＝えぐれた路盤。🚛トラックを召喚→土砂を積む→路盤で下ろして埋める。工期に注意',
-        markers: [['A', 0xd06a2f], ['B', 0x2f7fd6]], gen: genLandslide }
+        markers: [['A', 0xd06a2f], ['B', 0x2f7fd6]], gen: genLandslide },
+      // ===== L16：岩・硬い地盤メカの見せ場（採石場）。hardZone=硬い岩・パワーの強い重機ほど速く掘れる =====
+      { type: 'level', name: '採石場', mainLabel: '', grid: 36, A: rect(8, 28, 8, 28), noWater: true,
+        maxDev: 0.6, tFrac: 0, startZ: 6.3, subFloor: 0.0, clearTol: 0.4,
+        hardZone: rect(8, 28, 8, 28), hardVal: 0.95, koki: 220, reward: 180,
+        goal: '採石場：中央の<b>硬い岩山（灰枠）を掘り崩して撤去</b>しよう。岩は硬く、<b>掘る力の強い重機ほど速く</b>掘れる（弱い重機だと遅い）。<b>工期内</b>に終えればボーナス',
+        hint: '灰色＝硬い岩。掘る力(パワー)の高い大型バックホウほど速い・弱い重機だと時間がかかる。🛒で強い重機を買って機械チェンジを。工期に注意',
+        markers: [['A', 0x8a8d92]], gen: genQuarryRock }
     ];
     const NLV = LEVEL_DEFS.length;
 
@@ -648,6 +664,7 @@
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1, metalness: 0 }));
     scene.add(ground);
     const cLow = new THREE.Color(0xc2a06c), cMid = new THREE.Color(0x9a6e3e), cHigh = new THREE.Color(0x5f3e1e), cWet = new THREE.Color(0x47301c), tmpC = new THREE.Color();  // 土寄せ[親方FB もっと土っぽく]：低=乾いた土/中=茶土/高=濃い掘りたて土/濡れ=黒っぽい泥
+    const cRock = new THREE.Color(0x767a80);   // [親方FB] 硬い岩の色（灰色）
     function colorFor(h, wet, out) {
       const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
       if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
@@ -661,6 +678,7 @@
         positions[idx * 3] = vx[idx]; positions[idx * 3 + 1] = heights[idx]; positions[idx * 3 + 2] = vz[idx];
         const wet = waterD[idx] > WATER_EPS;
         colorFor(heights[idx], wet, tmpC);
+        if (hard[idx] > 0) tmpC.lerp(cRock, hard[idx] * 0.72);   // [親方FB] 硬い岩は灰色寄りに
         // 斜面の急さ（隣マスとの高低差）→急なほど暗く＝掘った断面・法面・盛り土が「土っぽい」陰影に。粒状の濃淡も加算。
         const gi = idx % V, gj = (idx / V) | 0;
         const hl = heights[gi > 0 ? idx - 1 : idx], hr = heights[gi < GRID ? idx + 1 : idx], hd = heights[gj > 0 ? idx - V : idx], hu = heights[gj < GRID ? idx + V : idx];
@@ -1117,6 +1135,16 @@
     // ===================== 整地（押し均し・体積保存） =====================
     let lastVib = 0, shake = 0;
     function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
+    // [親方FB] 硬い地盤(岩)の削り速度倍率。強い重機(digRate高)ほど硬岩でも速く・弱いと遅い(下限12%＝詰まらない)。hard[idx]=0なら1(普通土・無影響)。削る時だけ使う＝埋め/土量保存は不変。
+    function hardCut(idx, rate) {
+      const hd = hard[idx]; if (hd <= 0) return 1;
+      const sp = Math.max(0.12, Math.min(0.85, (rate - 14) / 14));   // この重機が硬岩で出せる速度割合（digRate依存・強化でも上がる）
+      return 1 - hd * (1 - sp);
+    }
+    function setHardness(L) {   // [親方FB] レベル定義(hardZone)から硬さを毎回算出（gen と別＝セーブ復元でも岩が残る）
+      for (let i = 0; i < N; i++) hard[i] = 0;
+      if (L && L.hardZone) { const hv = (L.hardVal != null) ? L.hardVal : 1; zoneEach(L.hardZone, (idx) => { hard[idx] = hv; }); }
+    }
     // 押し均し[本物ブル移植 2026-06-25]：押し始めの足元の高さ(cutHeight)を基準に、前方で「それより高い土」を削ってブレードに溜め（その重機の上限 bladeCap まで＝満杯で削り止め・後ろに出さない）→「それより低い所」へ運んで埋める。色/目標に依らない物理動作。持ち切れぬ土は bladeUnload（ならすを離して進む）で運ぶ。土は保存（地面＋ブレード一定）。
     function gradePush(dt) {
       const M = effectiveStats(curM()), RAD = M.digRadius, cap = M.bladeCap; // 強化倍率を反映した実効ステータス
@@ -1130,7 +1158,7 @@
         if (waterD[idx] > WATER_EPS && !M.underwaterFull) step *= UNDERWATER_DIG_MULT; // 水中バックホウは水中も普通速度
         if (over > 0.01) { // 高い→ブレードに溜める（空きの分だけ＝満杯で止め・後ろに出さない）
           const room = cap - blade; if (room <= 0.0001) continue;
-          const cut = Math.min(over, step, room / CELL_AREA); if (cut <= 0) continue;
+          const cut = Math.min(over, step * hardCut(idx, M.digRate), room / CELL_AREA); if (cut <= 0) continue;   // [親方FB] 硬い岩は削るのが遅い（パワー依存）
           heights[idx] -= cut; blade += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true;
         } else if (over < -0.01 && blade > 0) { // 低い→溜めた土で埋める（運搬）
           const fill = Math.min(-over, step, blade / CELL_AREA);
@@ -1186,7 +1214,7 @@
         const h = heights[idx]; if (h <= floor + 0.001) continue;
         let step = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
         if (waterD[idx] > WATER_EPS && !M.underwaterFull) step *= UNDERWATER_DIG_MULT;   // 水中は遅い（水中バックホウは普通速度）
-        const cut = Math.min(h - floor, step, room / CELL_AREA);
+        const cut = Math.min(h - floor, step * hardCut(idx, M.digRate), room / CELL_AREA);   // [親方FB] 硬い岩は削るのが遅い（パワー依存）
         if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
       }
       game.bucket = Math.min(cap, bucket); game.totalDug += cutVol; if (cutVol > 0) game.cum.dugAll += cutVol;
@@ -1427,11 +1455,12 @@
       { const hf = WORLD / 2 - 0.5; if (Math.abs(game.mx) > hf) game.mx = 0; if (Math.abs(game.mz) > hf) game.mz = Math.min(hf, 6.3); }   // 縮小時に機械が場外なら中へ
       if (saved) { heights.set(saved.h); baseHeights.set(saved.b); clearWater(); waterD.set(saved.w); LV.A0water = saved.a0; LV.A0flat = saved.af; LV.tB = saved.tB; }
       else { D.gen(LV); baseHeights.set(heights); LV.A0water = LV.type === 'drain' ? Math.max(0.001, zoneVol(LV.A)) : 0; LV.A0flat = (LV.type === 'drain' || LV.type === 'level') ? Math.max(1, zoneFlatness(LV.A)) : 1; LV.tB = LV.tFrac * totalWater(); }
+      setHardness(LV);   // [親方FB] 硬い地盤(岩)を適用（gen/セーブ復元どちらの後でも・新レベルのhardZoneだけ・既存レベルは無影響）
       LV.A0exc = (LV.type === 'level') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.subFloor + LV.clearTol))
                : (LV.type === 'haul') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.digRef + LV.clearTol)) : 0;   // 掘り取り/造成[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
       if (LV.type === 'haul') LV.A0def = Math.max(0.001, zoneDeficitBelow(baseHeights, LV.B, LV.fillRef - LV.clearTol));   // 造成：初期の窪地の量(=埋立目標 m³)
       if (LV.type === 'grade') LV.A0work = Math.max(0.001, zoneToTarget(baseHeights, LV.A, LV.gradeTarget).work);   // 整地：初期の目標高さからのズレ土量(=整地の総仕事)
-      game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();
+      game.blade = (saved && saved.blade) ? saved.blade : 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();   // [レビュー修正] blade(ブレード/荷台積載)も復元＝リロード越しの土量保存
       truckTilt = 0;   // レベル切替：荷台ダンプ角リセット（運転種別/積載は applyMachine と game.blade=0 で整合）[親方FB]
       if (typeof clearParked === 'function') clearParked();   // レベル切替で出した重機もリセット[親方FB]
       applyMachine();
@@ -1448,7 +1477,7 @@
       document.getElementById("mainIcon").textContent = (LV.type === 'haul') ? '⛰' : '💧';
       document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level' || LV.type === 'haul' || LV.type === 'grade') ? '' : 'none';
       document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade') ? 'none' : '';
-      document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade') ? 'none' : '';   // 造成/整地は水なし＝水バッジを隠す
+      document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade' || LV.noWater) ? 'none' : '';   // 造成/整地/水なしレベルは水バッジを隠す[レビュー修正]
       document.getElementById("win").classList.remove("show");
       rebuildMarkers(LV.markers); setHint(LV.hint);
       syncGeometry(); syncWater(0); refreshHUD(); save();
@@ -1796,7 +1825,7 @@
     // 保存
     const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
-    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, kl: kokiLeft, ko: kokiOver, stars: game.stars })); } catch (e) {} }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars })); } catch (e) {} }
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
@@ -1804,7 +1833,9 @@
         if (!s || s.level == null || s.level >= NLV || !s.h) return false;
         const eg = (LEVEL_DEFS[s.level].grid || 36);   // 保存レベルの実寸グリッド（L1-5=36・L6-10=108）
         // [親方FB] 地形配列は常に最大サイズ(N_MAX)で保存される。grid整合(s.g===eg)＋3配列が最大サイズかで検証（旧: (eg+1)^2 期待でgrid36の面が必ずload失敗→進行リセットしていたバグを修正）
-        if (s.g !== eg || !s.b || !s.w || s.h.length !== heights.length || s.b.length !== heights.length || s.w.length !== heights.length) return false;
+        const _full = heights.length, _act = (eg + 1) * (eg + 1);   // 地形配列はフル(N_MAX)保存の新セーブ／実寸((grid+1)^2)保存の旧water-proto v5 の両方を受理（grid整合は s.g===eg で担保）
+        const _okLen = (a) => !!a && (a.length === _full || a.length === _act);
+        if (s.g !== eg || !_okLen(s.h) || !_okLen(s.b) || !_okLen(s.w)) return false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
         game.money = s.money || 0;
         game.fleet = buildFleetFromSave(s);   // 持ち物の移行：v8(fleet)はそのまま／旧(owned+upg)は1台ごとへ変換（旧Lv引き継ぎ）
