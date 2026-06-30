@@ -635,7 +635,7 @@
         hint: '赤枠＝崩れた土砂／青枠＝えぐれた路盤。🚛トラックを召喚→土砂を積む→路盤で下ろして埋める。工期に注意',
         markers: [['A', 0xd06a2f], ['B', 0x2f7fd6]], gen: genLandslide },
       // ===== L16：岩・硬い地盤メカの見せ場（採石場）。hardZone=硬い岩・パワーの強い重機ほど速く掘れる =====
-      { type: 'level', name: '採石場', mainLabel: '', grid: 36, A: rect(8, 28, 8, 28),
+      { type: 'level', name: '採石場', mainLabel: '', grid: 36, A: rect(8, 28, 8, 28), noWater: true,
         maxDev: 0.6, tFrac: 0, startZ: 6.3, subFloor: 0.0, clearTol: 0.4,
         hardZone: rect(8, 28, 8, 28), hardVal: 0.95, koki: 220, reward: 180,
         goal: '採石場：中央の<b>硬い岩山（灰枠）を掘り崩して撤去</b>しよう。岩は硬く、<b>掘る力の強い重機ほど速く</b>掘れる（弱い重機だと遅い）。<b>工期内</b>に終えればボーナス',
@@ -1460,7 +1460,7 @@
                : (LV.type === 'haul') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.digRef + LV.clearTol)) : 0;   // 掘り取り/造成[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
       if (LV.type === 'haul') LV.A0def = Math.max(0.001, zoneDeficitBelow(baseHeights, LV.B, LV.fillRef - LV.clearTol));   // 造成：初期の窪地の量(=埋立目標 m³)
       if (LV.type === 'grade') LV.A0work = Math.max(0.001, zoneToTarget(baseHeights, LV.A, LV.gradeTarget).work);   // 整地：初期の目標高さからのズレ土量(=整地の総仕事)
-      game.blade = 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();
+      game.blade = (saved && saved.blade) ? saved.blade : 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();   // [レビュー修正] blade(ブレード/荷台積載)も復元＝リロード越しの土量保存
       truckTilt = 0;   // レベル切替：荷台ダンプ角リセット（運転種別/積載は applyMachine と game.blade=0 で整合）[親方FB]
       if (typeof clearParked === 'function') clearParked();   // レベル切替で出した重機もリセット[親方FB]
       applyMachine();
@@ -1477,7 +1477,7 @@
       document.getElementById("mainIcon").textContent = (LV.type === 'haul') ? '⛰' : '💧';
       document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level' || LV.type === 'haul' || LV.type === 'grade') ? '' : 'none';
       document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade') ? 'none' : '';
-      document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade') ? 'none' : '';   // 造成/整地は水なし＝水バッジを隠す
+      document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade' || LV.noWater) ? 'none' : '';   // 造成/整地/水なしレベルは水バッジを隠す[レビュー修正]
       document.getElementById("win").classList.remove("show");
       rebuildMarkers(LV.markers); setHint(LV.hint);
       syncGeometry(); syncWater(0); refreshHUD(); save();
@@ -1825,7 +1825,7 @@
     // 保存
     const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
-    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, kl: kokiLeft, ko: kokiOver, stars: game.stars })); } catch (e) {} }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars })); } catch (e) {} }
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
@@ -1833,7 +1833,9 @@
         if (!s || s.level == null || s.level >= NLV || !s.h) return false;
         const eg = (LEVEL_DEFS[s.level].grid || 36);   // 保存レベルの実寸グリッド（L1-5=36・L6-10=108）
         // [親方FB] 地形配列は常に最大サイズ(N_MAX)で保存される。grid整合(s.g===eg)＋3配列が最大サイズかで検証（旧: (eg+1)^2 期待でgrid36の面が必ずload失敗→進行リセットしていたバグを修正）
-        if (s.g !== eg || !s.b || !s.w || s.h.length !== heights.length || s.b.length !== heights.length || s.w.length !== heights.length) return false;
+        const _full = heights.length, _act = (eg + 1) * (eg + 1);   // 地形配列はフル(N_MAX)保存の新セーブ／実寸((grid+1)^2)保存の旧water-proto v5 の両方を受理（grid整合は s.g===eg で担保）
+        const _okLen = (a) => !!a && (a.length === _full || a.length === _act);
+        if (s.g !== eg || !_okLen(s.h) || !_okLen(s.b) || !_okLen(s.w)) return false;
         if (s.cy != null) camYaw = s.cy; if (s.cp != null) camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.cp));
         game.money = s.money || 0;
         game.fleet = buildFleetFromSave(s);   // 持ち物の移行：v8(fleet)はそのまま／旧(owned+upg)は1台ごとへ変換（旧Lv引き継ぎ）
