@@ -59,7 +59,7 @@
   #machineBtn.sub { background:#cfe6f6; }
   #shop:active, #machineBtn:active { transform:scale(.95); }
   #lv-badge { background:rgba(32,48,58,.82); color:#fff; }
-  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 80px); left:50%; transform:translateX(-50%); width:min(82vw,380px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); }
+  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 50px); right:calc(env(safe-area-inset-right,0px) + 14px); width:min(56vw,300px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); z-index:3; }   /* [親方FB] 中央上→右上へ移動（プレイ画面の中央を塞がない） */
   #goal .label { font-size:12px; font-weight:700; color:var(--ink); opacity:.85; margin-bottom:4px; line-height:1.45; }
   #bar { display:none; }   /* [親方FB] 中央の進捗バーは非表示（進捗はバッジの%で表示） */
   #bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#7db5ec,#2f7fd6); transition:width .2s ease; }
