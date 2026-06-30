@@ -481,6 +481,20 @@
         heights[idx] = clamp(h);
       }
     }
+    function genRiverFix(L) { // L17 河川改修：雨で増え続ける氾濫原(A・手前)の水を、中央の堤を掘って河道(B・奥/低い)へ流す（小マップ36・天候=雨メカの見せ場）
+      clearWater();
+      const A = L.A, B = L.B;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.1);
+        if (i < 6 || i > 30) h = 1.1 + rnd2(0.1);              // 両岸の高い土手
+        else if (inRect(i, j, A)) h = -0.5 + rnd2(0.08);       // 氾濫原（低い・浸水する）
+        else if (j >= 17 && j <= 22) h = 1.3 + rnd2(0.1);      // 中央の堤（掘って排水路＝通水する対象）
+        else if (inRect(i, j, B)) h = -1.5 + rnd2(0.1);        // 河道（排水先・より低い）
+        else h = 0.3 + rnd2(0.1);                              // その他の平地
+        heights[idx] = clamp(h);
+      }
+      zoneEach(A, (idx) => { const d = L.wl - heights[idx]; if (d > 0) waterD[idx] = d; });   // 初期の浸水（氾濫原を水位wlまで満たす）
+    }
 
     // ===================== レベル定義 =====================
     // ===== L11〜15 専用ジェネレータ（防災・緊急復旧テーマ＋工期制。既存genXxxとは別関数）=====
@@ -640,7 +654,14 @@
         hardZone: rect(8, 28, 8, 28), hardVal: 0.95, koki: 220, reward: 180,
         goal: '採石場：中央の<b>硬い岩山（灰枠）を掘り崩して撤去</b>しよう。岩は硬く、<b>掘る力の強い重機ほど速く</b>掘れる（弱い重機だと遅い）。<b>工期内</b>に終えればボーナス',
         hint: '灰色＝硬い岩。掘る力(パワー)の高い大型バックホウほど速い・弱い重機だと時間がかかる。🛒で強い重機を買って機械チェンジを。工期に注意',
-        markers: [['A', 0x8a8d92]], gen: genQuarryRock }
+        markers: [['A', 0x8a8d92]], gen: genQuarryRock },
+      // ===== L17：天候(雨)メカの見せ場（河川改修）。rain=雨で水位上昇・rainZoneに供給・noWaterは付けない(水バッジで水位を見せる) =====
+      { type: 'drain', name: '河川改修', mainLabel: '河道', grid: 36, A: rect(8, 28, 4, 16), B: rect(8, 28, 23, 33),
+        wl: 0.0, drainWin: 0.8, maxDev: 0.6, tFrac: 0.4, startZ: 6.3,
+        rain: 0.012, rainZone: rect(8, 28, 4, 16), rainMaxH: 0.8, koki: 240, reward: 190,
+        goal: '河川改修：☔雨で<b>増え続ける氾濫原（緑枠）の水</b>を、中央の<b>堤を掘って河道（青枠）へ流し</b>、街を浸水から守ろう。水位は雨でじわじわ上がる—<b>工期内</b>に排水＆平らにすればボーナス',
+        hint: '緑枠＝氾濫原・青枠＝河道（低い）。中央の堤に幅広い排水路を掘って水を河道へ流す。雨で水が増えるので川幅を広く・急いで。工期に注意',
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genRiverFix }
     ];
     const NLV = LEVEL_DEFS.length;
 
@@ -1011,6 +1032,24 @@
     const dust = makeParticles(90, 0.42, 0xc4a36a, 0.8), chunk = makeParticles(40, 0.8, 0x6f4a22, 0.95), splash = makeParticles(50, 0.4, 0x9fd0ff, 0.9);
     function emit(p, x, y, z, up, spread) { const k = p.cur; p.cur = (p.cur + 1) % p.n; p.pos[k * 3] = x + rnd2(spread); p.pos[k * 3 + 1] = y + 0.2; p.pos[k * 3 + 2] = z + rnd2(spread); p.vel[k * 3] = rnd2(spread * 2.2); p.vel[k * 3 + 1] = up * (0.7 + Math.random() * 0.8); p.vel[k * 3 + 2] = rnd2(spread * 2.2); p.life[k] = 0.45 + Math.random() * 0.4; }
     function updateParticles(p, dt, grav) { let live = false; for (let k = 0; k < p.n; k++) { if (p.life[k] > 0) { live = true; p.life[k] -= dt; p.vel[k * 3 + 1] -= grav * dt; p.pos[k * 3] += p.vel[k * 3] * dt; p.pos[k * 3 + 1] += p.vel[k * 3 + 1] * dt; p.pos[k * 3 + 2] += p.vel[k * 3 + 2] * dt; if (p.life[k] <= 0) p.pos[k * 3 + 1] = -999; } } if (live) p.g.attributes.position.needsUpdate = true; }
+    // [親方FB ③天候] 雨：rainP=降る粒(見た目)・rainTick=氾濫原に水をじわじわ足す(水位が上がる)。LV.rain を持つ新レベルだけ有効。
+    const rainP = makeParticles(180, 0.33, 0xbfe0f0, 0.5);
+    let rainActive = false;
+    function rainFx() {   // 機体周辺の空から雨粒を降らせる（見た目専用・水量には不干渉）
+      for (let i = 0; i < 7; i++) {
+        const k = rainP.cur; rainP.cur = (rainP.cur + 1) % rainP.n;
+        rainP.pos[k * 3] = game.mx + rnd2(WORLD); rainP.pos[k * 3 + 1] = 8 + Math.random() * 5; rainP.pos[k * 3 + 2] = game.mz + rnd2(WORLD);
+        rainP.vel[k * 3] = rnd2(1.0); rainP.vel[k * 3 + 1] = -16 - Math.random() * 5; rainP.vel[k * 3 + 2] = rnd2(1.0);
+        rainP.life[k] = 0.85;
+      }
+      rainP.g.attributes.position.needsUpdate = true;
+    }
+    function rainTick(dt) {   // 雨で水位上昇：rainZone(無ければ全面)の低い所(rainMaxH未満)に深さを足す→simWaterが低所へ流す。土量保存とは別系統(雨は外部供給)
+      const add = (LV.rain || 0) * dt, maxH = (LV.rainMaxH != null) ? LV.rainMaxH : 1.2;
+      if (add <= 0) return;
+      if (LV.rainZone) zoneEach(LV.rainZone, (idx) => { if (heights[idx] < maxH) waterD[idx] += add; });
+      else for (let idx = 0; idx < N; idx++) if (heights[idx] < maxH) waterD[idx] += add;
+    }
     let digPulse = 0, bladePhase = 0, lastChunk = 0;
     function digFx(strong) {
       const fx = game.mx + Math.sin(game.myaw) * 1.4, fz = game.mz + Math.cos(game.myaw) * 1.4, gy = sampleHeight(fx, fz), wet = sampleWater(fx, fz) > WATER_EPS, nDust = strong ? 4 : 2;
@@ -1471,6 +1510,8 @@
       kokiActive = !!LV.koki; kokiLeft = LV.koki || 0; kokiOver = 0;
       if (saved && kokiActive) { if (typeof saved.kl === 'number') kokiLeft = Math.max(0, saved.kl); if (typeof saved.ko === 'number') kokiOver = Math.max(0, saved.ko); }
       document.getElementById("koki-badge").style.display = kokiActive ? '' : 'none';
+      rainActive = !!LV.rain;   // [③天候] このレベルが雨か
+      { const sky = rainActive ? 0x8a96a0 : 0xbfe3f2; renderer.setClearColor(sky, 1); scene.fog.color.setHex(sky); }   // 雨=灰色の空 / 通常=青空
       workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : LV.type === 'haul' ? '山の撤去' : LV.type === 'grade' ? '整地' : '作業場';
       document.getElementById("goalLabel").innerHTML = LV.goal;
       document.getElementById("mainLabel").textContent = LV.mainLabel;
@@ -1867,8 +1908,10 @@
       if (window.innerWidth !== lastW || window.innerHeight !== lastH) resize();
       updateDozer(dt);
       SND.drive(keys.up || keys.down || keys.left || keys.right || pushing, keys.down && !keys.up); // 走行音（前進=戦車キャタピラ／後退=ブル作業音）
+      if (rainActive && !game.won) rainTick(dt);   // [③天候] 雨で水位上昇（simWaterの前に供給）
       const sub = dt / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); syncWater(dt);
       updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0); updateParticles(splash, dt, 6.0);
+      if (rainActive) rainFx(); updateParticles(rainP, dt, 2.0);   // [③天候] 雨粒（見た目）
       if (shake > 0) shake = Math.max(0, shake - dt * 0.4);
       if (kokiActive && !game.won) { if (kokiLeft > 0) { kokiLeft -= dt; if (kokiLeft < 0) kokiLeft = 0; } else kokiOver += dt; }   // 工期カウント（L11+）：残りが尽きたら超過を加算（失敗にはしない）
       hudAccum += dt; if (hudAccum > 0.15) { hudAccum = 0; refreshHUD(); checkWin(); }
