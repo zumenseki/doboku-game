@@ -1555,6 +1555,7 @@
       game.blade = (saved && saved.blade) ? saved.blade : 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();   // [レビュー修正] blade(ブレード/荷台積載)も復元＝リロード越しの土量保存
       truckTilt = 0;   // レベル切替：荷台ダンプ角リセット（運転種別/積載は applyMachine と game.blade=0 で整合）[親方FB]
       if (typeof clearParked === 'function') clearParked();   // レベル切替で出した重機もリセット[親方FB]
+      if (saved && saved.pk) restoreParked(saved.pk);   // [宿題] セーブ復元時は配備中の重機(位置/積載)を再現＝消えない+土量保存
       applyMachine();
       if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
       else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
@@ -1704,6 +1705,19 @@
     function recallUnit(u) { const e = parked.find(function (p) { return p.u === u; }); if (!e) return; recallEntry(e); updateMachineBtn(); syncGeometry(); refreshHUD(); save(); SND.click(); tryVibrate(15); }   // 1台ずつ回収
     function recallAll() { if (!parked.length) return; for (let k = parked.length - 1; k >= 0; k--) recallEntry(parked[k]); updateMachineBtn(); syncGeometry(); refreshHUD(); save(); SND.click(); tryVibrate(20); }   // 現場の置いてある重機を全部回収（操作中の1台は残る）
     function clearParked() { parked.forEach(function (p) { scene.remove(p.model); disposeModel(p.model); }); parked = []; updateMachineBtn(); }
+    function restoreParked(pk) {   // [宿題] セーブから配備中の重機を復元（位置/向き/積載を再現＝リロード越しの土量保存）。saved.h は積載分を除いた地面なので積載を戻して総量一定
+      if (!Array.isArray(pk)) return;
+      for (let i = 0; i < pk.length; i++) {
+        const p = pk[i];
+        if (!p || p.id == null || !machineById(p.id) || !unitById(p.u)) continue;   // id/ユニットが実在するもののみ
+        if (p.u === game.driveU) continue;                                          // 操作中の1台は parked にしない
+        if (parked.some(function (q) { return q.u === p.u; })) continue;            // 重複防止
+        if (1 + parked.length >= MAX_DEPLOY) break;                                 // 上限
+        const M = machineById(p.id), x = +p.x || 0, z = +p.z || 0, yaw = +p.yaw || 0;
+        parked.push({ u: p.u, id: p.id, x: x, z: z, yaw: yaw, blade: +p.bl || 0, bucket: +p.bk || 0, model: makeParkedModel(M, x, z, yaw) });
+      }
+      updateMachineBtn();
+    }
     function tapSelectMachine(clientX, clientY) {
       if (!parked.length) return false;
       const rect = el.getBoundingClientRect();
@@ -1919,7 +1933,7 @@
     // 保存
     const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
-    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars })); } catch (e) {} }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
@@ -1976,7 +1990,7 @@
 
     // 起動
     if (!load()) loadLevel(0);
-    if (UNLOCK_ALL) { game.fleet = MACHINES.map(function (m, i) { return { u: i + 1, id: m.id, lv: 0 }; }); game.nextUid = MACHINES.length + 1; game.driveU = 1; game.machine = MACHINES[0].id; syncOwned(); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); }   // 検証用(?all)：全機種を1台ずつ付与+資金潤沢[親方FB]
+    if (UNLOCK_ALL) { game.fleet = MACHINES.map(function (m, i) { return { u: i + 1, id: m.id, lv: 0 }; }); game.nextUid = MACHINES.length + 1; if (!unitById(game.driveU)) game.driveU = 1; game.machine = unitById(game.driveU) ? unitById(game.driveU).id : MACHINES[0].id; syncOwned(); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); }   // 検証用(?all/?test)：全機種を1台ずつ付与+資金潤沢[親方FB]。[宿題] 読み込んだ操作中機体(driveU)は尊重＝復元した配備機との重複防止
     normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
 
     // デバッグ用フック
