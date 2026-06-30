@@ -495,6 +495,41 @@
       }
       zoneEach(A, (idx) => { const d = L.wl - heights[idx]; if (d > 0) waterD[idx] = d; });   // 初期の浸水（氾濫原を水位wlまで満たす）
     }
+    function genTunnel(L) { // L18 トンネル掘削：横断する硬い岩の尾根に、通路A(縦の帯)を掘り抜く（小マップ36・岩メカ）
+      clearWater();
+      for (let idx = 0; idx < N; idx++) {
+        const j = (idx / V) | 0; let h = rnd2(0.1);
+        if (j >= 12 && j <= 24) h = 3.0 + rnd2(0.15);   // 岩の尾根（横断する高い岩壁）
+        else h = 0.2 + rnd2(0.1);                       // 尾根の手前/奥の平地
+        heights[idx] = clamp(h);
+      }
+    }
+    function genReclaim(L) { // L19 埋立造成：左の借土山(A)を掘り、右の海の入江(B)を埋め立てて陸地にする（小マップ36）
+      clearWater();
+      const A = L.A, B = L.B;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.1);
+        if (inRect(i, j, A)) h = 3.0 + rnd2(0.15);       // 借土の山（掘る）
+        else if (inRect(i, j, B)) h = -1.6 + rnd2(0.1);  // 海の入江（埋める・水中）
+        else h = 0.3 + rnd2(0.1);                        // 中間の陸
+        heights[idx] = clamp(h);
+      }
+      for (let idx = 0; idx < N; idx++) { const d = -0.2 - heights[idx]; if (d > 0) waterD[idx] = d; }   // 海面-0.2まで（入江に海水）
+    }
+    function genFloodControl(L) { // L20 大規模治水：大雨で氾濫した広大な低地(A)を、中央の大堤を掘って大型調整池(B)へ排水（大マップ108・天候=雨・集大成）
+      clearWater();
+      const A = L.A, B = L.B;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = rnd2(0.12);
+        if (i < 8 || i > 100) h = 1.4 + rnd2(0.12);       // 両端の高い堤防
+        else if (inRect(i, j, A)) h = -0.5 + rnd2(0.1);   // 氾濫した広い低地（浸水）
+        else if (j >= 50 && j <= 62) h = 1.5 + rnd2(0.12); // 中央の大堤（掘って排水路）
+        else if (inRect(i, j, B)) h = -1.8 + rnd2(0.12);  // 大型調整池（排水先・深い）
+        else h = 0.3 + rnd2(0.1);
+        heights[idx] = clamp(h);
+      }
+      zoneEach(A, (idx) => { const d = L.wl - heights[idx]; if (d > 0) waterD[idx] = d; });   // 初期浸水
+    }
 
     // ===================== レベル定義 =====================
     // ===== L11〜15 専用ジェネレータ（防災・緊急復旧テーマ＋工期制。既存genXxxとは別関数）=====
@@ -661,7 +696,25 @@
         rain: 0.012, rainZone: rect(8, 28, 4, 16), rainMaxH: 0.8, rainTarget: 0.6, koki: 240, reward: 190,
         goal: '河川改修：☔雨で<b>増え続ける氾濫原（緑枠）の水</b>を、中央の<b>堤を掘って河道（青枠）へ流し</b>、街を浸水から守ろう。水位は雨でじわじわ上がる—<b>工期内</b>に排水＆平らにすればボーナス',
         hint: '緑枠＝氾濫原・青枠＝河道（低い）。中央の堤に幅広い排水路を掘って水を河道へ流す。雨で水が増えるので川幅を広く・急いで。工期に注意',
-        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genRiverFix }
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genRiverFix },
+      // ===== L18-20：④残りの新レベル（岩・天候の本格活用＋集大成）=====
+      { type: 'level', name: 'トンネル掘削', mainLabel: '', grid: 36, A: rect(14, 22, 10, 26), noWater: true,
+        maxDev: 0.6, tFrac: 0, startZ: -6.0, subFloor: 0.2, clearTol: 0.4,
+        hardZone: rect(4, 32, 12, 24), hardVal: 0.95, koki: 280, reward: 240,
+        goal: 'トンネル掘削：横たわる<b>硬い岩の尾根（灰色）に、通路（灰枠）を掘り抜こう</b>。岩は硬く、<b>掘る力の強い重機</b>が活躍。<b>工期内</b>でボーナス',
+        hint: '灰枠＝掘り抜く通路。岩は硬いので大型バックホウ（掘る力が強い）で。尾根を貫通させて反対側へ通そう。工期に注意',
+        markers: [['A', 0x8a8d92]], gen: genTunnel },
+      { type: 'haul', name: '埋立造成', mainLabel: '埋立', grid: 36, A: rect(4, 14, 8, 28), B: rect(20, 32, 8, 28),
+        digRef: 0, fillRef: 0.4, clearTol: 0.4, startZ: 0.0, koki: 300, reward: 260,
+        goal: '埋立造成：左の<b>借土の山（赤枠）を掘り</b>、🚛トラックで運んで右の<b>海の入江（青枠）を埋め立て</b>、海面の上まで陸地を造ろう。<b>工期内</b>でボーナス',
+        hint: '赤枠＝掘る山／青枠＝埋める入江（海）。山を掘ってトラックやブルで入江へ運び、水面の上まで盛って陸地に。工期に注意',
+        markers: [['A', 0xd06a2f], ['B', 0x2f7fd6]], gen: genReclaim },
+      { type: 'drain', name: '大規模治水', mainLabel: '調整池', grid: 108, A: rect(10, 98, 8, 49), B: rect(10, 98, 63, 100),
+        wl: 0.0, drainWin: 0.75, maxDev: 0.7, tFrac: 0.3, startZ: 0.0,
+        rain: 0.01, rainZone: rect(10, 98, 8, 49), rainMaxH: 0.8, rainTarget: 0.5, koki: 400, reward: 420,
+        goal: '大規模治水：☔大雨で<b>氾濫した広大な低地（緑枠）の水</b>を、中央の<b>大堤を掘って大型調整池（青枠）へ排水</b>し、街を守ろう。集大成の大仕事—<b>工期内</b>でボーナス',
+        hint: '緑枠＝氾濫した低地・青枠＝大型調整池（低い）。中央の大堤に幅広い排水路を掘って大量の水を流す。大マップ＋雨で時間がかかる。工期に注意',
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genFloodControl }
     ];
     const NLV = LEVEL_DEFS.length;
 
