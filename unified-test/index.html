@@ -657,8 +657,8 @@
         markers: [['A', 0x8a8d92]], gen: genQuarryRock },
       // ===== L17：天候(雨)メカの見せ場（河川改修）。rain=雨で水位上昇・rainZoneに供給・noWaterは付けない(水バッジで水位を見せる) =====
       { type: 'drain', name: '河川改修', mainLabel: '河道', grid: 36, A: rect(8, 28, 4, 16), B: rect(8, 28, 23, 33),
-        wl: 0.0, drainWin: 0.8, maxDev: 0.6, tFrac: 0.4, startZ: 6.3,
-        rain: 0.012, rainZone: rect(8, 28, 4, 16), rainMaxH: 0.8, koki: 240, reward: 190,
+        wl: 0.0, drainWin: 0.8, maxDev: 0.6, tFrac: 0.4, startZ: 0.0,
+        rain: 0.012, rainZone: rect(8, 28, 4, 16), rainMaxH: 0.8, rainTarget: 0.6, koki: 240, reward: 190,
         goal: '河川改修：☔雨で<b>増え続ける氾濫原（緑枠）の水</b>を、中央の<b>堤を掘って河道（青枠）へ流し</b>、街を浸水から守ろう。水位は雨でじわじわ上がる—<b>工期内</b>に排水＆平らにすればボーナス',
         hint: '緑枠＝氾濫原・青枠＝河道（低い）。中央の堤に幅広い排水路を掘って水を河道へ流す。雨で水が増えるので川幅を広く・急いで。工期に注意',
         markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genRiverFix }
@@ -1044,11 +1044,11 @@
       }
       rainP.g.attributes.position.needsUpdate = true;
     }
-    function rainTick(dt) {   // 雨で水位上昇：rainZone(無ければ全面)の低い所(rainMaxH未満)に深さを足す→simWaterが低所へ流す。土量保存とは別系統(雨は外部供給)
-      const add = (LV.rain || 0) * dt, maxH = (LV.rainMaxH != null) ? LV.rainMaxH : 1.2;
-      if (add <= 0) return;
-      if (LV.rainZone) zoneEach(LV.rainZone, (idx) => { if (heights[idx] < maxH) waterD[idx] += add; });
-      else for (let idx = 0; idx < N; idx++) if (heights[idx] < maxH) waterD[idx] += add;
+    function rainTick(dt) {   // [③天候] 雨で水位上昇：rainZone(無ければ全面)の低い所(rainMaxH未満)に深さを足す→simWaterが低所へ流す。土量保存とは別系統(雨は外部供給)。[レビュー修正] 水面は rainTarget で頭打ち＝無限増水/機体締め出しを防ぐ
+      const add = (LV.rain || 0) * dt; if (add <= 0) return;
+      const maxH = (LV.rainMaxH != null) ? LV.rainMaxH : 1.2, tgt = (LV.rainTarget != null) ? LV.rainTarget : 0.6;
+      const fn = (idx) => { if (heights[idx] >= maxH) return; const cap = tgt - heights[idx]; if (cap > 0 && waterD[idx] < cap) waterD[idx] = Math.min(waterD[idx] + add, cap); };   // 水面(heights+waterD)が tgt を超えない範囲で増やす
+      if (LV.rainZone) zoneEach(LV.rainZone, fn); else for (let idx = 0; idx < N; idx++) fn(idx);
     }
     let digPulse = 0, bladePhase = 0, lastChunk = 0;
     function digFx(strong) {
@@ -1911,7 +1911,7 @@
       if (rainActive && !game.won) rainTick(dt);   // [③天候] 雨で水位上昇（simWaterの前に供給）
       const sub = dt / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); syncWater(dt);
       updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0); updateParticles(splash, dt, 6.0);
-      if (rainActive) rainFx(); updateParticles(rainP, dt, 2.0);   // [③天候] 雨粒（見た目）
+      if (rainActive && !game.won) rainFx(); updateParticles(rainP, dt, 2.0);   // [③天候] 雨粒（見た目・勝利後は止める）[レビュー修正]
       if (shake > 0) shake = Math.max(0, shake - dt * 0.4);
       if (kokiActive && !game.won) { if (kokiLeft > 0) { kokiLeft -= dt; if (kokiLeft < 0) kokiLeft = 0; } else kokiOver += dt; }   // 工期カウント（L11+）：残りが尽きたら超過を加算（失敗にはしない）
       hudAccum += dt; if (hudAccum > 0.15) { hudAccum = 0; refreshHUD(); checkWin(); }
