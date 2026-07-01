@@ -1258,13 +1258,25 @@
     const keys = { up: false, down: false, left: false, right: false };
     let acting = false;
     let resetAct = () => {};
-    const clearKeys = () => { keys.up = keys.down = keys.left = keys.right = false; acting = false; document.querySelectorAll(".dbtn").forEach((b) => b.classList.remove("on")); const a = document.getElementById("act"); if (a) a.classList.remove("on"); };
+    // [bugfix 押しっぱなし根絶] 方向ボタンは「今そのボタンを掴んでいる指/マウス(pointerId→dir)」を一元管理し、keys はここから毎回導出する。
+    // 離す合図(pointerup/cancel)を window で拾って再計算＝release がボタン外(画面端の端スワイプ等)で起きても取りこぼさない。古いIDが残ってもキーが固定化しない。
+    const dpadPtr = new Map();
+    const dbtnByDir = {};
+    document.querySelectorAll(".dbtn").forEach((b) => { dbtnByDir[b.getAttribute("data-dir")] = b; });
+    const dpadRefresh = () => {
+      const held = { up: false, down: false, left: false, right: false };
+      dpadPtr.forEach((dir) => { held[dir] = true; });
+      ["up", "down", "left", "right"].forEach((d) => { keys[d] = held[d]; const b = dbtnByDir[d]; if (b) b.classList.toggle("on", held[d]); });
+    };
+    const clearKeys = () => { keys.up = keys.down = keys.left = keys.right = false; acting = false; dpadPtr.clear(); document.querySelectorAll(".dbtn").forEach((b) => b.classList.remove("on")); const a = document.getElementById("act"); if (a) a.classList.remove("on"); };
     document.querySelectorAll(".dbtn").forEach((b) => {
-      const dir = b.getAttribute("data-dir"); const ptrs = new Set();
-      const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && b.setPointerCapture) { try { b.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); keys[dir] = true; b.classList.add("on"); hideHint(); };
-      const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { keys[dir] = false; b.classList.remove("on"); } };
-      b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("pointerleave", off);
+      const dir = b.getAttribute("data-dir");
+      b.addEventListener("pointerdown", (e) => { e.preventDefault(); dpadPtr.set(e.pointerId, dir); keys[dir] = true; b.classList.add("on"); hideHint(); });
     });
+    const dpadReleasePtr = (e) => { if (dpadPtr.has(e.pointerId)) { dpadPtr.delete(e.pointerId); dpadRefresh(); } };
+    window.addEventListener("pointerup", dpadReleasePtr);
+    window.addEventListener("pointercancel", dpadReleasePtr);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) clearKeys(); });   // 画面を離れたら全解除（保険）
     const KEYMAP = { ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" };
     window.addEventListener("keydown", (e) => { if (e.code === "Space") { acting = true; const a = document.getElementById("act"); if (a) a.classList.add("on"); e.preventDefault(); hideHint(); return; } const d = KEYMAP[e.code]; if (d) { keys[d] = true; e.preventDefault(); hideHint(); } });
     window.addEventListener("keyup", (e) => { if (e.code === "Space") { acting = false; const a = document.getElementById("act"); if (a) a.classList.remove("on"); return; } const d = KEYMAP[e.code]; if (d) keys[d] = false; });
