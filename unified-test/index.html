@@ -102,6 +102,22 @@
   #win-stars { font-size:40px; letter-spacing:6px; color:#f5c518; text-shadow:0 2px 10px rgba(0,0,0,.45); }
   #win p { margin:0; font-size:17px; font-weight:700; }
   .m-stars { color:#f5c518; font-size:13px; letter-spacing:1px; margin-left:4px; }
+  /* [親方FB] タイトル画面（トップページ）＝はじめから/つづきから */
+  #title { position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:55; background:linear-gradient(160deg,#8fd0ee 0%,#bfe3f2 38%,#dcc79c 70%,#c2a06c 100%); }
+  #title.show { display:flex; animation:fade .4s ease; }
+  #title .t-box { text-align:center; padding:24px 26px; max-width:92vw; }
+  #title .t-logo { font-size:74px; line-height:1; filter:drop-shadow(0 4px 8px rgba(0,0,0,.22)); }
+  #title .t-name { font-size:40px; font-weight:900; color:#5a3d1c; text-shadow:0 2px 0 rgba(255,255,255,.5),0 5px 14px rgba(0,0,0,.2); margin-top:6px; letter-spacing:2px; }
+  #title .t-sub { font-size:13px; font-weight:800; color:#6a5433; opacity:.9; margin:8px 0 24px; }
+  #title #t-confirm { display:none; }
+  #title .t-warn { font-size:15px; font-weight:800; color:#a11; background:rgba(255,255,255,.5); border-radius:12px; padding:11px 14px; margin-bottom:14px; line-height:1.6; }
+  #title .t-btn { display:block; width:min(74vw,300px); margin:11px auto; padding:15px; border:none; border-radius:16px; font-size:19px; font-weight:900; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.2); }
+  #title .t-cont { background:#2f9e4f; color:#fff; }
+  #title .t-new { background:#e89a2a; color:#fff; }
+  #title .t-danger { background:#d23b3b; color:#fff; }
+  #title .t-back2 { background:#e6edf2; color:#456; }
+  #title .t-btn:active { transform:scale(.97); }
+  #title .t-btn:disabled, #title .t-btn.disabled { background:#c8ccd0; color:#8a929a; box-shadow:none; cursor:default; }
   #again { margin-top:6px; background:var(--water); color:#fff; border:none; border-radius:14px; padding:14px 30px; font-weight:900; font-size:18px; cursor:pointer; box-shadow:0 6px 16px rgba(0,0,0,.3); }
   /* [親方FB] スマホ縦持ち時は全画面オーバーレイで横向きを促す（横にすると自動で消える＝実質強制） */
   #rotate { position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px; text-align:center; background:rgba(8,22,30,.97); color:#fff; font-weight:800; font-size:20px; line-height:1.7; padding:28px; z-index:60; }
@@ -223,6 +239,20 @@
   <div id="achToast"></div>
   <div id="buyToast"></div>
   <div id="win"><h1 id="win-title">完成！</h1><div id="win-stars"></div><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
+  <div id="title"><div class="t-box">
+    <div class="t-logo">🚜</div>
+    <div class="t-name">どぼくランド</div>
+    <div class="t-sub">重機で整地しよう ・ 全20レベル</div>
+    <div id="t-menu">
+      <button id="t-continue" class="t-btn t-cont">つづきから</button>
+      <button id="t-new" class="t-btn t-new">はじめから</button>
+    </div>
+    <div id="t-confirm">
+      <div class="t-warn">⚠ 今の進行が消えます。<br>最初から始めますか？</div>
+      <button id="t-yes" class="t-btn t-danger">はい、最初から</button>
+      <button id="t-back" class="t-btn t-back2">もどる</button>
+    </div>
+  </div></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
@@ -2095,7 +2125,8 @@
     // 保存
     const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
-    function save() { try { const rd = function (a) { const o = new Array(N); for (let i = 0; i < N; i++) o[i] = Math.round(a[i] * 1000) / 1000; return o; };   // [即効パック] 保存軽量化：使っている範囲(N)だけ＋mm(小数3桁)丸めで文字列を圧縮（小マップ約9割減・大マップも約6割減）。load側は length===_act を既に受理。
+    let _titleGuard = true;   // [親方FB トップページ] タイトル表示中は save() を無効化＝既存セーブを保護。beginGame() で false にする
+    function save() { if (_titleGuard) return; try { const rd = function (a) { const o = new Array(N); for (let i = 0; i < N; i++) o[i] = Math.round(a[i] * 1000) / 1000; return o; };   // [即効パック] 保存軽量化：使っている範囲(N)だけ＋mm(小数3桁)丸めで文字列を圧縮（小マップ約9割減・大マップも約6割減）。load側は length===_act を既に受理。
       localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: rd(heights), b: rd(baseHeights), w: rd(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
     function load() {
       try {
@@ -2152,12 +2183,24 @@
     // 初回ユーザー操作で音を解錠（モバイル自動再生ポリシー。unlockはidempotent＝何度呼んでも安全）
     ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) { window.addEventListener(ev, function () { SND.unlock(); }, { passive: true }); });
 
-    // 起動
-    if (!load()) loadLevel(0);
-    if (UNLOCK_ALL) { game.fleet = MACHINES.map(function (m, i) { return { u: i + 1, id: m.id, lv: 0 }; }); game.nextUid = MACHINES.length + 1; if (!unitById(game.driveU)) game.driveU = 1; game.machine = unitById(game.driveU) ? unitById(game.driveU).id : MACHINES[0].id; syncOwned(); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); }   // 検証用(?all/?test)：全機種を1台ずつ付与+資金潤沢[親方FB]。[宿題] 読み込んだ操作中機体(driveU)は尊重＝復元した配備機との重複防止
-    normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
-    // [即効パック] 初回ガイド：操作ボタン＆メニューを脈動させ「ここを押す」を示す（一度メニューを開く/数秒で停止・以後出さない）
-    (function introHints() {
+    // 起動：タイトル画面（はじめから/つづきから）を先に出す。ゲーム開始（自動保存）は選択後＝タイトル中は既存セーブを触らない。[親方FB トップページ]
+    const HAS_SAVE = !!(localStorage.getItem(KEY) || localStorage.getItem(KEY_OLD));
+    loadLevel(0);   // 背景描画用の既定シーン（この時点の game は初期状態＝はじめから用の新規状態。まだ load() も save() もしない＝既存セーブ保護）
+    normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop);
+    function applyUnlockAll() { if (UNLOCK_ALL) { game.fleet = MACHINES.map(function (m, i) { return { u: i + 1, id: m.id, lv: 0 }; }); game.nextUid = MACHINES.length + 1; if (!unitById(game.driveU)) game.driveU = 1; game.machine = unitById(game.driveU) ? unitById(game.driveU).id : MACHINES[0].id; syncOwned(); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); } }   // 検証用(?all/?test)：全機種+資金。[宿題] 読み込んだ操作中機体を尊重
+    let _saveStarted = false;
+    function beginGame(cont) {
+      _titleGuard = false;   // ここからセーブ有効（ゲーム開始）
+      if (cont) { if (!load()) loadLevel(0); }                                   // つづきから：セーブ復元（無ければ新規L1）
+      else { try { localStorage.removeItem(KEY); } catch (e) {} loadLevel(0); }   // はじめから：セーブ消去＋新規（game は初期状態のまま）
+      applyUnlockAll();
+      document.getElementById("title").classList.remove("show");
+      if (!_saveStarted) { _saveStarted = true; setInterval(save, 8000); }        // 自動保存はゲーム開始後だけ
+      save(); startIntroHints();
+    }
+    let _introDone = false;
+    function startIntroHints() {   // [即効パック] 初回ガイド：ゲーム開始後に一度だけ操作ボタン＆メニューを脈動
+      if (_introDone) return; _introDone = true;
       let seen = false; try { seen = localStorage.getItem('doboku_seen_v1') === '1'; } catch (_) {}
       if (seen) return;
       document.body.classList.add('intro');
@@ -2166,6 +2209,15 @@
       setTimeout(stop, 6000);
       window.addEventListener('pointerdown', stop, { passive: true });
       window.addEventListener('keydown', stop);
+    }
+    (function setupTitle() {   // タイトル画面の配線 [親方FB トップページ]
+      const tCont = document.getElementById("t-continue"), tNew = document.getElementById("t-new"), tMenu = document.getElementById("t-menu"), tConf = document.getElementById("t-confirm");
+      if (!HAS_SAVE) { tCont.disabled = true; tCont.classList.add("disabled"); tCont.textContent = "つづきから（記録なし）"; }   // セーブが無ければ「つづきから」を無効
+      tCont.addEventListener("click", function () { if (tCont.disabled) return; SND.click(); beginGame(true); });
+      tNew.addEventListener("click", function () { SND.click(); if (HAS_SAVE) { tMenu.style.display = "none"; tConf.style.display = "block"; } else beginGame(false); });   // 記録があれば確認、無ければ即新規
+      document.getElementById("t-yes").addEventListener("click", function () { SND.click(); beginGame(false); });
+      document.getElementById("t-back").addEventListener("click", function () { SND.click(); tConf.style.display = "none"; tMenu.style.display = "block"; });
+      document.getElementById("title").classList.add("show");
     })();
 
     // デバッグ用フック
