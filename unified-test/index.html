@@ -145,6 +145,7 @@
   .mc-lv { display:inline-block; margin-left:6px; font-size:10px; font-weight:800; padding:1px 7px; border-radius:8px; background:#fde8c4; color:#8a5a10; }
   .g-btn.recall { background:#e0795a; color:#fff; }
   .g-btn.auto { background:#e0a020; color:#fff; } .g-btn.auto.on { background:#2c8a2c; }   /* [batch4] 監督モード 作業ON=緑 */
+  .g-btn.dispatch { background:#2f7fd6; color:#fff; }   /* [batch4/v2] 地点指定派遣 */
   #mc-recall-all { display:none; width:100%; margin-bottom:10px; background:#e0795a; color:#fff; border:none; border-radius:12px; padding:11px; font-weight:800; font-size:14px; cursor:pointer; }
   #mc-recall-all:active { transform:scale(.97); }
   .g-btns { display:flex; flex-direction:column; gap:4px; align-items:stretch; }
@@ -1256,7 +1257,7 @@
       else if (e.pointerId === lookId) { e.preventDefault(); if (Math.abs(e.clientX - tapSX) > 8 || Math.abs(e.clientY - tapSY) > 8) tapMoved = true; camYaw -= (e.clientX - lookX) * LOOK_SENS; camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch - (e.clientY - lookY) * LOOK_SENS)); lookX = e.clientX; lookY = e.clientY; }   // カメラ手動（1本指ドラッグで左右回転＋上下見下ろし）
     });
     const endLook = (e) => { camPtrs.delete(e.pointerId); pinchDist = 0; if (e.pointerId === lookId) lookId = null; if (camPtrs.size === 1) { const id = camPtrs.keys().next().value, q = camPtrs.get(id); lookId = id; lookX = q.x; lookY = q.y; } };   // 2本→1本に戻ったら残り1本で回転継続
-    el.addEventListener("pointerup", (e) => { if (e.pointerId === tapId && !tapMoved && camPtrs.size === 1) tapSelectMachine(e.clientX, e.clientY); tapId = null; endLook(e); });   // [親方FB] 動かさず離した=タップ→重機選択
+    el.addEventListener("pointerup", (e) => { if (e.pointerId === tapId && !tapMoved && camPtrs.size === 1) { if (pendingDispatchU != null) handleDispatchTap(e.clientX, e.clientY); else tapSelectMachine(e.clientX, e.clientY); } tapId = null; endLook(e); });   // [親方FB] 動かさず離した=タップ→重機選択／[v2]派遣待ち中は作業場所を指定
     el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
     el.addEventListener("wheel", (e) => { e.preventDefault(); camDist = clampDist(camDist + e.deltaY * 0.03); }, { passive: false });   // PC=ホイールでズーム（上=寄る/下=引く）
     window.addEventListener("touchmove", (e) => { if (lookId !== null || camPtrs.size >= 2) e.preventDefault(); }, { passive: false });
@@ -1448,14 +1449,42 @@
       if (activeTruck) setTruckBed(activeTruck, game.blade, cap, truckTilt);
       bladePile.position.y = -999;
     }
-    // ===================== 監督モード[batch4]：待機重機に「作業ON」→自動で整地し続ける（削った土は自分の荷台p.bladeへ＝総量厳密保存） =====================
-    const AUTO_SPEED = 0.42, AUTO_PATROL = 4.6;   // 自動運転の速さ（操作機の約4割）と往復半径(m)
-    function setUnitAuto(u, on) {   // グレーダー系(dozer/mini/loader)のみ自動化。ON時に往復状態を初期化
+    // ===================== 監督モード[batch4/v2]：待機重機に「作業ON/🎯派遣」→自動で整地（削った土は自分の荷台p.bladeへ＝総量厳密保存） =====================
+    const AUTO_SPEED = 0.42, AUTO_PATROL = 4.6;   // 自動運転の速さ（操作機の約4割）と作業(往復)半径(m)
+    let pendingDispatchU = null;   // [v2] 「🎯派遣」で地面タップ待ちの重機u
+    const autoRings = (function () {   // [v2] 監督モードの作業範囲リング（作業中の重機の中心に表示）
+      const arr = [];
+      for (let i = 0; i < 6; i++) {
+        const r = new THREE.Mesh(new THREE.RingGeometry(AUTO_PATROL - 0.35, AUTO_PATROL, 44), new THREE.MeshBasicMaterial({ color: 0x34c24a, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+        r.rotation.x = -Math.PI / 2; r.renderOrder = 2; r.position.y = -999; scene.add(r); arr.push(r);
+      }
+      return arr;
+    })();
+    function isAutoGrader(id) { const k = machineKind(machineById(id)); return k !== 'backhoe' && k !== 'truck'; }
+    function setUnitAuto(u, on) {   // グレーダー系(dozer/mini/loader)のみ自動化。ON=その場中心で往復整地／OFF=目標クリア
       const p = parked.find(function (x) { return x.u === u; }); if (!p) return false;
-      const k = machineKind(machineById(p.id)); if (k === 'backhoe' || k === 'truck') { p.auto = false; return false; }
+      if (!isAutoGrader(p.id)) { p.auto = false; return false; }
       p.auto = !!on;
       if (p.auto) { p.dir = 1; p.homeX = p.x; p.homeZ = p.z; p.cutH = sampleHeight(p.x, p.z); }
+      else { p.tx = null; p.tz = null; }
       return p.auto;
+    }
+    function dispatchUnit(u, tx, tz) {   // [v2] 地点指定：その場所へ移動して整地
+      const p = parked.find(function (x) { return x.u === u; }); if (!p || !isAutoGrader(p.id)) return false;
+      p.auto = true; p.tx = tx; p.tz = tz; p.homeX = tx; p.homeZ = tz; p.dir = 1; p.cutH = sampleHeight(p.x, p.z);
+      return true;
+    }
+    function tapGround(clientX, clientY) {   // 画面タップ→地面の世界座標
+      const rect = el.getBoundingClientRect();
+      _ray.setFromCamera(new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1), camera);
+      const hits = _ray.intersectObject(ground, true);
+      return hits.length ? { x: hits[0].point.x, z: hits[0].point.z } : null;
+    }
+    function handleDispatchTap(clientX, clientY) {   // [v2] 派遣待ち中の地面タップ＝作業場所を確定
+      const u = pendingDispatchU; pendingDispatchU = null;
+      const g = tapGround(clientX, clientY);
+      if (!g || u == null || !dispatchUnit(u, g.x, g.z)) { setHint('派遣をキャンセルしました'); return; }
+      SND.click(); tryVibrate(15); setHint('🚧 その場所へ派遣しました');
     }
     function autoGradeCells(p, dt) {   // gradePush一般化：p足元基準cutHで高い土を削りp.bladeへ / 低い所へp.bladeから埋める。土は heights＋p.blade で厳密保存。changedを返す。
       const M = machineById(p.id), RAD = M.digRadius, cap = M.bladeCap, FOOT2 = 0.9 * 0.9;
@@ -1474,14 +1503,22 @@
       p.blade = Math.max(0, blade);
       return changed;
     }
-    function updateAutoUnit(p, dt) {   // 往復しながら整地。端/場外/水は反転（基準高さを取り直す＝段々に平らへ）。terrain変化を返す。
-      const M = machineById(p.id);
-      if (p.dir == null) { p.dir = 1; p.homeX = p.x; p.homeZ = p.z; p.cutH = sampleHeight(p.x, p.z); }
-      const sp = M.moveSpeed * AUTO_SPEED * dt * p.dir;
-      const nx = p.x + Math.sin(p.yaw) * sp, nz = p.z + Math.cos(p.yaw) * sp, half = WORLD / 2 - 0.8;
-      const dist = Math.hypot(nx - p.homeX, nz - p.homeZ);
-      if (Math.abs(nx) < half && Math.abs(nz) < half && dist < AUTO_PATROL && canStand(nx, nz)) { p.x = nx; p.z = nz; }
-      else { p.dir *= -1; p.cutH = sampleHeight(p.x, p.z); }
+    function updateAutoUnit(p, dt) {   // [v2] 作業中心(cx,cz=派遣先 or その場)へ寄り、着いたら半径内を往復整地。terrain変化を返す。土量はp.bladeで保存。
+      const M = machineById(p.id), half = WORLD / 2 - 0.8;
+      if (p.dir == null) { p.dir = 1; p.cutH = sampleHeight(p.x, p.z); }
+      if (p.homeX == null) { p.homeX = p.x; p.homeZ = p.z; }
+      const cx = (p.tx != null) ? p.tx : p.homeX, cz = (p.tz != null) ? p.tz : p.homeZ;
+      const ddx = cx - p.x, ddz = cz - p.z, dCenter = Math.hypot(ddx, ddz);
+      let nx, nz;
+      if (dCenter > AUTO_PATROL) {   // 遠い→作業中心へ旋回して直進
+        const desired = Math.atan2(ddx, ddz); let da = desired - p.yaw; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        p.yaw += Math.max(-2.2 * dt, Math.min(2.2 * dt, da));
+        const sp = M.moveSpeed * AUTO_SPEED * dt; nx = p.x + Math.sin(p.yaw) * sp; nz = p.z + Math.cos(p.yaw) * sp;
+      } else {   // 到着→半径内を往復整地
+        const sp = M.moveSpeed * AUTO_SPEED * dt * p.dir; nx = p.x + Math.sin(p.yaw) * sp; nz = p.z + Math.cos(p.yaw) * sp;
+        if (Math.hypot(nx - cx, nz - cz) >= AUTO_PATROL || Math.abs(nx) >= half || Math.abs(nz) >= half || !canStand(nx, nz)) { p.dir *= -1; p.cutH = sampleHeight(p.x, p.z); nx = p.x; nz = p.z; }
+      }
+      if (Math.abs(nx) < half && Math.abs(nz) < half && canStand(nx, nz)) { p.x = nx; p.z = nz; }
       const ch = autoGradeCells(p, dt);
       p.model.position.set(p.x, sampleHeight(p.x, p.z), p.z); p.model.rotation.y = p.yaw;
       return ch;
@@ -1490,6 +1527,7 @@
       let autoActed = false;
       for (let pi = 0; pi < parked.length; pi++) { const p = parked[pi]; const k = machineKind(machineById(p.id)); if (p.auto && !game.won && k !== 'backhoe' && k !== 'truck') { if (updateAutoUnit(p, dt)) autoActed = true; } else { p.model.position.y = sampleHeight(p.x, p.z); if (k === 'truck') setTruckBed(p.model.userData, p.blade || 0, machineById(p.id).bladeCap, 0); } }   // 停車中：作業ON=自動整地／通常=地面追従＋トラック荷台表示[親方FB/batch4]
       if (autoActed) syncGeometry();   // 監督モードで地形が変わった→反映
+      { let ri = 0; for (let pi = 0; pi < parked.length && ri < autoRings.length; pi++) { const p = parked[pi]; if (!p.auto || !isAutoGrader(p.id)) continue; const cx = (p.tx != null) ? p.tx : (p.homeX != null ? p.homeX : p.x), cz = (p.tz != null) ? p.tz : (p.homeZ != null ? p.homeZ : p.z); const r = autoRings[ri++]; r.position.set(cx, sampleHeight(cx, cz) + 0.08, cz); r.material.opacity = 0.26 + 0.14 * Math.sin(selRingT * 4); } for (; ri < autoRings.length; ri++) autoRings[ri].position.y = -999; }   // [v2] 作業範囲リング（作業中の重機の中心に緑リング）
       // [親方FB C1] 操作中の乗り物の足元に光る輪を追従＋ゆっくり明滅（重機もトラックも game.mx に居る）
       selRingT += dt;
       const _rpulse = Math.sin(selRingT * 5);
@@ -1669,6 +1707,7 @@
       game.blade = (saved && saved.blade) ? saved.blade : 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();   // [レビュー修正] blade(ブレード/荷台積載)も復元＝リロード越しの土量保存
       truckTilt = 0;   // レベル切替：荷台ダンプ角リセット（運転種別/積載は applyMachine と game.blade=0 で整合）[親方FB]
       if (typeof clearParked === 'function') clearParked();   // レベル切替で出した重機もリセット[親方FB]
+      pendingDispatchU = null;   // [v2] レベル切替で派遣待ちを解除
       if (saved && saved.pk) restoreParked(saved.pk);   // [宿題] セーブ復元時は配備中の重機(位置/積載)を再現＝消えない+土量保存
       applyMachine();
       if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
@@ -1971,7 +2010,7 @@
       if (lv < UPG_MAX) { const c = upgCost(m, lv); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
       else acts += '<button class="g-btn maxed" disabled>強化MAX</button>';
       if (st === 'field') acts += '<button class="g-btn recall" data-recall="' + f.u + '">🧹回収</button>';
-      const _k = machineKind(m); if (st === 'field' && _k !== 'backhoe' && _k !== 'truck') { const pk = parked.find(function (x) { return x.u === f.u; }); const on = pk && pk.auto; acts += '<button class="g-btn auto' + (on ? ' on' : '') + '" data-auto="' + f.u + '">🚧' + (on ? '作業中■' : '作業ON') + '</button>'; }   // [batch4] 監督モード：現場のブル系を自動整地ON/OFF
+      const _k = machineKind(m); if (st === 'field' && _k !== 'backhoe' && _k !== 'truck') { const pk = parked.find(function (x) { return x.u === f.u; }); const on = pk && pk.auto; acts += '<button class="g-btn auto' + (on ? ' on' : '') + '" data-auto="' + f.u + '">🚧' + (on ? '作業中■' : '作業ON') + '</button><button class="g-btn dispatch" data-dispatch="' + f.u + '">🎯派遣</button>'; }   // [batch4/v2] 監督モード：自動整地ON/OFF＋地点指定派遣
       return '<div class="g-card mc-unit' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + idxTag + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
     }
     function renderChooserInto(listEl, isTruck) {   // listEl に「左=待機中 / 右=出動中」の2列を描く（isTruck=トラック窓か）
@@ -2029,6 +2068,8 @@
       if (rec) { recallUnit(+rec.dataset.recall); reRender(); return; }   // その1台を回収（待機中へ）
       const au = e.target.closest ? e.target.closest('[data-auto]') : null;
       if (au) { const uu = +au.dataset.auto; const pk = parked.find(function (x) { return x.u === uu; }); setUnitAuto(uu, !(pk && pk.auto)); SND.click(); reRender(); return; }   // [batch4] 監督モード：作業ON/OFF切替
+      const dp = e.target.closest ? e.target.closest('[data-dispatch]') : null;
+      if (dp) { pendingDispatchU = +dp.dataset.dispatch; winEl.classList.remove("show"); SND.click(); setHint('地面をタップして作業場所を指定'); return; }   // [v2] 派遣：モーダルを閉じ地面タップ待ちへ
       const c = e.target.closest ? e.target.closest('.g-card') : null; if (!c || !c.dataset || c.dataset.u == null) return;
       const u = +c.dataset.u, f = unitById(u), m = f ? machineById(f.id) : null; if (!m) return;
       if (u === game.driveU) { winEl.classList.remove("show"); SND.click(); return; }   // 使用中＝閉じるだけ
@@ -2152,7 +2193,7 @@
       getShake: () => shake,
       fleet: () => game.fleet.map((f) => ({ u: f.u, id: f.id, lv: f.lv })), driveU: () => game.driveU, unitState: (u) => unitState(u), fleetCount: (id) => fleetCount(id), activeLv: () => activeLv(), nextUidVal: () => game.nextUid,
       deployUnit: (u, d) => deployUnit(u, d !== false), recallUnit: (u) => recallUnit(u), recallAll: () => recallAll(), recallCount: () => parked.length, buyUnitUpgrade: (u) => buyUnitUpgrade(u), upgCostOfUnit: (u) => { const f = unitById(u); return f ? upgCost(machineById(f.id), Math.min(UPG_MAX, f.lv | 0)) : 0; },
-      setAuto: (u, v) => setUnitAuto(u, v !== false), parkedAuto: () => parked.map(function (p) { return { u: p.u, id: p.id, auto: !!p.auto, blade: +(p.blade || 0).toFixed(2), x: +p.x.toFixed(2), z: +p.z.toFixed(2) }; }),
+      setAuto: (u, v) => setUnitAuto(u, v !== false), dispatch: (u, x, z) => dispatchUnit(u, x, z), pendingDispatch: () => pendingDispatchU, parkedAuto: () => parked.map(function (p) { return { u: p.u, id: p.id, auto: !!p.auto, blade: +(p.blade || 0).toFixed(2), x: +p.x.toFixed(2), z: +p.z.toFixed(2), tx: p.tx != null ? +p.tx.toFixed(2) : null, tz: p.tz != null ? +p.tz.toFixed(2) : null }; }),
       buyUnit: (id) => { const m = machineById(id); game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); checkAchievements(); return f.u; },
       migrate: (s) => buildFleetFromSave(s),
       getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
