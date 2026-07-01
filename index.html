@@ -70,6 +70,20 @@
   #act { position:fixed; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 22px); width:96px; height:96px; border-radius:50%; border:none; color:#fff; font-weight:900; font-size:21px; background:var(--dig); box-shadow:0 6px 16px rgba(0,0,0,.28); cursor:pointer; line-height:1.1; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; touch-action:none; }
   #act span { font-size:11px; font-weight:700; opacity:.9; }
   #act.on { transform:scale(.93); filter:brightness(1.12); }
+  /* [即効パック] 操作ボタンの凡例（前進/後退/左/右の小キャプション）＝初見が「指3種」を理解できる */
+  .dbtn { flex-direction:column; gap:0; }
+  .dbtn small { font-size:8.5px; font-weight:800; opacity:.6; line-height:1; letter-spacing:0; margin-top:0; }
+  /* [即効パック] 初回ガイド：操作ボタン/メニュー/ショップを数回だけ脈動させ「ここを押す」を示す */
+  @keyframes hintPulse { 0%,100%{ box-shadow:0 3px 10px rgba(0,0,0,.2); } 50%{ box-shadow:0 0 0 5px rgba(47,127,214,.55), 0 3px 10px rgba(0,0,0,.25); } }
+  body.intro .dbtn, body.intro #act { animation: hintPulse 1.15s ease-in-out 4; }
+  #menuBtn.pulse { animation: hintPulse 1.2s ease-in-out infinite; }
+  body.need-shop #shop { display:block; animation: hintPulse 1.3s ease-in-out infinite; }
+  /* [即効パック] クリア演出：星のポップ＋満杯バッジのパルス */
+  #win-stars .wstar { display:inline-block; }
+  #win-stars .wstar.pop { animation: starPop .5s cubic-bezier(.2,1.5,.4,1) both; }
+  @keyframes starPop { 0%{ transform:scale(0); opacity:0; } 60%{ transform:scale(1.3); } 100%{ transform:scale(1); opacity:1; } }
+  @keyframes badgePulse { 0%{ transform:scale(1); } 35%{ transform:scale(1.3); } 100%{ transform:scale(1); } }
+  #blade-badge.pulse { animation: badgePulse .36s ease; }
   #reset { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 56px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:10px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #reset:active { transform:scale(.95); }
   #hint { position:fixed; left:50%; bottom:96px; transform:translateX(-50%); background:rgba(0,0,0,.55); color:#fff; padding:9px 16px; border-radius:18px; font-weight:700; font-size:13px; pointer-events:none; transition:opacity .5s ease; text-align:center; max-width:86vw; line-height:1.6; }
@@ -175,10 +189,10 @@
   </div>
   <div id="goal"><div class="label" id="goalLabel">…</div><div id="bar"><i></i></div></div>
   <div id="dpad">
-    <button class="dbtn" id="d-up" data-dir="up" aria-label="前">▲</button>
-    <button class="dbtn" id="d-left" data-dir="left" aria-label="左">◀</button>
-    <button class="dbtn" id="d-right" data-dir="right" aria-label="右">▶</button>
-    <button class="dbtn" id="d-down" data-dir="down" aria-label="後">▼</button>
+    <button class="dbtn" id="d-up" data-dir="up" aria-label="前進">▲<small>前進</small></button>
+    <button class="dbtn" id="d-left" data-dir="left" aria-label="左に向く">◀<small>左</small></button>
+    <button class="dbtn" id="d-right" data-dir="right" aria-label="右に向く">▶<small>右</small></button>
+    <button class="dbtn" id="d-down" data-dir="down" aria-label="後退">▼<small>後退</small></button>
   </div>
   <button id="act">ならす<span>押す</span></button>
   <button id="reset">最初から</button>
@@ -790,6 +804,7 @@
       CAM_MAX = Math.max(46, WORLD * 1.9);
     }
     let wt = 0, wframe = 0;
+    let waterActive = true;   // [即効パック] この面に水があるか（無水面=造成/整地/道路では水計算を丸ごと止める）。loadLevelで設定。
     function syncWater(dt) {
       wt += dt; wframe++;
       for (let idx = 0; idx < N; idx++) {
@@ -1083,6 +1098,16 @@
       return { pos, vel, life, g, cur: 0, n };
     }
     const dust = makeParticles(90, 0.42, 0xc4a36a, 0.8), chunk = makeParticles(40, 0.8, 0x6f4a22, 0.95), splash = makeParticles(50, 0.4, 0x9fd0ff, 0.9);
+    const confetti = makeParticles(80, 0.55, 0xffd24a, 0.95);   // [即効パック] クリア時の紙吹雪（金色・上向きに弾けて落ちる）
+    function winBurst() {   // クリア演出：機体の上空に紙吹雪を一発バースト
+      const cx = game.mx, cz = game.mz, cy = sampleHeight(cx, cz) + 2.2;
+      for (let i = 0; i < confetti.n; i++) {
+        const k = confetti.cur; confetti.cur = (confetti.cur + 1) % confetti.n;
+        confetti.pos[k * 3] = cx + rnd2(2.4); confetti.pos[k * 3 + 1] = cy + Math.random() * 1.6; confetti.pos[k * 3 + 2] = cz + rnd2(2.4);
+        confetti.vel[k * 3] = rnd2(7.5); confetti.vel[k * 3 + 1] = 3.6 + Math.random() * 4.2; confetti.vel[k * 3 + 2] = rnd2(7.5);
+        confetti.life[k] = 1.3 + Math.random() * 0.9;
+      }
+    }
     function emit(p, x, y, z, up, spread) { const k = p.cur; p.cur = (p.cur + 1) % p.n; p.pos[k * 3] = x + rnd2(spread); p.pos[k * 3 + 1] = y + 0.2; p.pos[k * 3 + 2] = z + rnd2(spread); p.vel[k * 3] = rnd2(spread * 2.2); p.vel[k * 3 + 1] = up * (0.7 + Math.random() * 0.8); p.vel[k * 3 + 2] = rnd2(spread * 2.2); p.life[k] = 0.45 + Math.random() * 0.4; }
     function updateParticles(p, dt, grav) { let live = false; for (let k = 0; k < p.n; k++) { if (p.life[k] > 0) { live = true; p.life[k] -= dt; p.vel[k * 3 + 1] -= grav * dt; p.pos[k * 3] += p.vel[k * 3] * dt; p.pos[k * 3 + 1] += p.vel[k * 3 + 1] * dt; p.pos[k * 3 + 2] += p.vel[k * 3 + 2] * dt; if (p.life[k] <= 0) p.pos[k * 3 + 1] = -999; } } if (live) p.g.attributes.position.needsUpdate = true; }
     // [親方FB ③天候] 雨：rainP=降る粒(見た目)・rainTick=氾濫原に水をじわじわ足す(水位が上がる)。LV.rain を持つ新レベルだけ有効。
@@ -1179,6 +1204,8 @@
         click: function () { if (!ready || muted) return; beep(880, ctx.currentTime, 0.05, 0.18, 'square'); },
         buy: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(660, t, 0.08, 0.2, 'triangle'); beep(990, t + 0.07, 0.1, 0.2, 'triangle'); },
         win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); },
+        full: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(430, t, 0.05, 0.18, 'square'); beep(300, t + 0.05, 0.07, 0.16, 'square'); },   // [即効パック] 満杯の「カチッ」
+        winStar: function (n) { if (!ready || muted) return; const t = ctx.currentTime; beep(720 + n * 190, t, 0.18, 0.2, 'triangle'); },   // [即効パック] 星が出るたびの上昇音
         _diag: function () { return { ready: ready, ctx: ctx ? ctx.state : 'none', muted: muted, master: master ? +master.gain.value.toFixed(3) : null, fwdLoaded: !!fwdSrc, revLoaded: !!revSrc, fwdGain: fwdGain ? +fwdGain.gain.value.toFixed(3) : null, revGain: revGain ? +revGain.gain.value.toFixed(3) : null }; }
       };
     })();
@@ -1220,13 +1247,22 @@
     el.addEventListener("pointercancel", endLook); el.addEventListener("lostpointercapture", endLook);
     el.addEventListener("wheel", (e) => { e.preventDefault(); camDist = clampDist(camDist + e.deltaY * 0.03); }, { passive: false });   // PC=ホイールでズーム（上=寄る/下=引く）
     window.addEventListener("touchmove", (e) => { if (lookId !== null || camPtrs.size >= 2) e.preventDefault(); }, { passive: false });
-    let hintTimer = setTimeout(hideHint, 12000);
-    function hideHint() { const h = document.getElementById("hint"); if (h) h.style.opacity = "0"; clearTimeout(hintTimer); }
-    function setHint(txt) { const h = document.getElementById("hint"); if (h) { h.innerHTML = txt; h.style.opacity = "1"; clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 12000); } }
+    let hintTimer = setTimeout(hideHint, 12000), hintSticky = false;
+    function doHideHint() { const h = document.getElementById("hint"); if (h) h.style.opacity = "0"; clearTimeout(hintTimer); hintSticky = false; }
+    function hideHint() { if (hintSticky) return; doHideHint(); }   // [即効パック] 初回レベルのヒントは操作しても消さない（読み終える前に吹き飛ぶのを防ぐ）
+    function setHint(txt, sticky) { const h = document.getElementById("hint"); if (h) { h.innerHTML = txt; h.style.opacity = "1"; clearTimeout(hintTimer); hintSticky = !!sticky; hintTimer = setTimeout(doHideHint, sticky ? 30000 : 12000); } }
 
     // ===================== 整地（押し均し・体積保存） =====================
     let lastVib = 0, shake = 0;
     function tryVibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
+    // [即効パック] 満杯フィードバック：ブレード/バケットが満杯になった「瞬間だけ」振動＋カチッ音＋バッジ拡大で「もう乗らない」と知らせる。
+    let bladeFull = false, bucketFull = false;
+    function fullFeedback() {
+      tryVibrate([12, 40, 12]);
+      if (SND.full) SND.full();
+      const el = document.getElementById('blade-badge');
+      if (el) { el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); }
+    }
     // [親方FB] 硬い地盤(岩)の削り速度倍率。強い重機(digRate高)ほど硬岩でも速く・弱いと遅い(下限12%＝詰まらない)。hard[idx]=0なら1(普通土・無影響)。削る時だけ使う＝埋め/土量保存は不変。
     function hardCut(idx, rate) {
       const hd = hard[idx]; if (hd <= 0) return 1;
@@ -1260,6 +1296,7 @@
       game.blade = Math.max(0, blade); game.totalDug += cutVol;
       if (cutVol > 0) game.cum.dugAll += cutVol; // 累計掘削（レベルをまたいで保持＝実績用）
       if (changed) { digFx(true); SND.dig(true); const now = performance.now(); if (now - lastVib > 110) { lastVib = now; tryVibrate(9); } syncGeometry(); }
+      const wf = bladeFull; bladeFull = game.blade >= cap - 0.05; if (bladeFull && !wf) fullFeedback();   // [即効パック] ブレード満杯の瞬間だけ手応え
     }
     // ブレードの土を前方の窪みへ容量按分で薄く配分する。[本物ブル移植]
     function depositInto(cx, cz, R, vol, ceil) {
@@ -1311,6 +1348,7 @@
       }
       game.bucket = Math.min(cap, bucket); game.totalDug += cutVol; if (cutVol > 0) game.cum.dugAll += cutVol;
       if (changed) { digFx(true); SND.dig(true); const now = performance.now(); if (now - lastVib > 120) { lastVib = now; tryVibrate(8); } shake = Math.min(0.10, shake + 0.025); syncGeometry(); }
+      const bf = bucketFull; bucketFull = game.bucket >= cap - 0.05; if (bucketFull && !bf) fullFeedback();   // [即効パック] バケット満杯の瞬間だけ手応え
       return changed;
     }
     function backhoeDump(dt) {
@@ -1530,11 +1568,20 @@
         else { const overDays = Math.floor(kokiOver); const factor = Math.max(KOKI_FLOOR, 1 - overDays * KOKI_DECAY); reward = Math.round(baseR * factor); kokiMsg = "工期+" + overDays + "日 超過 "; }
       }
       game.money += reward; refreshHUD(); save();
-      document.getElementById("win-stars").textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);   // [親方FB] このクリアの★
+      // [即効パック] 星を1個ずつポップ＋上昇音で「できた！」のピークを作る（旧：★を一括表示）
+      const starsEl = document.getElementById("win-stars"); starsEl.innerHTML = '';
+      for (let i = 0; i < 3; i++) {
+        const sp = document.createElement('span'), earned = i < stars;
+        sp.textContent = earned ? '★' : '☆';
+        sp.className = earned ? 'wstar pop' : 'wstar'; sp.style.opacity = earned ? '1' : '0.45';
+        if (earned) { sp.style.animationDelay = (0.15 * i) + 's'; (function (n) { setTimeout(function () { SND.winStar(n); }, 150 * n + 130); })(i); }
+        starsEl.appendChild(sp);
+      }
       document.getElementById("win-title").textContent = LV.name + " 完成！";
       document.getElementById("win-text").textContent = kokiMsg + "報酬 +" + reward + "万円（所持金 " + game.money + "万円）" + (last ? " ／ 全レベルクリア！" : "");
       document.getElementById("again").textContent = last ? "もう一度（レベル1へ）" : "次のレベルへ ▶";
       document.getElementById("win").classList.add("show"); tryVibrate(40); SND.win();
+      winBurst(); shake = Math.min(0.5, shake + 0.22);   // [即効パック] 紙吹雪バースト＋一発の「ドン」（達成の手応え）
       clearTimeout(winTimer); winTimer = setTimeout(nextLevel, 2000);
     }
     function nextLevel() { clearTimeout(winTimer); document.getElementById("win").classList.remove("show"); loadLevel((curLevel + 1) % NLV); }
@@ -1565,16 +1612,18 @@
       if (saved && kokiActive) { if (typeof saved.kl === 'number') kokiLeft = Math.max(0, saved.kl); if (typeof saved.ko === 'number') kokiOver = Math.max(0, saved.ko); }
       document.getElementById("koki-badge").style.display = kokiActive ? '' : 'none';
       rainActive = !!LV.rain;   // [③天候] このレベルが雨か
+      waterActive = rainActive || totalWater() > 0.0005; water.visible = waterActive;   // [即効パック] 水のある面だけ水計算＋水メッシュを有効化（無水面は止めて軽く）
       { const sky = rainActive ? 0x8a96a0 : 0xbfe3f2; renderer.setClearColor(sky, 1); scene.fog.color.setHex(sky); }   // 雨=灰色の空 / 通常=青空
       workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : LV.type === 'haul' ? '山の撤去' : LV.type === 'grade' ? '整地' : '作業場';
       document.getElementById("goalLabel").innerHTML = LV.goal;
+      document.body.classList.toggle('need-shop', /🛒|ショップ|買/.test((LV.goal || '') + (LV.hint || '')));   // [即効パック] お題が「ショップで買え」と言う面はショップボタンを表に出す
       document.getElementById("mainLabel").textContent = LV.mainLabel;
       document.getElementById("mainIcon").textContent = (LV.type === 'haul') ? '⛰' : '💧';
       document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level' || LV.type === 'haul' || LV.type === 'grade') ? '' : 'none';
       document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade') ? 'none' : '';
       document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade' || LV.noWater) ? 'none' : '';   // 造成/整地/水なしレベルは水バッジを隠す[レビュー修正]
       document.getElementById("win").classList.remove("show");
-      rebuildMarkers(LV.markers); setHint(LV.hint);
+      rebuildMarkers(LV.markers); setHint(LV.hint, curLevel === 0);   // [即効パック] 最初のレベルはヒントを固定表示（触っても消えない・30秒）
       syncGeometry(); syncWater(0); refreshHUD(); save();
     }
 
@@ -1799,7 +1848,7 @@
       }
       gList.innerHTML = html;
     }
-    document.getElementById("shop").addEventListener("click", function () { renderGarage(); garage.classList.add("show"); SND.click(); });
+    document.getElementById("shop").addEventListener("click", function () { renderGarage(); garage.classList.add("show"); document.body.classList.remove('need-shop'); SND.click(); });
     document.getElementById("g-close").addEventListener("click", function () { garage.classList.remove("show"); SND.click(); });
     garage.addEventListener("click", function (e) { if (e.target === garage) { garage.classList.remove("show"); SND.click(); } }); // 暗転部（パネル外）タップで閉じる
     gList.addEventListener("click", function (e) {
@@ -1927,13 +1976,14 @@
     document.getElementById("truckBtn").addEventListener("click", function () { openTruckChooser(); });   // 左上「🚛トラック切替」＝トラック専用窓
 
     // ===================== 右側ボタンの☰メニュー開閉[親方FB] =====================
-    document.getElementById("menuBtn").addEventListener("click", function () { document.body.classList.toggle("menu-open"); SND.click(); });
+    document.getElementById("menuBtn").addEventListener("click", function () { document.body.classList.toggle("menu-open"); this.classList.remove('pulse'); try { localStorage.setItem('doboku_seen_v1', '1'); } catch (_) {} SND.click(); });   // [即効パック] 一度開いたら初回ガイドの脈動は止める
     ['reset', 'shop', 'mute', 'achBtn', 'mapBtn'].forEach(function (id) { const b = document.getElementById(id); if (b) b.addEventListener("click", function () { document.body.classList.remove("menu-open"); }); });   // メニュー項目を押したら自動で閉じる＝画面スッキリ
 
     // 保存
     const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
-    function save() { try { localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: Array.from(heights), b: Array.from(baseHeights), w: Array.from(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
+    function save() { try { const rd = function (a) { const o = new Array(N); for (let i = 0; i < N; i++) o[i] = Math.round(a[i] * 1000) / 1000; return o; };   // [即効パック] 保存軽量化：使っている範囲(N)だけ＋mm(小数3桁)丸めで文字列を圧縮（小マップ約9割減・大マップも約6割減）。load側は length===_act を既に受理。
+      localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: rd(heights), b: rd(baseHeights), w: rd(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
@@ -1976,8 +2026,9 @@
       updateDozer(dt);
       SND.drive(keys.up || keys.down || keys.left || keys.right || pushing, keys.down && !keys.up); // 走行音（前進=戦車キャタピラ／後退=ブル作業音）
       if (rainActive && !game.won) rainTick(dt);   // [③天候] 雨で水位上昇（simWaterの前に供給）
-      const sub = dt / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); syncWater(dt);
-      updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0); updateParticles(splash, dt, 6.0);
+      if (rainActive || waterActive) { if (!water.visible) water.visible = true; const sub = dt / WATER_SUBSTEPS; for (let s = 0; s < WATER_SUBSTEPS; s++) simWater(sub); syncWater(dt); }   // [即効パック] 水のある面だけ計算（無水面=造成/整地/道路は丸ごとスキップ＝大マップで60fps維持）
+      else if (water.visible) water.visible = false;
+      updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0); updateParticles(splash, dt, 6.0); updateParticles(confetti, dt, 8.5);
       if (rainActive && !game.won) rainFx(); updateParticles(rainP, dt, 2.0);   // [③天候] 雨粒（見た目・勝利後は止める）[レビュー修正]
       if (shake > 0) shake = Math.max(0, shake - dt * 0.4);
       if (kokiActive && !game.won) { if (kokiLeft > 0) { kokiLeft -= dt; if (kokiLeft < 0) kokiLeft = 0; } else kokiOver += dt; }   // 工期カウント（L11+）：残りが尽きたら超過を加算（失敗にはしない）
@@ -1992,6 +2043,17 @@
     if (!load()) loadLevel(0);
     if (UNLOCK_ALL) { game.fleet = MACHINES.map(function (m, i) { return { u: i + 1, id: m.id, lv: 0 }; }); game.nextUid = MACHINES.length + 1; if (!unitById(game.driveU)) game.driveU = 1; game.machine = unitById(game.driveU) ? unitById(game.driveU).id : MACHINES[0].id; syncOwned(); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); }   // 検証用(?all/?test)：全機種を1台ずつ付与+資金潤沢[親方FB]。[宿題] 読み込んだ操作中機体(driveU)は尊重＝復元した配備機との重複防止
     normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop); setInterval(save, 8000);
+    // [即効パック] 初回ガイド：操作ボタン＆メニューを脈動させ「ここを押す」を示す（一度メニューを開く/数秒で停止・以後出さない）
+    (function introHints() {
+      let seen = false; try { seen = localStorage.getItem('doboku_seen_v1') === '1'; } catch (_) {}
+      if (seen) return;
+      document.body.classList.add('intro');
+      const mb = document.getElementById('menuBtn'); if (mb) mb.classList.add('pulse');
+      const stop = function () { document.body.classList.remove('intro'); window.removeEventListener('pointerdown', stop); window.removeEventListener('keydown', stop); };
+      setTimeout(stop, 6000);
+      window.addEventListener('pointerdown', stop, { passive: true });
+      window.addEventListener('keydown', stop);
+    })();
 
     // デバッグ用フック
     if (/[?&]test\b/.test(location.search)) window.__t = {
