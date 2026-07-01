@@ -35,6 +35,7 @@
   #total-badge { opacity:.92; } #total-badge .v { color:var(--water); }
   #money-badge .v { color:#b8860b; }
   #blade-badge .v { color:#7a5a2a; } #blade-badge.over { background:#ffd6d6; }
+  #fuel-badge .v { color:#2a6a3a; } #fuel-badge.low { background:#ffd6d6; } #fuel-badge.low .v { color:#c22020; }
   .badge.done { background:#cdeccd; }
   #garage { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
   #garage.show { display:flex; animation:fade .3s ease; }
@@ -210,6 +211,7 @@
     <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
     <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
     <div class="badge" id="blade-badge">🪣 <span class="v" id="blade">0</span><small>/<span id="bladeCap">12</span> m³</small></div>
+    <div class="badge" id="fuel-badge">⛽ <span class="v" id="fuel">100</span><small>%</small></div>
     <div class="badge" id="elev-badge">⛰<span class="v" id="elev">0.0</span><small>m</small></div>
     <div class="badge" id="koki-badge" style="display:none">⏳ <span id="kokiLabel">工期</span> <span class="v" id="koki">0</span><small>日</small></div>
   </div>
@@ -357,6 +359,31 @@
       _eff.layer = M.layer; _eff.bladeCap = M.bladeCap;        // 強化対象外（BASE透過）
       _eff.underwaterFull = M.underwaterFull; _eff.id = M.id;
       return _eff;
+    }
+    // ===================== 経営モード Phase1: 軽油（タンク制・親方GO 2026-07-02）=====================
+    // 各1台(fleet unit)が燃料タンクを持つ。作業/移動で消費・空だと動けない・切替窓/HUDバッジから給油（¥＝不足分×単価）。
+    // 燃料は f.fuel(L)。無い(旧セーブ/新規購入)＝満タン扱い＝後方互換。土量/水量には一切触れない。
+    const FUEL_PRICE = 0.1;   // 給油単価（万円/L）＝10Lで1万円
+    const FUEL_MOVE = 0.6, FUEL_AUTO = 0.5;   // 消費倍率：移動のみ=6割／監督モード自動機=5割（作業中=フル）
+    function fuelCap(M) { return Math.round(60 + M.price * 0.2); }      // タンク容量(L)＝大型ほど大（D-51:80L / D-11改:220L）
+    function fuelRate(M) { return 0.25 + M.price / 1000; }              // 消費(L/s)＝大型ほど燃費が悪い（D-51:0.35 / D-11改:1.05）
+    function fuelOf(f) { if (f.fuel == null) f.fuel = fuelCap(machineById(f.id)); return f.fuel; }
+    function fuelEmpty(f) { return fuelOf(f) <= 0.001; }
+    function fuelEmptyFx(f) { const M = machineById(f.id); setHint('⛽ ' + M.name + ' が燃料切れ！重機/トラック窓の「⛽給油」か燃料バッジで給油'); SND.click(); tryVibrate(30); }
+    function useFuel(f, amt) {   // 消費。空になった瞬間だけ通知。戻り値=まだ動けるか
+      const v = fuelOf(f); if (v <= 0.001) return false;
+      f.fuel = Math.max(0, v - amt);
+      if (f.fuel <= 0.001) { f.fuel = 0; fuelEmptyFx(f); return false; }
+      return true;
+    }
+    function refuelCost(f) { const cap = fuelCap(machineById(f.id)), missing = cap - fuelOf(f); return missing < 0.5 ? 0 : Math.ceil(missing * FUEL_PRICE); }
+    function refuelUnit(u) {   // 満タンまで給油（不足分だけ課金・整数万円切上げ）。金銭はここでのみ動く＝所持金は常に整数
+      const f = unitById(u); if (!f) return false;
+      const cost = refuelCost(f); if (cost <= 0) return false;
+      if (game.money < cost) { setHint('給油に ' + cost + '万円 必要（所持金不足）'); return false; }
+      game.money -= cost; f.fuel = fuelCap(machineById(f.id));
+      showBuyToast('⛽ 給油 -' + cost + '万円'); SND.buy(); tryVibrate(15); refreshHUD(); save();
+      return true;
     }
     // 実績バッジ（cond は game を受け真偽。判定は購入/クリア/強化など「変化時のみ」呼ぶ＝毎フレーム禁止）
     function distinctOwned() { return game.owned.length; }
@@ -1470,17 +1497,19 @@
     }
     function updateActiveTruck(dt) {   // [親方FB] 操作中がトラックの時の運転＝走る＋「押す」で荷台ダンプ（積載=game.blade・容量=bladeCap）
       const M = curM(), cap = M.bladeCap, stats = effectiveStats(M), TURN = 1.5;
-      if (keys.left) game.myaw += TURN * dt;   // [親方FB] 左キー=左旋回（符号は表示と一致するよう反転）
-      if (keys.right) game.myaw -= TURN * dt;   // [親方FB] 右キー=右旋回
+      const fUnit = activeUnit(), _noFuel = fUnit ? fuelEmpty(fUnit) : false;   // [keiei P1] 燃料切れ＝トラックも動けない
+      if (keys.left && !_noFuel) game.myaw += TURN * dt;   // [親方FB] 左キー=左旋回（符号は表示と一致するよう反転）
+      if (keys.right && !_noFuel) game.myaw -= TURN * dt;   // [親方FB] 右キー=右旋回
       const drive = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
-      if (drive !== 0) {
+      if (drive !== 0 && !_noFuel) {
         const sp = stats.moveSpeed * TRUCK_SPEED_BOOST * (1 - 0.45 * (game.blade / Math.max(1, cap))) * (drive < 0 ? 0.7 : 1);   // [親方FB] トラックは+30%・積むほど遅い・後退遅め
         const fwd = [Math.sin(game.myaw), Math.cos(game.myaw)], half = WORLD / 2 - 0.6;
         const cx = Math.max(-half, Math.min(half, game.mx + fwd[0] * sp * dt * drive)), cz = Math.max(-half, Math.min(half, game.mz + fwd[1] * sp * dt * drive));
         if (canStand(cx, cz)) { game.mx = cx; game.mz = cz; } else if (canStand(cx, game.mz)) game.mx = cx; else if (canStand(game.mx, cz)) game.mz = cz;
       }
-      const dumping = acting && game.blade > 0.0001 && !game.won;
+      const dumping = acting && game.blade > 0.0001 && !game.won && !_noFuel;
       truckTilt = Math.max(0, Math.min(1, truckTilt + (dumping ? dt * 3 : -dt * 3)));   // ダンプアップ動作
+      if (fUnit && !game.won && (drive !== 0 || dumping)) useFuel(fUnit, fuelRate(M) * (dumping ? 1 : FUEL_MOVE) * dt);   // [keiei P1] トラックの燃料消費
       if (dumping) {   // 下ろす：荷台の土を車体後方へ放出（荷台を持ち上げながら）
         const s = Math.sin(game.myaw), c = Math.cos(game.myaw), fx = game.mx - s * 3.2, fz = game.mz - c * 3.2;
         const ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(game.blade, 45 * dt);
@@ -1567,7 +1596,7 @@
     }
     function updateDozer(dt) {
       let autoActed = false;
-      for (let pi = 0; pi < parked.length; pi++) { const p = parked[pi]; const k = machineKind(machineById(p.id)); if (p.auto && !game.won && k !== 'backhoe' && k !== 'truck') { if (updateAutoUnit(p, dt)) autoActed = true; } else { p.model.position.y = sampleHeight(p.x, p.z); if (k === 'truck') setTruckBed(p.model.userData, p.blade || 0, machineById(p.id).bladeCap, 0); } }   // 停車中：作業ON=自動整地／通常=地面追従＋トラック荷台表示[親方FB/batch4]
+      for (let pi = 0; pi < parked.length; pi++) { const p = parked[pi]; const k = machineKind(machineById(p.id)); if (p.auto && !game.won && k !== 'backhoe' && k !== 'truck') { const fu = unitById(p.u); if (fu && fuelEmpty(fu)) { p.model.position.y = sampleHeight(p.x, p.z); } else { if (updateAutoUnit(p, dt)) autoActed = true; if (fu) useFuel(fu, fuelRate(machineById(p.id)) * FUEL_AUTO * dt); } } else { p.model.position.y = sampleHeight(p.x, p.z); if (k === 'truck') setTruckBed(p.model.userData, p.blade || 0, machineById(p.id).bladeCap, 0); } }   // 停車中：作業ON=自動整地（燃料消費・空なら停止[keiei P1]）／通常=地面追従＋トラック荷台表示[親方FB/batch4]
       if (autoActed) syncGeometry();   // 監督モードで地形が変わった→反映
       { let ri = 0; for (let pi = 0; pi < parked.length && ri < autoRings.length; pi++) { const p = parked[pi]; if (!p.auto || !isAutoGrader(p.id)) continue; const cx = (p.tx != null) ? p.tx : (p.homeX != null ? p.homeX : p.x), cz = (p.tz != null) ? p.tz : (p.homeZ != null ? p.homeZ : p.z); const r = autoRings[ri++]; r.position.set(cx, sampleHeight(cx, cz) + 0.08, cz); r.material.opacity = 0.26 + 0.14 * Math.sin(selRingT * 4); } for (; ri < autoRings.length; ri++) autoRings[ri].position.y = -999; }   // [v2] 作業範囲リング（作業中の重機の中心に緑リング）
       // [親方FB C1] 操作中の乗り物の足元に光る輪を追従＋ゆっくり明滅（重機もトラックも game.mx に居る）
@@ -1578,12 +1607,13 @@
       selRing.scale.set(_rscale, _rscale, _rscale);
       selRing.position.set(game.mx, sampleHeight(game.mx, game.mz) + 0.06, game.mz);
       if (machineKind(curM()) === 'truck') { updateActiveTruck(dt); return; }   // 操作中がトラック＝トラック運転（走る＋押すでダンプ）
+      const fUnit = activeUnit(), _noFuel = fUnit ? fuelEmpty(fUnit) : false;   // [keiei P1] 燃料切れ＝旋回/移動/作業とも動けない（給油で復帰）
       // 実際の重機式の操作：左右＝その場で旋回（向きを変える）／上＝前進・下＝後退（向いてる方向のまま）
       const TURN = 1.8; // 旋回速度(rad/s)
-      if (keys.left) game.myaw += TURN * dt;   // [親方FB] 左キー=左旋回（符号は表示と一致するよう反転）
-      if (keys.right) game.myaw -= TURN * dt;   // [親方FB] 右キー=右旋回
-      let moving = false; const reversing = keys.down && !keys.up; const drive = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
-      if (drive !== 0) {
+      if (keys.left && !_noFuel) game.myaw += TURN * dt;   // [親方FB] 左キー=左旋回（符号は表示と一致するよう反転）
+      if (keys.right && !_noFuel) game.myaw -= TURN * dt;   // [親方FB] 右キー=右旋回
+      let moving = false, worked = false; const reversing = keys.down && !keys.up; const drive = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
+      if (drive !== 0 && !_noFuel) {
         const M = effectiveStats(curM()); // 強化倍率を反映（移動速さ）
         const carryW = (machineKind(curM()) !== 'backhoe' && game.blade > 0.01) ? Math.max(0.35, 1 - game.blade / M.bladeCap) : 1; // 土を持つほど重い（本物ブル・積むほど遅い）
         const fwd = [Math.sin(game.myaw), Math.cos(game.myaw)]; // 機体の前方向
@@ -1607,19 +1637,20 @@
         if (acting && !prevActing) { bhMode = (game.bucket < 0.05) ? 'dig' : 'dump'; updateActLabel(); }   // 押し始めに固定（空→掘る/土あり→下ろす）
         else if (!acting && bhMode !== null) { bhMode = null; updateActLabel(); }
         const cap = effectiveStats(curM()).bladeCap; let action = null;
-        if (acting && !game.won && bhMode === 'dig' && game.bucket < cap) { backhoeDig(dt); action = 'dig'; }
-        else if (acting && !game.won && bhMode === 'dump' && game.bucket > 0.0001) { backhoeDump(dt); action = 'dump'; }
+        if (acting && !game.won && !_noFuel && bhMode === 'dig' && game.bucket < cap) { backhoeDig(dt); action = 'dig'; worked = true; }
+        else if (acting && !game.won && !_noFuel && bhMode === 'dump' && game.bucket > 0.0001) { backhoeDump(dt); action = 'dump'; worked = true; }
         animateArm(dt, action); pushing = false;
         if (activeArm && activeArm.load) { const lb = activeArm.loadBase, pf = Math.min(1, game.bucket / cap), f = 0.5 + 0.55 * pf; activeArm.load.visible = game.bucket > 0.05; activeArm.load.scale.set(lb.x * f, lb.y * f, lb.z * f); }   // バケット内の土を量に応じて表示[親方FB]
       } else {
         if (acting && moving && !reversing && !game.won) {
           if (!pushing) { pushing = true; cutHeight = sampleHeight(game.mx, game.mz); } // 押し始めの足元の高さを基準に固定（本物ブル・前進時のみ整地）
-          gradePush(dt);
+          gradePush(dt); worked = true;
         } else if (!acting && moving && !game.won && game.blade > 0.01) {
-          pushing = false; bladeUnload(dt);   // ならすを離して移動中（前進でも後退でも）＝持ってる土を少しずつ前へ置く（本物ブル・親方FB）
+          pushing = false; bladeUnload(dt); worked = true;   // ならすを離して移動中（前進でも後退でも）＝持ってる土を少しずつ前へ置く（本物ブル・親方FB）
         } else pushing = false;
         animateArm(dt, null);   // 非バックホウ時は腕を待機（表示中の腕がないので無害）
       }
+      if (fUnit && !game.won && (moving || worked)) useFuel(fUnit, fuelRate(curM()) * (worked ? 1 : FUEL_MOVE) * dt);   // [keiei P1] 操作機の燃料消費：作業=フル／移動のみ=6割
       prevActing = acting;
       if (digPulse > 0) {
         digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32;
@@ -1637,6 +1668,8 @@
     // ===================== HUD・クリア判定・レベル進行 =====================
     const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge"), elevEl = document.getElementById("elev");
     const workBadge = document.getElementById("b-work"), basinBadge = document.getElementById("b-main"), barEl = document.querySelector("#bar > i"), machineBtn = document.getElementById("machineBtn");
+    const fuelEl = document.getElementById("fuel"), fuelBadge = document.getElementById("fuel-badge");   // [keiei P1] 燃料バッジ（タップ=操作機に給油）
+    fuelBadge.addEventListener("click", function () { refuelUnit(game.driveU); });
     function drainOf(z, w0) { return w0 > 0 ? Math.max(0, Math.min(1, 1 - zoneVol(z) / w0)) : 0; }
     function levelDone() {
       if (LV.type === 'drain') return drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev && zoneVol(LV.B) >= LV.tB;
@@ -1653,6 +1686,7 @@
         else { kEl.textContent = '+' + Math.floor(kokiOver); kL.textContent = '工期 超過'; kb.style.background = '#d23b3b'; kb.style.color = '#fff'; }
       }
       const M = curM(); const carry = (machineKind(M) === 'backhoe') ? game.bucket : game.blade; const cCap = M.bladeCap; bladeEl.textContent = carry.toFixed(1); bladeCapEl.textContent = cCap; bladeBadge.classList.toggle("over", carry > cCap + 0.01);   // トラック/ブル=荷台・ブレード(game.blade)／バックホウ=バケット[親方FB]
+      { const fu = activeUnit(); if (fu) { const pct = Math.round(fuelOf(fu) / fuelCap(M) * 100); fuelEl.textContent = pct; fuelBadge.classList.toggle("low", pct <= 20); } }   // [keiei P1] 操作機の燃料%（20%以下で赤）
       { const _st = levelSteps(), _gs = document.getElementById('goal-steps'); if (_gs) { if (_st) { _gs.style.display = ''; _gs.innerHTML = _st.map(function (s) { return '<span class="stp' + (s.d ? ' done' : '') + '">' + (s.d ? '☑ ' : '☐ ') + s.l + '</span>'; }).join('<span class="stp-arrow">→</span>'); } else { _gs.style.display = 'none'; _gs.innerHTML = ''; } } }   // [batch3] 工程チェックリスト描画
       if (LV.type === 'haul') {   // 大規模造成＝掘削%(b-work) と 埋立 m³(b-main) の2目標
         const exc = zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol), dig = LV.A0exc > 0 ? Math.max(0, Math.min(1, 1 - exc / LV.A0exc)) : 1;
@@ -1967,7 +2001,7 @@
     }
     function sanitizeFleet(arr) {   // セーブから読んだfleetを検証（機種妥当・u正・lv 0..MAX）。空ならdozer1台を保証
       const out = []; let mu = 0;
-      if (Array.isArray(arr)) for (let i = 0; i < arr.length; i++) { const f = arr[i]; if (!f || !isValidMachineId(f.id)) continue; let u = f.u | 0; if (u <= 0) u = mu + 1; let lv = f.lv | 0; if (lv < 0) lv = 0; if (lv > UPG_MAX) lv = UPG_MAX; out.push({ u: u, id: f.id, lv: lv }); if (u > mu) mu = u; }
+      if (Array.isArray(arr)) for (let i = 0; i < arr.length; i++) { const f = arr[i]; if (!f || !isValidMachineId(f.id)) continue; let u = f.u | 0; if (u <= 0) u = mu + 1; let lv = f.lv | 0; if (lv < 0) lv = 0; if (lv > UPG_MAX) lv = UPG_MAX; const o = { u: u, id: f.id, lv: lv }; if (typeof f.fuel === 'number' && isFinite(f.fuel)) o.fuel = Math.max(0, Math.min(fuelCap(machineById(f.id)), f.fuel)); out.push(o); if (u > mu) mu = u; }   // [keiei P1] fuelも復元（無い旧セーブ＝満タン扱い）
       if (!out.length) out.push({ u: 1, id: 'dozer', lv: 0 });
       if (!out.some(function (f) { return f.id === 'dozer'; })) { mu++; out.unshift({ u: mu, id: 'dozer', lv: 0 }); }
       return out;
@@ -2048,12 +2082,15 @@
       const statusTag = st === 'active' ? '<span class="mc-tag cur">使用中</span>' : st === 'field' ? '<span class="mc-tag field">現場に居る</span>' : '<span class="mc-tag">待機中</span>';
       const lvTag = '<span class="mc-lv">' + (lv >= UPG_MAX ? '強化MAX' : '強化Lv' + lv) + '</span>';
       const idxTag = ord ? ord + '台目 ' : '';
+      const fpct = Math.round(fuelOf(f) / fuelCap(m) * 100), fcost = refuelCost(f);   // [keiei P1] 燃料%と給油費
+      const fuelTag = '<span class="mc-lv"' + (fpct <= 20 ? ' style="color:#c22020"' : '') + '>⛽' + fpct + '%</span>';
       let acts = '';
+      if (fcost > 0) acts += (game.money >= fcost) ? '<button class="g-btn fuel" data-refuel="' + f.u + '">⛽給油<br><small>' + fcost + '万円</small></button>' : '<button class="g-btn ng" disabled>⛽給油<br><small>' + fcost + '万円</small></button>';   // [keiei P1] 満タンで非表示
       if (lv < UPG_MAX) { const c = upgCost(m, lv); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
       else acts += '<button class="g-btn maxed" disabled>強化MAX</button>';
       if (st === 'field') acts += '<button class="g-btn recall" data-recall="' + f.u + '">🧹回収</button>';
       const _k = machineKind(m); if (st === 'field' && _k !== 'backhoe' && _k !== 'truck') { const pk = parked.find(function (x) { return x.u === f.u; }); const on = pk && pk.auto; acts += '<button class="g-btn auto' + (on ? ' on' : '') + '" data-auto="' + f.u + '">🚧' + (on ? '作業中■' : '作業ON') + '</button><button class="g-btn dispatch" data-dispatch="' + f.u + '">🎯派遣</button>'; }   // [batch4/v2] 監督モード：自動整地ON/OFF＋地点指定派遣
-      return '<div class="g-card mc-unit' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + idxTag + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
+      return '<div class="g-card mc-unit' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + idxTag + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + ' ' + fuelTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
     }
     function renderChooserInto(listEl, isTruck) {   // listEl に「左=待機中 / 右=出動中」の2列を描く（isTruck=トラック窓か）
       const fleet = game.fleet.filter(function (f) { return isTruckUnit(f) === isTruck; });
@@ -2104,6 +2141,8 @@
     function chooserCardClick(e, isTruck) {   // 1台タップの共通処理（isTruck=どちらの窓か）
       const reRender = isTruck ? renderTruckChooser : renderMachineChooser;
       const winEl = isTruck ? tchooserEl : mchooserEl, showNote = isTruck ? tcShowNote : mcShowNote;
+      const rf = e.target.closest ? e.target.closest('[data-refuel]') : null;
+      if (rf) { refuelUnit(+rf.dataset.refuel); reRender(); return; }   // [keiei P1] その1台に給油
       const upg = e.target.closest ? e.target.closest('[data-upg]') : null;
       if (upg) { buyUnitUpgrade(+upg.dataset.upg); reRender(); return; }   // その1台だけ強化
       const rec = e.target.closest ? e.target.closest('[data-recall]') : null;
@@ -2261,6 +2300,7 @@
       buyUnit: (id) => { const m = machineById(id); game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); checkAchievements(); return f.u; },
       migrate: (s) => buildFleetFromSave(s),
       getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
+      fuelOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? +fuelOf(f).toFixed(3) : null; }, setFuel: (u, v) => { const f = unitById(u == null ? game.driveU : u); if (f) f.fuel = v; refreshHUD(); }, fuelCapOf: (id) => fuelCap(machineById(id || game.machine)), fuelRateOf: (id) => fuelRate(machineById(id || game.machine)), refuel: (u) => refuelUnit(u == null ? game.driveU : u), refuelCostOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? refuelCost(f) : null; }, FUEL_PRICE: FUEL_PRICE, FUEL_MOVE: FUEL_MOVE, FUEL_AUTO: FUEL_AUTO,   // [keiei P1] 燃料検証用
       effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
