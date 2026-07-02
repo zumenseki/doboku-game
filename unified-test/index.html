@@ -36,6 +36,10 @@
   #money-badge .v { color:#b8860b; }
   #blade-badge .v { color:#7a5a2a; } #blade-badge.over { background:#ffd6d6; }
   #fuel-badge .v { color:#2a6a3a; } #fuel-badge.low { background:#ffd6d6; } #fuel-badge.low .v { color:#c22020; }
+  #fuel-badge { pointer-events:auto; cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:manipulation; }   /* [親方FB] #hud-topがpointer-events:noneで押せなかった→バッジ単体で復活＝押すと給油 */
+  #fuel-badge:active { transform:scale(.93); }
+  #fuel-badge .fb-go { display:inline-block; background:#2d9c4a; color:#fff; border-radius:8px; padding:1px 8px; margin-left:6px; font-size:10.5px; font-weight:800; vertical-align:1px; }
+  #fuel-badge.low .fb-go { background:#c22020; animation:badgePulse .9s ease infinite; }
   .badge.done { background:#cdeccd; }
   #garage { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
   #garage.show { display:flex; animation:fade .3s ease; }
@@ -236,7 +240,7 @@
     <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
     <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
     <div class="badge" id="blade-badge">🪣 <span class="v" id="blade">0</span><small>/<span id="bladeCap">12</span> m³</small></div>
-    <div class="badge" id="fuel-badge">⛽ <span class="v" id="fuel">100</span><small>%</small></div>
+    <div class="badge" id="fuel-badge">⛽ <span class="v" id="fuel">100</span><small>%</small><b class="fb-go">給油</b></div>
     <div class="badge" id="crew-badge" style="display:none">👷 <span class="v" id="crew">0</span><small>人 <span id="crewWage">0</span>万/日</small></div>
     <div class="badge" id="elev-badge">⛰<span class="v" id="elev">0.0</span><small>m</small></div>
     <div class="badge" id="koki-badge" style="display:none">⏳ <span id="kokiLabel">工期</span> <span class="v" id="koki">0</span><small>日</small></div>
@@ -1625,7 +1629,7 @@
       bladePile.position.y = -999;
     }
     // ===================== 監督モード[batch4/v2]：待機重機に「作業ON/🎯派遣」→自動で整地（削った土は自分の荷台p.bladeへ＝総量厳密保存） =====================
-    const AUTO_SPEED = 0.42, AUTO_PATROL = 4.6;   // 自動運転の速さ（操作機の約4割）と作業(往復)半径(m)
+    const AUTO_SPEED = 0.62, AUTO_PATROL = 4.6;   // 自動運転の速さ（操作機の約6割・[親方FB]0.42→0.62=自動化の仕事量UP）と作業(往復)半径(m)
     let pendingDispatchU = null;   // [v2] 「🎯派遣」で地面タップ待ちの重機u
     const autoRings = (function () {   // [v2] 監督モードの作業範囲リング（作業中の重機の中心に表示）
       const arr = [];
@@ -1687,7 +1691,68 @@
       if (!g || u == null || !dispatchUnit(u, g.x, g.z)) { setHint('派遣をキャンセルしました'); return; }
       SND.click(); tryVibrate(15); setHint('🚧 その場所へ派遣しました');
     }
-    function autoGradeCells(p, dt) {   // gradePush一般化：p足元基準cutHで高い土を削りp.bladeへ / 低い所へp.bladeから埋める。土は heights＋p.blade で厳密保存。changedを返す。
+    function goalHeightAt(i, j) {   // [親方FB 自動化を意味あるものに] そのセルの「レベル目標の高さ」。目標が無い所は null（=従来の足元基準）
+      if (!LV) return null;
+      if (LV.type === 'grade' && LV.A && inRect(i, j, LV.A)) return LV.gradeTarget;          // 整地=目標高さへ
+      if (LV.type === 'level' && LV.A && inRect(i, j, LV.A)) return LV.subFloor;             // 掘り取り=床の高さへ
+      if (LV.type === 'haul') {
+        if (LV.A && inRect(i, j, LV.A)) return LV.digRef;                                    // 造成=山ゾーンは掘り下げ基準へ
+        if (LV.B && inRect(i, j, LV.B)) return LV.fillRef;                                   // 造成=埋めゾーンは埋め基準へ
+      }
+      return null;
+    }
+    function goalZoneOf(x, z) {   // [親方FB] その地点が属する「目標ゾーン」のrect（無ければnull）
+      if (!LV) return null;
+      const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID)));
+      if ((LV.type === 'grade' || LV.type === 'level') && LV.A && inRect(i, j, LV.A)) return LV.A;
+      if (LV.type === 'haul') { if (LV.A && inRect(i, j, LV.A)) return LV.A; if (LV.B && inRect(i, j, LV.B)) return LV.B; }
+      return null;
+    }
+    function zoneHasIncomingTruck(p) {   // [親方FB] 自分の作業ゾーンへ運搬中（捨て場がこのゾーン内）の自動トラックが居るか＝土待ちすべきか
+      const cx0 = (p.tx != null) ? p.tx : p.x, cz0 = (p.tz != null) ? p.tz : p.z;
+      const Z = goalZoneOf(cx0, cz0); if (!Z) return false;
+      for (let k = 0; k < parked.length; k++) {
+        const q = parked[k];
+        if (!q.auto || !q.dumpTarget || machineKind(machineById(q.id)) !== 'truck') continue;
+        const qi = Math.max(0, Math.min(GRID, Math.round((q.dumpTarget.x / WORLD + 0.5) * GRID))), qj = Math.max(0, Math.min(GRID, Math.round((q.dumpTarget.z / WORLD + 0.5) * GRID)));
+        if (inRect(qi, qj, Z)) return true;
+      }
+      return false;
+    }
+    function nextGoalSpot(p) {   // [親方FB] 同じゾーン内で「まだ目標とズレている・今の作業円の外で一番近い」次の仕事場
+      const cx0 = (p.tx != null) ? p.tx : p.x, cz0 = (p.tz != null) ? p.tz : p.z;
+      const Z = goalZoneOf(cx0, cz0); if (!Z) return null;
+      let best = null, bd = 1e9;
+      for (let j = Z.j0; j <= Z.j1; j++) for (let i = Z.i0; i <= Z.i1; i++) {
+        const idx = j * V + i; if (waterD[idx] > WATER_EPS) continue;
+        const gh = goalHeightAt(i, j); if (gh == null) continue;
+        if (Math.abs(heights[idx] - gh) <= 0.08) continue;   // ほぼ目標＝完了セル
+        const x = worldX(i), z = worldZ(j);
+        if (Math.hypot(x - cx0, z - cz0) < AUTO_PATROL * 0.9) continue;   // 今やって停滞した円内は除外（無限ループ防止）
+        const d = Math.hypot(x - p.x, z - p.z);
+        if (d < bd) { bd = d; best = { x: x, z: z }; }
+      }
+      return best;
+    }
+    function graderSpoil(p) {   // [親方FB] 行き場のない土(blade)を目標ゾーンの外の近くへ置く（残土処理）。heights↔p.bladeのみ=土量保存。置けたらtrue
+      if ((p.blade || 0) <= 0.5) return false;
+      let bx = null, bz = null, bd = 1e9;
+      const half = WORLD / 2 - 1;
+      for (let a = 0; a < 12; a++) for (let rr = 3; rr <= 9; rr += 2) {
+        const ang = p.yaw + a * (Math.PI / 6), x = p.x + Math.sin(ang) * rr, z = p.z + Math.cos(ang) * rr;
+        if (Math.abs(x) >= half || Math.abs(z) >= half) continue;
+        const i = Math.round((x / WORLD + 0.5) * GRID), j = Math.round((z / WORLD + 0.5) * GRID);
+        if (goalHeightAt(i, j) != null) continue;   // 目標ゾーン内には捨てない
+        if (sampleWater(x, z) > 0.001) continue;    // 水の上にも捨てない
+        if (rr < bd) { bd = rr; bx = x; bz = z; }
+      }
+      if (bx == null) return false;
+      const ceil = Math.min(MAX_H, sampleHeight(bx, bz) + 2.5);
+      const left = depositInto(bx, bz, 2.0, p.blade, ceil);
+      const placed = p.blade - left; p.blade = Math.max(0, left);
+      return placed > 0.001;
+    }
+    function autoGradeCells(p, dt) {   // gradePush一般化。基準=レベル目標(goalHeightAt)＞無ければ足元cutH。高い土をp.bladeへ/低い所へ埋める。土は heights＋p.blade で厳密保存。changedを返す。
       const M = machineById(p.id), RAD = M.digRadius, cap = M.bladeCap, FOOT2 = 0.9 * 0.9;
       const cutH = (p.cutH != null) ? p.cutH : sampleHeight(p.x, p.z);
       const fx = p.x + Math.sin(p.yaw) * 1.2, fz = p.z + Math.cos(p.yaw) * 1.2;
@@ -1696,7 +1761,8 @@
         const dx = vx[idx] - fx, dz = vz[idx] - fz, d2 = dx * dx + dz * dz; if (d2 >= RAD * RAD) continue;
         const fdx = vx[idx] - p.x, fdz = vz[idx] - p.z; if (fdx * fdx + fdz * fdz < FOOT2) continue;   // 足元は触らない（沈み防止）
         if (waterD[idx] > WATER_EPS) continue;   // 自動は水中に触れない（水位保存を乱さない）
-        const over = heights[idx] - cutH;
+        const gh = goalHeightAt(idx % V, (idx / V) | 0);   // [親方FB] 目標ゾーン内は目標高さに向かって働く＝自動でクリアが進む
+        const over = heights[idx] - ((gh != null) ? gh : cutH);
         const step = M.digRate * dt * Math.max(0.4, 1 - Math.sqrt(d2) / RAD);
         if (over > 0.01) { const room = cap - blade; if (room <= 0.0001) continue; const cut = Math.min(over, step, room / CELL_AREA); if (cut > 0) { heights[idx] -= cut; blade += cut * CELL_AREA; changed = true; } }
         else if (over < -0.01 && blade > 0) { const fill = Math.min(-over, step, blade / CELL_AREA); if (fill > 0) { heights[idx] += fill; blade -= fill * CELL_AREA; changed = true; } }
@@ -1721,9 +1787,26 @@
       }
       if (Math.abs(nx) < half && Math.abs(nz) < half && canStand(nx, nz)) { p.x = nx; p.z = nz; }
       const ch = autoGradeCells(p, dt);
-      if ((p.blade || 0) > 0.3) { const tk = nearestWorkerTruck(p.x, p.z); if (tk) autoLoadTruck(p, tk, M, dt); }   // [v4] ブレードに土を持っていて近くに運搬トラックが居れば荷台へ積む（地形不変・ローダー動作）
+      let gaveTruck = false, spoiled = false;
+      if ((p.blade || 0) > 0.3) { const tk = nearestWorkerTruck(p.x, p.z); if (tk) gaveTruck = autoLoadTruck(p, tk, M, dt); }   // [v4] ブレードに土を持っていて近くに運搬トラックが居れば荷台へ積む（地形不変・ローダー動作）
+      if (!gaveTruck && (p.blade || 0) >= M.bladeCap * 0.92) { if (graderSpoil(p)) spoiled = true; }   // [親方FB] 満杯間近＝即ゾーン外へ残土処理（詰まらず削り続ける）
+      if (dCenter <= AUTO_PATROL) {   // [親方FB] この場が進まない→①満杯ならゾーン外へ残土処理→②ゾーン内の次のズレ地点へ自走→③どこにも無ければ停止
+        if (ch || gaveTruck) { p.gStall = 0; p.gHops = 0; }
+        else {
+          p.gStall = (p.gStall || 0) + dt;
+          if (p.gStall >= 4) {
+            if ((p.blade || 0) > 0.5 && graderSpoil(p)) { spoiled = true; p.gStall = 0; }   // 残土をゾーン外へ→また削れる
+            else if (zoneHasIncomingTruck(p)) { p.gStall = 0; p.gHops = 0; }   // [親方FB] このゾーンへ運搬中のトラックが居る=土待ち（帰らない・届いたら均す）
+            else {
+              const nxt = ((p.gHops || 0) < 8) ? nextGoalSpot(p) : null;   // 進捗なし移動は8回まで（手詰まりの無限行脚防止）
+              if (nxt) { p.tx = nxt.x; p.tz = nxt.z; p.homeX = nxt.x; p.homeZ = nxt.z; p.gStall = 0; p.gHops = (p.gHops || 0) + 1; }
+              else { p.auto = false; p.tx = null; p.tz = null; p.gStall = 0; p.gHops = 0; setHint('🚧 ' + M.name + ' が整地を終えて停止しました'); }
+            }
+          }
+        }
+      } else p.gStall = 0;
       p.model.position.set(p.x, sampleHeight(p.x, p.z), p.z); p.model.rotation.y = p.yaw;
-      return ch;
+      return ch || spoiled;
     }
     // ===================== 監督モードv3: 自動バックホウ（掘る→旋回→ダンプの自律サイクル・設計書=自動バックホウ_設計.md）=====================
     // 土は必ず heights↔p.bucket の間だけで移動（総量厳密保存）。水セルは掘らない/埋めない。移動なし=その場旋回照準のみ。
@@ -1732,7 +1815,7 @@
     function bhTurn(p, want, dt) {   // 目標方向へ旋回。到達(±0.1rad)でtrue
       let da = want - p.yaw; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
       if (Math.abs(da) <= 0.1) return true;
-      const step = 1.8 * dt; p.yaw += Math.max(-step, Math.min(step, da));
+      const step = 2.4 * dt; p.yaw += Math.max(-step, Math.min(step, da));   // [親方FB] 自動の旋回1.8→2.4rad/s=サイクル短縮
       return false;
     }
     function backhoeDigFor(p, dt, M) {   // backhoeDigのp基準一般化（FX/実績/HUD無し・水セル不可・heights→p.bucketのみ）
@@ -1744,9 +1827,10 @@
         const room = cap - bucket; if (room <= 0.0001) break;
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz); if (dist >= RAD) continue;
         if (waterD[idx] > WATER_EPS) continue;   // 自動は水セルを触らない（水量保存）
-        const h = heights[idx]; if (h <= floor + 0.001) continue;
+        const gh = goalHeightAt(idx % V, (idx / V) | 0); const flo = (gh != null && gh > floor) ? gh : floor;   // [親方FB] 目標ゾーンでは目標より深く掘らない＝精度も出る
+        const h = heights[idx]; if (h <= flo + 0.001) continue;
         const step = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
-        const cut = Math.min(h - floor, step * hardCut(idx, M.digRate), room / CELL_AREA);
+        const cut = Math.min(h - flo, step * hardCut(idx, M.digRate), room / CELL_AREA);
         if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; changed = true; }
       }
       p.bucket = Math.min(cap, bucket);
@@ -1762,9 +1846,10 @@
         if (bucket <= 0.0001) break;
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz); if (dist >= RAD) continue;
         if (waterD[idx] > WATER_EPS) continue;   // 水セルへは埋めない
-        const h = heights[idx]; if (h >= ceil - 0.001) continue;
+        const gh = goalHeightAt(idx % V, (idx / V) | 0); const cei = (gh != null && gh < ceil) ? gh : ceil;   // [親方FB] 埋めゾーンでは目標より高く盛らない
+        const h = heights[idx]; if (h >= cei - 0.001) continue;
         const give = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
-        const add = Math.min(give, ceil - h, bucket / CELL_AREA);
+        const add = Math.min(give, cei - h, bucket / CELL_AREA);
         if (add > 0) { heights[idx] = h + add; bucket -= add * CELL_AREA; changed = true; }
       }
       p.bucket = Math.max(0, bucket);
@@ -1848,9 +1933,11 @@
     function truckAutoDump(p, dt) {   // 荷台の土を車体後方の地面へ放出（updateActiveTruckのダンプをp基準に）。土量保存(p.blade→heights)
       if ((p.blade || 0) <= 0.0001) return false;
       const s = Math.sin(p.yaw), c = Math.cos(p.yaw), fx = p.x - s * 3.2, fz = p.z - c * 3.2;
-      const ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(p.blade, 40 * dt);
+      let ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(p.blade, 40 * dt);
+      const gi = Math.max(0, Math.min(GRID, Math.round((fx / WORLD + 0.5) * GRID))), gj = Math.max(0, Math.min(GRID, Math.round((fz / WORLD + 0.5) * GRID)));
+      const gh = goalHeightAt(gi, gj); if (gh != null && gh < ceil) ceil = gh;   // [親方FB] 埋めゾーンへの放土は目標高さまで（盛りすぎない）
       const left = depositInto(fx, fz, 2.1, amt, ceil); p.blade = Math.max(0, p.blade - (amt - left));
-      return true;
+      return (amt - left) > 0.0001;
     }
     function truckStuck(p, dist, dt, why) {   // 進捗ゼロ監視＝6秒近づけなければ安全停止（水/場外の捨て場・詰まり）
       if (p._pd != null && dist >= p._pd - 0.002) p.autoStall += dt; else p.autoStall = 0;
@@ -1891,8 +1978,12 @@
         else if (truckStuck(p, d, dt, '捨て場に着けず')) { setPose(); return false; }
       } else if (p.autoState === 'DUMPING') {
         dumping = p.blade > 0.0001;
-        if (dumping) changed = truckAutoDump(p, dt);
-        if (p.blade <= 0.0001) { p.autoState = 'TO_LOAD'; p.autoStall = 0; p._pd = null; }
+        if (dumping) {
+          changed = truckAutoDump(p, dt);
+          if (changed) p.autoStall = 0;
+          else { p.autoStall += dt; if (p.autoStall >= TRUCK_AUTO_STALL) { p.auto = false; p.autoState = null; p.autoStall = 0; p._pd = null; setHint('🚚 ' + machineById(p.id).name + ' の捨て場がいっぱいになり自動運搬を停止しました'); dumping = false; } }   // [親方FB] 目標高さ到達で置けない→安全停止（無限ダンプ防止）
+        }
+        if (p.auto && p.blade <= 0.0001) { p.autoState = 'TO_LOAD'; p.autoStall = 0; p._pd = null; }
       }
       setPose();
       return changed;
@@ -1980,7 +2071,7 @@
     const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge"), elevEl = document.getElementById("elev");
     const workBadge = document.getElementById("b-work"), basinBadge = document.getElementById("b-main"), barEl = document.querySelector("#bar > i"), machineBtn = document.getElementById("machineBtn");
     const fuelEl = document.getElementById("fuel"), fuelBadge = document.getElementById("fuel-badge");   // [keiei P1] 燃料バッジ（タップ=操作機に給油）
-    fuelBadge.addEventListener("click", function () { refuelUnit(game.driveU); });
+    fuelBadge.addEventListener("click", function () { if (!refuelUnit(game.driveU)) { setHint('⛽ 満タンです'); SND.click(); } });   // [親方FB] 押せば給油（満タンでも無反応にしない）
     function drainOf(z, w0) { return w0 > 0 ? Math.max(0, Math.min(1, 1 - zoneVol(z) / w0)) : 0; }
     function levelDone() {
       if (LV.type === 'drain') return drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev && zoneVol(LV.B) >= LV.tB;
