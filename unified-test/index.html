@@ -1624,6 +1624,14 @@
         SND.click(); tryVibrate(15); setHint('🚧 自動バックホウ開始（🟠掘る→🔵捨てる）');
         return;
       }
+      if (_k === 'truck') {   // [v4] 1タップ=捨て場（放土先）を指定して自動運搬開始
+        const p = parked.find(function (x) { return x.u === u; });
+        pendingDispatchU = null;
+        if (!g || !p) { if (p) setTruckAuto(u, false); setHint('指定をキャンセルしました'); return; }
+        p.dumpTarget = { x: g.x, z: g.z }; p.auto = true; p.autoState = 'TO_LOAD'; p.autoStall = 0; p._pd = null;
+        SND.click(); tryVibrate(15); setHint('🚚 自動運搬開始（作業中の重機の近くへ→積んで→🔵へ放土）');
+        return;
+      }
       pendingDispatchU = null;
       if (!g || u == null || !dispatchUnit(u, g.x, g.z)) { setHint('派遣をキャンセルしました'); return; }
       SND.click(); tryVibrate(15); setHint('🚧 その場所へ派遣しました');
@@ -1662,6 +1670,7 @@
       }
       if (Math.abs(nx) < half && Math.abs(nz) < half && canStand(nx, nz)) { p.x = nx; p.z = nz; }
       const ch = autoGradeCells(p, dt);
+      if ((p.blade || 0) > 0.3) { const tk = nearestWorkerTruck(p.x, p.z); if (tk) autoLoadTruck(p, tk, M, dt); }   // [v4] ブレードに土を持っていて近くに運搬トラックが居れば荷台へ積む（地形不変・ローダー動作）
       p.model.position.set(p.x, sampleHeight(p.x, p.z), p.z); p.model.rotation.y = p.yaw;
       return ch;
     }
@@ -1731,10 +1740,14 @@
           }
         }
       } else if (p.autoState === 'DUMP') {
-        const ch = backhoeDumpFor(p, dt, M);
-        if (ch) { changed = true; p.autoStall = 0; }
+        const tk = nearestWorkerTruck(p.x, p.z);   // [v4] 近くに運搬トラックが居れば地面でなく荷台へ積む（満杯/不在は地面）
+        let moved = false, terr = false;
+        if (tk) moved = autoLoadTruck(p, tk, M, dt);
+        if (!moved) { terr = backhoeDumpFor(p, dt, M); moved = terr; }
+        if (terr) changed = true;
+        if (moved) p.autoStall = 0;
         if ((p.bucket || 0) <= 0.0001) p.autoState = 'SWING_TO_DIG';   // 空→掘りへ
-        else if (!ch) { p.autoStall += dt; if (p.autoStall >= BH_AUTO_STALL) bhAutoStop(p, '捨て先がいっぱいになり'); }
+        else if (!moved) { p.autoStall += dt; if (p.autoStall >= BH_AUTO_STALL) bhAutoStop(p, '捨て先がいっぱいになり'); }
       }
       p.model.position.set(p.x, sampleHeight(p.x, p.z), p.z); p.model.rotation.y = p.yaw;
       return changed;
@@ -1745,12 +1758,107 @@
       for (let i = 0; i < 2; i++) arr.push({ dig: mk(0xe08a2a), dump: mk(0x3a8ae0) });
       return arr;
     })();
+    // ===================== 監督モードv4: 自動運搬トラック（掘っている重機↔捨て場を自動往復・親方GO 2026-07-02）=====================
+    // 作業員を付けたトラックが「積む重機の近くへ→荷台に自動積込→捨て場へ→放土」を繰り返す。土は heights↔重機のバケット/ブレード↔トラックの荷台(p.blade) の間だけで移動＝総量厳密保存。水/場外は回避。
+    const TRUCK_LOAD_RANGE = 3.4, TRUCK_DUMP_RANGE = 2.4, TRUCK_AUTO_SPEED = 0.5, TRUCK_AUTO_STALL = 5;
+    const truckRings = (function () {   // [v4] トラックの捨て場（青リング・同時3台分）
+      const arr = [];
+      for (let i = 0; i < 3; i++) { const r = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.0, 36), new THREE.MeshBasicMaterial({ color: 0x3a8ae0, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false })); r.rotation.x = -Math.PI / 2; r.renderOrder = 2; r.position.y = -999; scene.add(r); arr.push(r); }
+      return arr;
+    })();
+    function isAutoWorkMachine(p) { const k = machineKind(machineById(p.id)); return p.auto && k !== 'truck' && !!workerOfUnit(p.u); }   // 自動作業中の重機（バックホウ/ブル・積込元）
+    function nearestAutoWorkMachine(tp) {   // トラックtpが積みに行く「一番近い自動作業中の重機」
+      let best = null, bd = 1e9;
+      for (let i = 0; i < parked.length; i++) { const p = parked[i]; if (p === tp || !isAutoWorkMachine(p)) continue; const d = Math.hypot(p.x - tp.x, p.z - tp.z); if (d < bd) { bd = d; best = p; } }
+      return best;
+    }
+    function nearestWorkerTruck(x, z) {   // (x,z)近くの「作業員付き・自動ON・空きあり」停車トラック＝自動積込先
+      let best = null, bd = TRUCK_LOAD_RANGE;
+      for (let i = 0; i < parked.length; i++) { const p = parked[i]; if (machineKind(machineById(p.id)) !== 'truck' || !p.auto || !workerOfUnit(p.u)) continue; const cap = machineById(p.id).bladeCap; if ((p.blade || 0) >= cap - 0.05) continue; const d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = p; } }
+      return best;
+    }
+    function autoLoadTruck(src, tk, M, dt) {   // 重機のバケット/ブレード→トラック荷台（土量保存・地形不変）。積めたらtrue
+      const tcap = machineById(tk.id).bladeCap, room = tcap - (tk.blade || 0); if (room <= 0.0001) return false;
+      const key = ((src.bucket || 0) > 0.0001) ? 'bucket' : (((src.blade || 0) > 0.0001) ? 'blade' : null); if (!key) return false;
+      const give = Math.min(src[key], M.digRate * dt, room); if (give <= 0.0001) return false;
+      src[key] -= give; tk.blade = (tk.blade || 0) + give;
+      setTruckBed(tk.model.userData, tk.blade, tcap, tk.tilt || 0);
+      return true;
+    }
+    function truckDriveToward(p, tx, tz, sp, dt) {   // pをtx,tzへ旋回しつつ前進（水/場外/立てない所は回避）。移動前の距離を返す
+      const ddx = tx - p.x, ddz = tz - p.z, dist = Math.hypot(ddx, ddz);
+      const desired = Math.atan2(ddx, ddz); let da = desired - p.yaw; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+      p.yaw += Math.max(-2.2 * dt, Math.min(2.2 * dt, da));
+      const half = WORLD / 2 - 0.6, step = sp * dt;
+      const nx = Math.max(-half, Math.min(half, p.x + Math.sin(p.yaw) * step)), nz = Math.max(-half, Math.min(half, p.z + Math.cos(p.yaw) * step));
+      if (canStand(nx, nz)) { p.x = nx; p.z = nz; } else if (canStand(nx, p.z)) p.x = nx; else if (canStand(p.x, nz)) p.z = nz;
+      return dist;
+    }
+    function truckAutoDump(p, dt) {   // 荷台の土を車体後方の地面へ放出（updateActiveTruckのダンプをp基準に）。土量保存(p.blade→heights)
+      if ((p.blade || 0) <= 0.0001) return false;
+      const s = Math.sin(p.yaw), c = Math.cos(p.yaw), fx = p.x - s * 3.2, fz = p.z - c * 3.2;
+      const ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(p.blade, 40 * dt);
+      const left = depositInto(fx, fz, 2.1, amt, ceil); p.blade = Math.max(0, p.blade - (amt - left));
+      return true;
+    }
+    function truckStuck(p, dist, dt, why) {   // 進捗ゼロ監視＝6秒近づけなければ安全停止（水/場外の捨て場・詰まり）
+      if (p._pd != null && dist >= p._pd - 0.002) p.autoStall += dt; else p.autoStall = 0;
+      p._pd = dist;
+      if (p.autoStall >= 6) { p.auto = false; p.autoState = null; p.autoStall = 0; p._pd = null; p.tilt = 0; setHint('🚚 ' + machineById(p.id).name + ' が' + why + '自動運搬を停止しました'); return true; }
+      return false;
+    }
+    function setTruckAuto(u, on) {   // トラック自動運搬 ON/OFF（要作業員）。ON=捨て場タップ待ちへ
+      const p = parked.find(function (x) { return x.u === u; }); if (!p || machineKind(machineById(p.id)) !== 'truck') return false;
+      if (on && !workerOfUnit(u)) { setHint('👷 自動運搬には作業員の配属が必要です（トラック窓の「👷配属」）'); return false; }
+      p.auto = !!on; p.dumpTarget = null; p.autoState = on ? 'TO_LOAD' : null; p.autoStall = 0; p._pd = null; if (!on) p.tilt = 0;
+      return p.auto;
+    }
+    function updateAutoTruck(p, dt) {   // [v4] 状態機械: TO_LOAD→LOADING→TO_DUMP→DUMPING。戻り値=地形変化(放土時のみ)
+      const M = machineById(p.id), cap = M.bladeCap;
+      p.blade = p.blade || 0; if (p.autoStall == null) p.autoStall = 0; if (p.tilt == null) p.tilt = 0;
+      let changed = false, dumping = false;
+      const setPose = function () { p.tilt = Math.max(0, Math.min(1, p.tilt + (dumping ? dt * 3 : -dt * 3))); p.model.position.set(p.x, sampleHeight(p.x, p.z), p.z); p.model.rotation.y = p.yaw; setTruckBed(p.model.userData, p.blade, cap, p.tilt); };
+      if (!p.dumpTarget) { setPose(); return false; }   // 捨て場未指定＝待機
+      if (!p.autoState) p.autoState = 'TO_LOAD';
+      const sp = M.moveSpeed * TRUCK_SPEED_BOOST * TRUCK_AUTO_SPEED * (1 - 0.45 * (p.blade / Math.max(1, cap)));
+      if (p.autoState === 'TO_LOAD') {
+        if (p.blade >= cap - 0.05) { p.autoState = 'TO_DUMP'; p.autoStall = 0; p._pd = null; }
+        else { const src = nearestAutoWorkMachine(p);
+          if (!src) { if (p.blade > 0.5) { p.autoState = 'TO_DUMP'; } p.autoStall = 0; p._pd = null; }   // 積む重機なし→溜まってれば捨てに/なければ待機
+          else { const d = truckDriveToward(p, src.x, src.z, sp, dt); if (d <= TRUCK_LOAD_RANGE) { p.autoState = 'LOADING'; p.autoStall = 0; p._pd = null; p._lb = p.blade; } else if (truckStuck(p, d, dt, '積み場に近づけず')) { setPose(); return false; } }
+        }
+      } else if (p.autoState === 'LOADING') {
+        const src = nearestAutoWorkMachine(p);
+        if (p.blade > (p._lb || 0) + 0.001) { p.autoStall = 0; }   // 積込進行中はタイムアウトしない
+        p._lb = p.blade;
+        if (p.blade >= cap - 0.05) { p.autoState = 'TO_DUMP'; p.autoStall = 0; p._pd = null; }
+        else if (!src || Math.hypot(src.x - p.x, src.z - p.z) > TRUCK_LOAD_RANGE + 1.2) { p.autoState = (p.blade > 0.5) ? 'TO_DUMP' : 'TO_LOAD'; p.autoStall = 0; p._pd = null; }   // 重機が離れた→溜まってれば捨て/空なら別の重機へ
+        else { p.autoStall += dt; if (p.autoStall >= TRUCK_AUTO_STALL) { p.autoState = (p.blade > 0.5) ? 'TO_DUMP' : 'TO_LOAD'; p.autoStall = 0; p._pd = null; } }   // 供給待ちタイムアウト
+      } else if (p.autoState === 'TO_DUMP') {
+        const d = truckDriveToward(p, p.dumpTarget.x, p.dumpTarget.z, sp, dt);
+        if (d <= TRUCK_DUMP_RANGE) { p.autoState = 'DUMPING'; p.autoStall = 0; p._pd = null; }
+        else if (truckStuck(p, d, dt, '捨て場に着けず')) { setPose(); return false; }
+      } else if (p.autoState === 'DUMPING') {
+        dumping = p.blade > 0.0001;
+        if (dumping) changed = truckAutoDump(p, dt);
+        if (p.blade <= 0.0001) { p.autoState = 'TO_LOAD'; p.autoStall = 0; p._pd = null; }
+      }
+      setPose();
+      return changed;
+    }
     function updateDozer(dt) {
       let autoActed = false;
-      for (let pi = 0; pi < parked.length; pi++) { const p = parked[pi]; const k = machineKind(machineById(p.id)); if (p.auto && !game.won && k !== 'truck') { const fu = unitById(p.u); const bhIdle = (k === 'backhoe') && (!p.digTarget || !p.dumpTarget); if (fu && fuelEmpty(fu)) { p.model.position.y = sampleHeight(p.x, p.z); } else { if ((k === 'backhoe') ? updateAutoBackhoe(p, dt) : updateAutoUnit(p, dt)) autoActed = true; if (fu && !bhIdle) useFuel(fu, fuelRate(machineById(p.id)) * FUEL_AUTO * dt); } } else { p.model.position.y = sampleHeight(p.x, p.z); if (k === 'truck') setTruckBed(p.model.userData, p.blade || 0, machineById(p.id).bladeCap, 0); } }   // 停車中：作業ON=自動整地/自動バックホウ[v3]（燃料消費・空なら停止・指示待ちは消費なし[keiei P1]）／通常=地面追従＋トラック荷台表示[親方FB/batch4]
+      for (let pi = 0; pi < parked.length; pi++) { const p = parked[pi]; const k = machineKind(machineById(p.id));
+        if (p.auto && !game.won && k === 'truck') {   // [v4] 自動運搬トラック：燃料消費は走行/放土中のみ（積込待ちは消費なし）
+          const fu = unitById(p.u);
+          if (fu && fuelEmpty(fu)) { p.model.position.y = sampleHeight(p.x, p.z); setTruckBed(p.model.userData, p.blade || 0, machineById(p.id).bladeCap, p.tilt || 0); }
+          else { if (updateAutoTruck(p, dt)) autoActed = true; const mv = p.dumpTarget && (p.autoState === 'TO_LOAD' || p.autoState === 'TO_DUMP' || p.autoState === 'DUMPING'); if (fu && mv) useFuel(fu, fuelRate(machineById(p.id)) * FUEL_AUTO * dt); }
+        } else if (p.auto && !game.won && k !== 'truck') { const fu = unitById(p.u); const bhIdle = (k === 'backhoe') && (!p.digTarget || !p.dumpTarget); if (fu && fuelEmpty(fu)) { p.model.position.y = sampleHeight(p.x, p.z); } else { if ((k === 'backhoe') ? updateAutoBackhoe(p, dt) : updateAutoUnit(p, dt)) autoActed = true; if (fu && !bhIdle) useFuel(fu, fuelRate(machineById(p.id)) * FUEL_AUTO * dt); } }
+        else { p.model.position.y = sampleHeight(p.x, p.z); if (k === 'truck') setTruckBed(p.model.userData, p.blade || 0, machineById(p.id).bladeCap, p.tilt || 0); } }   // 停車中：作業ON=自動整地/自動バックホウ[v3]/自動運搬[v4]（燃料消費・空なら停止・指示待ちは消費なし[keiei P1]）／通常=地面追従＋トラック荷台表示[親方FB/batch4]
       if (autoActed) syncGeometry();   // 監督モードで地形が変わった→反映
       { let ri = 0; for (let pi = 0; pi < parked.length && ri < autoRings.length; pi++) { const p = parked[pi]; if (!p.auto || !isAutoGrader(p.id)) continue; const cx = (p.tx != null) ? p.tx : (p.homeX != null ? p.homeX : p.x), cz = (p.tz != null) ? p.tz : (p.homeZ != null ? p.homeZ : p.z); const r = autoRings[ri++]; r.position.set(cx, sampleHeight(cx, cz) + 0.08, cz); r.material.opacity = 0.26 + 0.14 * Math.sin(selRingT * 4); } for (; ri < autoRings.length; ri++) autoRings[ri].position.y = -999; }   // [v2] 作業範囲リング（作業中の重機の中心に緑リング）
       { let bi = 0; const _op = 0.3 + 0.14 * Math.sin(selRingT * 4); for (let pi = 0; pi < parked.length && bi < bhRings.length; pi++) { const p = parked[pi]; if (!p.auto || machineKind(machineById(p.id)) !== 'backhoe') continue; const pr = bhRings[bi++]; if (p.digTarget) { pr.dig.position.set(p.digTarget.x, sampleHeight(p.digTarget.x, p.digTarget.z) + 0.08, p.digTarget.z); pr.dig.material.opacity = _op; } else pr.dig.position.y = -999; if (p.dumpTarget) { pr.dump.position.set(p.dumpTarget.x, sampleHeight(p.dumpTarget.x, p.dumpTarget.z) + 0.08, p.dumpTarget.z); pr.dump.material.opacity = _op; } else pr.dump.position.y = -999; } for (; bi < bhRings.length; bi++) { bhRings[bi].dig.position.y = -999; bhRings[bi].dump.position.y = -999; } }   // [v3] 自動バックホウの掘=橙/捨=青リング
+      { let ti = 0; const _op = 0.28 + 0.14 * Math.sin(selRingT * 4); for (let pi = 0; pi < parked.length && ti < truckRings.length; pi++) { const p = parked[pi]; if (!p.auto || machineKind(machineById(p.id)) !== 'truck' || !p.dumpTarget) continue; const r = truckRings[ti++]; r.position.set(p.dumpTarget.x, sampleHeight(p.dumpTarget.x, p.dumpTarget.z) + 0.08, p.dumpTarget.z); r.material.opacity = _op; } for (; ti < truckRings.length; ti++) truckRings[ti].position.y = -999; }   // [v4] 自動運搬トラックの捨て場（青リング）
       // [親方FB C1] 操作中の乗り物の足元に光る輪を追従＋ゆっくり明滅（重機もトラックも game.mx に居る）
       selRingT += dt;
       const _rpulse = Math.sin(selRingT * 5);
@@ -2245,10 +2353,11 @@
       if (lv < UPG_MAX) { const c = upgCost(m, lv); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
       else acts += '<button class="g-btn maxed" disabled>強化MAX</button>';
       if (st === 'field') acts += '<button class="g-btn recall" data-recall="' + f.u + '">🧹回収</button>';
-      const _k = machineKind(m), _wk = workerOfUnit(f.u);   // [keiei P2] 割当作業員（監督モードの必要条件）
-      if (st === 'field' && _k !== 'truck') acts += _wk ? '<button class="g-btn wk" data-unassign="' + f.u + '">👷' + _wk.name + '<br><small>外す</small></button>' : (freeWorker() ? '<button class="g-btn wk" data-assign="' + f.u + '">👷配属</button>' : '<button class="g-btn ng" disabled>👷空きなし</button>');
+      const _k = machineKind(m), _wk = workerOfUnit(f.u);   // [keiei P2] 割当作業員（監督モードの必要条件）。[v4] トラックにも配属可
+      if (st === 'field') acts += _wk ? '<button class="g-btn wk" data-unassign="' + f.u + '">👷' + _wk.name + '<br><small>外す</small></button>' : (freeWorker() ? '<button class="g-btn wk" data-assign="' + f.u + '">👷配属</button>' : '<button class="g-btn ng" disabled>👷空きなし</button>');
       if (st === 'field' && _k !== 'backhoe' && _k !== 'truck') { const pk = parked.find(function (x) { return x.u === f.u; }); const on = pk && pk.auto; acts += !_wk ? '<button class="g-btn ng" disabled>🚧要作業員</button>' : '<button class="g-btn auto' + (on ? ' on' : '') + '" data-auto="' + f.u + '">🚧' + (on ? '作業中■' : '作業ON') + '</button><button class="g-btn dispatch" data-dispatch="' + f.u + '">🎯派遣</button>'; }   // [batch4/v2] 監督モード：自動整地ON/OFF＋地点指定派遣（要作業員[keiei P2]）
       else if (st === 'field' && _k === 'backhoe') { const pk = parked.find(function (x) { return x.u === f.u; }); const on = pk && pk.auto; acts += !_wk ? '<button class="g-btn ng" disabled>🚧要作業員</button>' : (on ? '<button class="g-btn auto on" data-bhauto="' + f.u + '">🚧作業中■</button>' : '<button class="g-btn dispatch" data-bhauto="' + f.u + '">🚧掘って運ぶ</button>'); }   // [v3] 自動バックホウ：ON=2点指定へ／作業中■=停止（要作業員[keiei P2]）
+      else if (st === 'field' && _k === 'truck') { const pk = parked.find(function (x) { return x.u === f.u; }); const on = pk && pk.auto; acts += !_wk ? '<button class="g-btn ng" disabled>🚚要作業員</button>' : (on ? '<button class="g-btn auto on" data-truckauto="' + f.u + '">🚚運搬中■</button>' : '<button class="g-btn dispatch" data-truckauto="' + f.u + '">🚚運搬ON</button>'); }   // [v4] 自動運搬トラック：ON=捨て場タップへ／運搬中■=停止（要作業員）
       return '<div class="g-card mc-unit' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + idxTag + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + ' ' + fuelTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
     }
     function renderChooserInto(listEl, isTruck) {   // listEl に「左=待機中 / 右=出動中」の2列を描く（isTruck=トラック窓か）
@@ -2320,6 +2429,14 @@
         if (pk && pk.auto) { setUnitAuto(uu, false); if (pendingDispatchU === uu) pendingDispatchU = null; SND.click(); reRender(); return; }
         if (!setUnitAuto(uu, true)) { reRender(); return; }   // [keiei P2] 作業員未割当=開始不可（ヒントはsetUnitAuto側）
         pendingDispatchU = uu; winEl.classList.remove("show"); SND.click(); setHint('🟠 ①掘る場所（山）をタップ');
+        return;
+      }
+      const tr = e.target.closest ? e.target.closest('[data-truckauto]') : null;
+      if (tr) {   // [v4] 自動運搬トラック：OFF→ON=捨て場タップ待ちへ／ON→OFF=停止
+        const uu = +tr.dataset.truckauto, pk = parked.find(function (x) { return x.u === uu; });
+        if (pk && pk.auto) { setTruckAuto(uu, false); if (pendingDispatchU === uu) pendingDispatchU = null; SND.click(); reRender(); return; }
+        if (!setTruckAuto(uu, true)) { reRender(); return; }   // 作業員未割当=開始不可（ヒントはsetTruckAuto側）
+        pendingDispatchU = uu; winEl.classList.remove("show"); SND.click(); setHint('🔵 捨てる場所（放土先）をタップ');
         return;
       }
       const c = e.target.closest ? e.target.closest('.g-card') : null; if (!c || !c.dataset || c.dataset.u == null) return;
@@ -2500,6 +2617,8 @@
       setAuto: (u, v) => setUnitAuto(u, v !== false), dispatch: (u, x, z) => dispatchUnit(u, x, z), pendingDispatch: () => pendingDispatchU,
       backhoeAutoState: () => parked.filter((p) => machineKind(machineById(p.id)) === 'backhoe').map((p) => ({ u: p.u, id: p.id, auto: !!p.auto, state: p.autoState || null, bucket: +(p.bucket || 0).toFixed(2), yaw: +p.yaw.toFixed(3), stall: +(p.autoStall || 0).toFixed(2), dig: p.digTarget ? { x: +p.digTarget.x.toFixed(1), z: +p.digTarget.z.toFixed(1) } : null, dump: p.dumpTarget ? { x: +p.dumpTarget.x.toFixed(1), z: +p.dumpTarget.z.toFixed(1) } : null })),   // [v3] 自動バックホウ検証
       bhTargets: (u, dx, dz, px, pz) => { const p = parked.find((x) => x.u === u); if (!p) return false; p.digTarget = { x: dx, z: dz }; p.dumpTarget = { x: px, z: pz }; p.auto = true; p.autoState = 'DIG'; p.autoStall = 0; return true; },   // [v3] テスト用2点指定
+      truckAutoState: () => parked.filter((p) => machineKind(machineById(p.id)) === 'truck').map((p) => ({ u: p.u, id: p.id, auto: !!p.auto, state: p.autoState || null, blade: +(p.blade || 0).toFixed(2), x: +p.x.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), stall: +(p.autoStall || 0).toFixed(2), dump: p.dumpTarget ? { x: +p.dumpTarget.x.toFixed(1), z: +p.dumpTarget.z.toFixed(1) } : null })),   // [v4] 自動運搬トラック検証
+      setTruckAuto: (u, on) => setTruckAuto(u, on !== false), truckTarget: (u, dx, dz) => { const p = parked.find((x) => x.u === u); if (!p) return false; p.dumpTarget = { x: dx, z: dz }; p.auto = true; p.autoState = 'TO_LOAD'; p.autoStall = 0; p._pd = null; return true; },   // [v4] テスト用
       parkedAuto: () => parked.map(function (p) { return { u: p.u, id: p.id, auto: !!p.auto, blade: +(p.blade || 0).toFixed(2), x: +p.x.toFixed(2), z: +p.z.toFixed(2), tx: p.tx != null ? +p.tx.toFixed(2) : null, tz: p.tz != null ? +p.tz.toFixed(2) : null }; }),
       workers: () => JSON.parse(JSON.stringify(game.workers)), hire: () => hireWorker(), fire: (w) => fireWorker(w), assign: (u) => assignWorker(u), unassign: (u) => unassignUnit(u), workerOf: (u) => { const w = workerOfUnit(u); return w ? { w: w.w, name: w.name } : null; }, salaryDay: () => salaryPerDay(), daysVal: () => +levelDays.toFixed(2), setDays: (v) => { levelDays = v; }, WAGE: WAGE, HIRE_FEE: HIRE_FEE,   // [keiei P2] 検証用
       buyUnit: (id) => { const m = machineById(id); game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); checkAchievements(); return f.u; },
