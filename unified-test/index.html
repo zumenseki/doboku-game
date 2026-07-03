@@ -352,7 +352,7 @@
       { id: 'digger', maker: 'hidachi', name: 'ヒダチ EX-450', icon: '⛏️', price: 450, ability: '強力掘削・1押しで深く掘れる＋掘る速さUP（幅は狭め）',
         digRadius: 1.8, digRate: 24, layer: 1.4, moveSpeed: 6.5, bladeCap: 18, color: 0x808890, canEnterWater: false, underwaterFull: false },
       { id: 'hauler', maker: 'caterpia', name: 'キャタピア 963', icon: '🚛', price: 500, ability: '大容量運搬・土をたくさん運べる＋削る幅が広い（移動やや遅め）',
-        digRadius: 2.8, digRate: 18, layer: 0.8, moveSpeed: 6, bladeCap: 30, color: 0xe07a3a, canEnterWater: false, underwaterFull: false },
+        digRadius: 2.8, digRate: 18, layer: 0.8, bladeCap: 90, moveSpeed: 6, color: 0xe07a3a, canEnterWater: false, underwaterFull: false },   // [親方FB 2026-07-03] トラック積載3倍(30→90)
       { id: 'd11', maker: 'caterpia', name: 'キャタピア D-11改', icon: '🦏', price: 800, ability: '超大型ブル・最大の幅＋最大の容量（最高峰だが移動はとても遅い）',
         digRadius: 3.6, digRate: 24, layer: 1.2, moveSpeed: 4.5, bladeCap: 40, color: 0xc25a20, canEnterWater: false, underwaterFull: false },
       { id: 'sk200', maker: 'koveriko', name: 'コベリコ SK-200', icon: '🦾', price: 350, ability: '中型バックホウ・掘りも整地もそこそこのバランス掘削',
@@ -362,7 +362,7 @@
       { id: 'l90', maker: 'borugo', name: 'ボルゴ L-90', icon: '🚚', price: 380, ability: 'ホイールローダー・速く走って土を運ぶ＋そこそこ容量',
         digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 9, bladeCap: 22, color: 0xd03838, canEnterWater: false, underwaterFull: false },
       { id: 'a60', maker: 'borugo', name: 'ボルゴ A-60', icon: '🛻', price: 600, ability: '大型運搬機・最大級の容量で大量に運ぶ（移動は遅い）',
-        digRadius: 2.6, digRate: 18, layer: 0.8, moveSpeed: 5, bladeCap: 50, color: 0xa82828, canEnterWater: false, underwaterFull: false },
+        digRadius: 2.6, digRate: 18, layer: 0.8, bladeCap: 150, moveSpeed: 5, color: 0xa82828, canEnterWater: false, underwaterFull: false },   // [親方FB 2026-07-03] トラック積載3倍(50→150)
       { id: 'sh77', maker: 'sumiken', name: 'スミケン SH-77', icon: '🔧', price: 550, ability: '万能オールラウンダー・幅/深さ/容量/速さが全部そこそこ',
         digRadius: 2.5, digRate: 20, layer: 1.0, moveSpeed: 7, bladeCap: 22, color: 0xc8ccd0, canEnterWater: false, underwaterFull: false },
       { id: 'lsamp', maker: 'sumiken', name: 'スミケン LS-AMP', icon: '🚙', price: 480, ability: '水陸両用・陸も深い水も入れる（水中の掘りは遅め）',
@@ -372,9 +372,9 @@
       { id: 'ymb7', maker: 'yanama', name: 'ヤナマ B7-Sigma', icon: '🪨', price: 700, ability: 'パワー掘削機・深く速く掘れる＋大容量（幅はやや狭め・移動遅め）',
         digRadius: 2.0, digRate: 26, layer: 1.5, moveSpeed: 5.5, bladeCap: 26, color: 0x9a2a2a, canEnterWater: false, underwaterFull: false },
       { id: 'igx250', maker: 'isuzu2', name: 'イスズ GIGA-250', icon: '🛞', price: 250, ability: '小型運搬ダンプ・速く走って土を運ぶ＋積載そこそこ（掘りは浅め）',
-        digRadius: 2.2, digRate: 16, layer: 0.7, moveSpeed: 9.5, bladeCap: 24, color: 0x3a6fb0, canEnterWater: false, underwaterFull: false },
+        digRadius: 2.2, digRate: 16, layer: 0.7, bladeCap: 72, moveSpeed: 9.5, color: 0x3a6fb0, canEnterWater: false, underwaterFull: false },   // [親方FB 2026-07-03] トラック積載3倍(24→72)
       { id: 'igxmax', maker: 'isuzu2', name: 'イスズ GIGA-MAX', icon: '🚒', price: 720, ability: '大型運搬ダンプ・超大容量で大量に運ぶ＋削る幅広め（移動は遅い）',
-        digRadius: 3.0, digRate: 17, layer: 0.8, moveSpeed: 5, bladeCap: 46, color: 0x244f8a, canEnterWater: false, underwaterFull: false }
+        digRadius: 3.0, digRate: 17, layer: 0.8, bladeCap: 138, moveSpeed: 5, color: 0x244f8a, canEnterWater: false, underwaterFull: false }   // [親方FB 2026-07-03] トラック積載3倍(46→138)
     ];
     function machineById(id) { for (let k = 0; k < MACHINES.length; k++) if (MACHINES[k].id === id) return MACHINES[k]; return MACHINES[0]; }
     function curM() { return machineById(game.machine); }
