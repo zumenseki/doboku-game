@@ -339,41 +339,41 @@
     ];
     function makerById(id) { for (let k = 0; k < MAKERS.length; k++) if (MAKERS[k].id === id) return MAKERS[k]; return MAKERS[0]; }
     const MACHINES = [
-      { id: 'dozer', maker: 'komashi', name: 'コマシ D-51', icon: '🚜', price: 100, ability: '標準のブルドーザー',
+      { id: 'dozer', power: 2, maker: 'komashi', name: 'コマシ D-51', icon: '🚜', price: 100, ability: '標準のブルドーザー',
         digRadius: 2.2, digRate: 18, layer: 0.8, moveSpeed: 7, bladeCap: 12, color: 0xf0c020, canEnterWater: false, underwaterFull: false },
-      { id: 'bigdozer', maker: 'komashi', name: 'コマシ D-155', icon: '🏗️', price: 400, ability: '大型ブル・削る幅がとても広い＋整地が速い（移動は遅め）',
+      { id: 'bigdozer', power: 3, maker: 'komashi', name: 'コマシ D-155', icon: '🏗️', price: 400, ability: '大型ブル・削る幅がとても広い＋整地が速い（移動は遅め）',
         digRadius: 3.2, digRate: 22, layer: 0.8, moveSpeed: 5.5, bladeCap: 20, color: 0x8a9a3a, canEnterWater: false, underwaterFull: false },
-      { id: 'mini', maker: 'kuboki', name: 'クボキ U-08', icon: '🛺', price: 150, ability: '高速ミニ・移動がとても速い＋小回り（幅/容量は小さめ）',
+      { id: 'mini', power: 1, maker: 'kuboki', name: 'クボキ U-08', icon: '🛺', price: 150, ability: '高速ミニ・移動がとても速い＋小回り（幅/容量は小さめ）',
         digRadius: 1.5, digRate: 16, layer: 0.8, moveSpeed: 11, bladeCap: 8, color: 0x88dd44, canEnterWater: false, underwaterFull: false },
-      { id: 'kx12', maker: 'kuboki', name: 'クボキ KX-12', icon: '🛠️', price: 220, ability: 'ミニ掘削・小型で機敏＋そこそこ深く掘れる',
+      { id: 'kx12', power: 2, maker: 'kuboki', name: 'クボキ KX-12', icon: '🛠️', price: 220, ability: 'ミニ掘削・小型で機敏＋そこそこ深く掘れる',
         digRadius: 1.6, digRate: 18, layer: 1.1, moveSpeed: 9, bladeCap: 10, color: 0x70c860, canEnterWater: false, underwaterFull: false },
-      { id: 'sub', maker: 'hidachi', name: 'ヒダチ ZX-AQUA', icon: '🤿', price: 300, ability: '水中バックホウ・深い水に入れる＋水中も普通に掘れる',
+      { id: 'sub', power: 2, maker: 'hidachi', name: 'ヒダチ ZX-AQUA', icon: '🤿', price: 300, ability: '水中バックホウ・深い水に入れる＋水中も普通に掘れる',
         digRadius: 2.2, digRate: 18, layer: 0.8, moveSpeed: 6, bladeCap: 12, color: 0x3aa0e0, canEnterWater: true, underwaterFull: true },
-      { id: 'digger', maker: 'hidachi', name: 'ヒダチ EX-450', icon: '⛏️', price: 450, ability: '強力掘削・1押しで深く掘れる＋掘る速さUP（幅は狭め）',
+      { id: 'digger', power: 4, maker: 'hidachi', name: 'ヒダチ EX-450', icon: '⛏️', price: 450, ability: '強力掘削・1押しで深く掘れる＋掘る速さUP（幅は狭め）',
         digRadius: 1.8, digRate: 24, layer: 1.4, moveSpeed: 6.5, bladeCap: 18, color: 0x808890, canEnterWater: false, underwaterFull: false },
-      { id: 'hauler', maker: 'caterpia', name: 'キャタピア 963', icon: '🚛', price: 500, ability: '大容量運搬・土をたくさん運べる＋削る幅が広い（移動やや遅め）',
+      { id: 'hauler', power: 2, maker: 'caterpia', name: 'キャタピア 963', icon: '🚛', price: 500, ability: '大容量運搬・土をたくさん運べる＋削る幅が広い（移動やや遅め）',
         digRadius: 2.8, digRate: 18, layer: 0.8, bladeCap: 90, moveSpeed: 6, color: 0xe07a3a, canEnterWater: false, underwaterFull: false },   // [親方FB 2026-07-03] トラック積載3倍(30→90)
-      { id: 'd11', maker: 'caterpia', name: 'キャタピア D-11改', icon: '🦏', price: 800, ability: '超大型ブル・最大の幅＋最大の容量（最高峰だが移動はとても遅い）',
+      { id: 'd11', power: 5, maker: 'caterpia', name: 'キャタピア D-11改', icon: '🦏', price: 800, ability: '超大型ブル・最大の幅＋最大の容量（最高峰だが移動はとても遅い）',
         digRadius: 3.6, digRate: 24, layer: 1.2, moveSpeed: 4.5, bladeCap: 40, color: 0xc25a20, canEnterWater: false, underwaterFull: false },
-      { id: 'sk200', maker: 'koveriko', name: 'コベリコ SK-200', icon: '🦾', price: 350, ability: '中型バックホウ・掘りも整地もそこそこのバランス掘削',
+      { id: 'sk200', power: 3, maker: 'koveriko', name: 'コベリコ SK-200', icon: '🦾', price: 350, ability: '中型バックホウ・掘りも整地もそこそこのバランス掘削',
         digRadius: 2.0, digRate: 20, layer: 1.2, moveSpeed: 6.5, bladeCap: 14, color: 0x9a5ad0, canEnterWater: false, underwaterFull: false },
-      { id: 'skaqua', maker: 'koveriko', name: 'コベリコ SK-AQUA改', icon: '🌊', price: 650, ability: '大型水中バックホウ・深い水で幅広に掘れる（水中の上位機）',
+      { id: 'skaqua', power: 3, maker: 'koveriko', name: 'コベリコ SK-AQUA改', icon: '🌊', price: 650, ability: '大型水中バックホウ・深い水で幅広に掘れる（水中の上位機）',
         digRadius: 2.6, digRate: 20, layer: 1.0, moveSpeed: 5.5, bladeCap: 18, color: 0x6060c8, canEnterWater: true, underwaterFull: true },
-      { id: 'l90', maker: 'borugo', name: 'ボルゴ L-90', icon: '🚚', price: 380, ability: 'ホイールローダー・速く走って土を運ぶ＋そこそこ容量',
+      { id: 'l90', power: 2, maker: 'borugo', name: 'ボルゴ L-90', icon: '🚚', price: 380, ability: 'ホイールローダー・速く走って土を運ぶ＋そこそこ容量',
         digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 9, bladeCap: 22, color: 0xd03838, canEnterWater: false, underwaterFull: false },
-      { id: 'a60', maker: 'borugo', name: 'ボルゴ A-60', icon: '🛻', price: 600, ability: '大型運搬機・最大級の容量で大量に運ぶ（移動は遅い）',
+      { id: 'a60', power: 2, maker: 'borugo', name: 'ボルゴ A-60', icon: '🛻', price: 600, ability: '大型運搬機・最大級の容量で大量に運ぶ（移動は遅い）',
         digRadius: 2.6, digRate: 18, layer: 0.8, bladeCap: 150, moveSpeed: 5, color: 0xa82828, canEnterWater: false, underwaterFull: false },   // [親方FB 2026-07-03] トラック積載3倍(50→150)
-      { id: 'sh77', maker: 'sumiken', name: 'スミケン SH-77', icon: '🔧', price: 550, ability: '万能オールラウンダー・幅/深さ/容量/速さが全部そこそこ',
+      { id: 'sh77', power: 3, maker: 'sumiken', name: 'スミケン SH-77', icon: '🔧', price: 550, ability: '万能オールラウンダー・幅/深さ/容量/速さが全部そこそこ',
         digRadius: 2.5, digRate: 20, layer: 1.0, moveSpeed: 7, bladeCap: 22, color: 0xc8ccd0, canEnterWater: false, underwaterFull: false },
-      { id: 'lsamp', maker: 'sumiken', name: 'スミケン LS-AMP', icon: '🚙', price: 480, ability: '水陸両用・陸も深い水も入れる（水中の掘りは遅め）',
+      { id: 'lsamp', power: 2, maker: 'sumiken', name: 'スミケン LS-AMP', icon: '🚙', price: 480, ability: '水陸両用・陸も深い水も入れる（水中の掘りは遅め）',
         digRadius: 2.4, digRate: 18, layer: 0.8, moveSpeed: 6.5, bladeCap: 16, color: 0x40b0a0, canEnterWater: true, underwaterFull: false },
-      { id: 'ym30', maker: 'yanama', name: 'ヤナマ ViO-30', icon: '🌱', price: 260, ability: 'コンパクト掘削・後方小旋回でキビキビ＋そこそこ深く掘れる（幅は狭め）',
+      { id: 'ym30', power: 2, maker: 'yanama', name: 'ヤナマ ViO-30', icon: '🌱', price: 260, ability: 'コンパクト掘削・後方小旋回でキビキビ＋そこそこ深く掘れる（幅は狭め）',
         digRadius: 1.7, digRate: 19, layer: 1.2, moveSpeed: 9.5, bladeCap: 9, color: 0xc23838, canEnterWater: false, underwaterFull: false },
-      { id: 'ymb7', maker: 'yanama', name: 'ヤナマ B7-Sigma', icon: '🪨', price: 700, ability: 'パワー掘削機・深く速く掘れる＋大容量（幅はやや狭め・移動遅め）',
+      { id: 'ymb7', power: 5, maker: 'yanama', name: 'ヤナマ B7-Sigma', icon: '🪨', price: 700, ability: 'パワー掘削機・深く速く掘れる＋大容量（幅はやや狭め・移動遅め）',
         digRadius: 2.0, digRate: 26, layer: 1.5, moveSpeed: 5.5, bladeCap: 26, color: 0x9a2a2a, canEnterWater: false, underwaterFull: false },
-      { id: 'igx250', maker: 'isuzu2', name: 'イスズ GIGA-250', icon: '🛞', price: 250, ability: '小型運搬ダンプ・速く走って土を運ぶ＋積載そこそこ（掘りは浅め）',
+      { id: 'igx250', power: 1, maker: 'isuzu2', name: 'イスズ GIGA-250', icon: '🛞', price: 250, ability: '小型運搬ダンプ・速く走って土を運ぶ＋積載そこそこ（掘りは浅め）',
         digRadius: 2.2, digRate: 16, layer: 0.7, bladeCap: 72, moveSpeed: 9.5, color: 0x3a6fb0, canEnterWater: false, underwaterFull: false },   // [親方FB 2026-07-03] トラック積載3倍(24→72)
-      { id: 'igxmax', maker: 'isuzu2', name: 'イスズ GIGA-MAX', icon: '🚒', price: 720, ability: '大型運搬ダンプ・超大容量で大量に運ぶ＋削る幅広め（移動は遅い）',
+      { id: 'igxmax', power: 2, maker: 'isuzu2', name: 'イスズ GIGA-MAX', icon: '🚒', price: 720, ability: '大型運搬ダンプ・超大容量で大量に運ぶ＋削る幅広め（移動は遅い）',
         digRadius: 3.0, digRate: 17, layer: 0.8, bladeCap: 138, moveSpeed: 5, color: 0x244f8a, canEnterWater: false, underwaterFull: false }   // [親方FB 2026-07-03] トラック積載3倍(46→138)
     ];
     function machineById(id) { for (let k = 0; k < MACHINES.length; k++) if (MACHINES[k].id === id) return MACHINES[k]; return MACHINES[0]; }
@@ -393,6 +393,7 @@
       _eff.moveSpeed = M.moveSpeed * UPG_SPD[lv];
       _eff.layer = M.layer; _eff.bladeCap = M.bladeCap;        // 強化対象外（BASE透過）
       _eff.underwaterFull = M.underwaterFull; _eff.id = M.id;
+      _eff.power = effPower(M, lv);   // [親方FB 地質] 実効💪（硬い地盤の掘削速度に効く）
       return _eff;
     }
     function unitLvOf(u) { const f = unitById(u); return f ? Math.max(0, Math.min(UPG_MAX, f.lv | 0)) : 0; }
@@ -401,6 +402,7 @@
       const M = machineById(p.id), lv = unitLvOf(p.u);
       _effU.digRadius = M.digRadius * UPG_RAD[lv]; _effU.digRate = M.digRate * UPG_RATE[lv]; _effU.moveSpeed = M.moveSpeed * UPG_SPD[lv];
       _effU.bladeCap = M.bladeCap; _effU.lv = lv; _effU.id = M.id; _effU.price = M.price;
+      _effU.power = effPower(M, lv);   // [親方FB 地質] 実効💪
       return _effU;
     }
     // ===================== 経営モード Phase1: 軽油（タンク制・親方GO 2026-07-02）=====================
@@ -941,6 +943,7 @@
     scene.add(ground);
     const cLow = new THREE.Color(0xc2a06c), cMid = new THREE.Color(0x9a6e3e), cHigh = new THREE.Color(0x5f3e1e), cWet = new THREE.Color(0x47301c), tmpC = new THREE.Color();  // 土寄せ[親方FB もっと土っぽく]：低=乾いた土/中=茶土/高=濃い掘りたて土/濡れ=黒っぽい泥
     const cRock = new THREE.Color(0x767a80);   // [親方FB] 硬い岩の色（灰色）
+    const cGravel = new THREE.Color(0xcfc4a6);   // [親方FB 地質] 砂利の色（明るい砂色）
     function colorFor(h, wet, out) {
       const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
       if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
@@ -954,7 +957,8 @@
         positions[idx * 3] = vx[idx]; positions[idx * 3 + 1] = heights[idx]; positions[idx * 3 + 2] = vz[idx];
         const wet = waterD[idx] > WATER_EPS;
         colorFor(heights[idx], wet, tmpC);
-        if (hard[idx] > 0) tmpC.lerp(cRock, hard[idx] * 0.72);   // [親方FB] 硬い岩は灰色寄りに
+        if (hard[idx] > 0) tmpC.lerp(cRock, hard[idx] * 0.72);   // [親方FB] 礫=薄い灰/岩=濃い灰（hard値の濃淡）
+        else if (hard[idx] < 0) tmpC.lerp(cGravel, 0.62);        // [親方FB 地質] 砂利=明るい砂色
         // 斜面の急さ（隣マスとの高低差）→急なほど暗く＝掘った断面・法面・盛り土が「土っぽい」陰影に。粒状の濃淡も加算。
         const gi = idx % V, gj = (idx / V) | 0;
         const hl = heights[gi > 0 ? idx - 1 : idx], hr = heights[gi < GRID ? idx + 1 : idx], hd = heights[gj > 0 ? idx - V : idx], hu = heights[gj < GRID ? idx + V : idx];
@@ -1463,15 +1467,28 @@
       const el = document.getElementById('blade-badge');
       if (el) { el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); }
     }
-    // [親方FB] 硬い地盤(岩)の削り速度倍率。強い重機(digRate高)ほど硬岩でも速く・弱いと遅い(下限12%＝詰まらない)。hard[idx]=0なら1(普通土・無影響)。削る時だけ使う＝埋め/土量保存は不変。
-    function hardCut(idx, rate) {
-      const hd = hard[idx]; if (hd <= 0) return 1;
-      const sp = Math.max(0.12, Math.min(0.85, (rate - 14) / 14));   // この重機が硬岩で出せる速度割合（digRate依存・強化でも上がる）
+    // [親方FB 2026-07-03 地質4種＋強さ] 地盤の削り速度倍率。hard: 砂利=-0.35(速い)/土=0(基準)/礫=0.55/岩=0.95。
+    // 重機の💪power(1〜5・強化Lvで+0.4/Lv)が高いほど硬い地盤でも速い。岩: 💪1=0.19倍〜💪5=0.89倍／礫: 💪1=0.53倍〜💪5=0.94倍／砂利: 全機+31%。
+    // 速度だけ変える＝埋め/土量保存は不変。旧digRate式とほぼ同カーブになるようP割り振り済(=既存岩レベル無回帰)。
+    const SOIL_GRAVEL = -0.35, SOIL_DIRT = 0, SOIL_COBBLE = 0.55, SOIL_ROCK = 0.95;
+    function hardCut(idx, power) {
+      const hd = hard[idx];
+      if (hd < 0) return 1 - hd * 0.9;   // 砂利＝掘りやすい（-0.35→1.315倍）
+      if (hd === 0) return 1;            // 土＝基準
+      const sp = Math.max(0.10, Math.min(0.92, 0.15 + (power - 1) * 0.1875));   // この強さで硬地盤に出せる速度割合
       return 1 - hd * (1 - sp);
     }
-    function setHardness(L) {   // [親方FB] レベル定義(hardZone)から硬さを毎回算出（gen と別＝セーブ復元でも岩が残る）
+    function effPower(M, lv) { return (M.power || 2) + Math.max(0, Math.min(UPG_MAX, lv | 0)) * 0.4; }   // 実効💪＝機体の強さ＋強化(Lv5で+2相当)
+    function setHardness(L) {   // [親方FB] レベル定義(hardZone=岩)＋全レベル共通の砂利/礫パッチ（レベル番号から決定的に生成＝リロードでも同じ場所）
       for (let i = 0; i < N; i++) hard[i] = 0;
-      if (L && L.hardZone) { const hv = (L.hardVal != null) ? L.hardVal : 1; zoneEach(L.hardZone, (idx) => { hard[idx] = hv; }); }
+      { let s = (curLevel + 7) * 2654435761 % 2147483647;   // 決定的LCG（Math.random不使用＝セーブ復元でも同配置）
+        const rnd = function () { s = (s * 48271) % 2147483647; return s / 2147483647; };
+        const half = WORLD / 2 - 3;
+        for (let k = 0; k < 4; k++) {   // 砂利2＋礫2パッチ（半径2〜3.5m・面積は控えめ＝バランス影響小）
+          const px = (rnd() * 2 - 1) * half, pz = (rnd() * 2 - 1) * half, pr = 2 + rnd() * 1.5, hv = (k < 2) ? SOIL_GRAVEL : SOIL_COBBLE;
+          for (let idx = 0; idx < N; idx++) { const dx = vx[idx] - px, dz = vz[idx] - pz; if (dx * dx + dz * dz < pr * pr) hard[idx] = hv; }
+        } }
+      if (L && L.hardZone) { const hv = (L.hardVal != null) ? L.hardVal : 1; zoneEach(L.hardZone, (idx) => { hard[idx] = hv; }); }   // 岩は最後＝パッチより優先
     }
     // 押し均し[本物ブル移植 2026-06-25]：押し始めの足元の高さ(cutHeight)を基準に、前方で「それより高い土」を削ってブレードに溜め（その重機の上限 bladeCap まで＝満杯で削り止め・後ろに出さない）→「それより低い所」へ運んで埋める。色/目標に依らない物理動作。持ち切れぬ土は bladeUnload（ならすを離して進む）で運ぶ。土は保存（地面＋ブレード一定）。
     function gradePush(dt) {
@@ -1486,7 +1503,7 @@
         if (waterD[idx] > WATER_EPS && !M.underwaterFull) step *= UNDERWATER_DIG_MULT; // 水中バックホウは水中も普通速度
         if (over > 0.01) { // 高い→ブレードに溜める（空きの分だけ＝満杯で止め・後ろに出さない）
           const room = cap - blade; if (room <= 0.0001) continue;
-          const cut = Math.min(over, step * hardCut(idx, M.digRate), room / CELL_AREA); if (cut <= 0) continue;   // [親方FB] 硬い岩は削るのが遅い（パワー依存）
+          const cut = Math.min(over, step * hardCut(idx, M.power), room / CELL_AREA); if (cut <= 0) continue;   // [親方FB 地質] 砂利=速い/礫・岩=💪依存で遅い
           heights[idx] -= cut; blade += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true;
         } else if (over < -0.01 && blade > 0) { // 低い→溜めた土で埋める（運搬）
           const fill = Math.min(-over, step, blade / CELL_AREA);
@@ -1543,7 +1560,7 @@
         const h = heights[idx]; if (h <= floor + 0.001) continue;
         let step = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
         if (waterD[idx] > WATER_EPS && !M.underwaterFull) step *= UNDERWATER_DIG_MULT;   // 水中は遅い（水中バックホウは普通速度）
-        const cut = Math.min(h - floor, step * hardCut(idx, M.digRate), room / CELL_AREA);   // [親方FB] 硬い岩は削るのが遅い（パワー依存）
+        const cut = Math.min(h - floor, step * hardCut(idx, M.power), room / CELL_AREA);   // [親方FB 地質] 砂利=速い/礫・岩=💪依存で遅い
         if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; cutVol += cut * CELL_AREA; changed = true; }
       }
       game.bucket = Math.min(cap, bucket); game.totalDug += cutVol; if (cutVol > 0) game.cum.dugAll += cutVol;
@@ -1762,7 +1779,7 @@
       return placed > 0.001;
     }
     function autoGradeCells(p, dt) {   // gradePush一般化。基準=レベル目標(goalHeightAt)＞無ければ足元cutH。高い土をp.bladeへ/低い所へ埋める。土は heights＋p.blade で厳密保存。changedを返す。
-      const E = unitEff(p), RAD = E.digRadius, cap = E.bladeCap, digR = E.digRate, FOOT2 = 0.9 * 0.9;   // [親方FB] 強化Lvが自動作業にも効く
+      const E = unitEff(p), RAD = E.digRadius, cap = E.bladeCap, digR = E.digRate, pwr = E.power, FOOT2 = 0.9 * 0.9;   // [親方FB] 強化Lv・💪が自動作業にも効く
       const cutH = (p.cutH != null) ? p.cutH : sampleHeight(p.x, p.z);
       const fx = p.x + Math.sin(p.yaw) * 1.2, fz = p.z + Math.cos(p.yaw) * 1.2;
       let blade = p.blade || 0, changed = false;
@@ -1773,7 +1790,7 @@
         const gh = goalHeightAt(idx % V, (idx / V) | 0);   // [親方FB] 目標ゾーン内は目標高さに向かって働く＝自動でクリアが進む
         const over = heights[idx] - ((gh != null) ? gh : cutH);
         const step = digR * dt * Math.max(0.4, 1 - Math.sqrt(d2) / RAD);
-        if (over > 0.01) { const room = cap - blade; if (room <= 0.0001) continue; const cut = Math.min(over, step, room / CELL_AREA); if (cut > 0) { heights[idx] -= cut; blade += cut * CELL_AREA; changed = true; } }
+        if (over > 0.01) { const room = cap - blade; if (room <= 0.0001) continue; const cut = Math.min(over, step * hardCut(idx, pwr), room / CELL_AREA); if (cut > 0) { heights[idx] -= cut; blade += cut * CELL_AREA; changed = true; } }   // [親方FB 地質] 自動ブルも砂利=速い/礫・岩=💪依存
         else if (over < -0.01 && blade > 0) { const fill = Math.min(-over, step, blade / CELL_AREA); if (fill > 0) { heights[idx] += fill; blade -= fill * CELL_AREA; changed = true; } }
       }
       p.blade = Math.max(0, blade);
@@ -1839,7 +1856,7 @@
         const gh = goalHeightAt(idx % V, (idx / V) | 0); const flo = (gh != null && gh > floor) ? gh : floor;   // [親方FB] 目標ゾーンでは目標より深く掘らない＝精度も出る
         const h = heights[idx]; if (h <= flo + 0.001) continue;
         const step = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
-        const cut = Math.min(h - flo, step * hardCut(idx, M.digRate), room / CELL_AREA);
+        const cut = Math.min(h - flo, step * hardCut(idx, M.power), room / CELL_AREA);   // [親方FB 地質] 自動バックホウも💪依存
         if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; changed = true; }
       }
       p.bucket = Math.min(cap, bucket);
@@ -2444,7 +2461,7 @@
         if (game.money >= m.price) btn = '<button class="g-btn buy" data-id="' + m.id + '">' + m.price + '万円 購入</button>';
         else btn = '<button class="g-btn ng" disabled>' + m.price + '万円<br><small>あと' + (m.price - game.money) + '</small></button>';
         const ownTag = n > 0 ? ' <b style="color:#2c7a2c">所有' + n + '台</b>' : '';
-        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '<br>⛏' + m.digRate + ' 幅' + m.digRadius + 'm 速' + m.moveSpeed + ' 容量' + m.bladeCap + 'm³' + ownTag + '</small></div><div class="g-btns">' + btn + '</div></div>';
+        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '<br>⛏' + m.digRate + ' 幅' + m.digRadius + 'm 速' + m.moveSpeed + ' 💪' + '★'.repeat(m.power || 2) + ' 容量' + m.bladeCap + 'm³' + ownTag + '</small></div><div class="g-btns">' + btn + '</div></div>';
       }
       gList.innerHTML = html;
     }
@@ -2502,7 +2519,7 @@
       const idxTag = ord ? ord + '台目 ' : '';
       const fpct = Math.round(fuelOf(f) / fuelCap(m) * 100), fcost = refuelCost(f);   // [keiei P1] 燃料%と給油費
       const fuelTag = '<span class="mc-lv"' + (fpct <= 20 ? ' style="color:#c22020"' : '') + '>⛽' + fpct + '%</span>';
-      const statTag = '⛏' + (m.digRate * UPG_RATE[lv]).toFixed(1) + ' 幅' + (m.digRadius * UPG_RAD[lv]).toFixed(2) + 'm 速' + (m.moveSpeed * UPG_SPD[lv]).toFixed(1) + (lv > 0 ? ' <span style="color:#2c7a2c">燃費-' + Math.round((1 - UPG_FUEL[lv]) * 100) + '%</span>' : '');   // [親方FB] 実効ステータスを数字で常時表示（強化Lv込み・自動作業にも同じ数字が効く）
+      const statTag = '⛏' + (m.digRate * UPG_RATE[lv]).toFixed(1) + ' 幅' + (m.digRadius * UPG_RAD[lv]).toFixed(2) + 'm 速' + (m.moveSpeed * UPG_SPD[lv]).toFixed(1) + ' 💪' + effPower(m, lv).toFixed(1) + (lv > 0 ? ' <span style="color:#2c7a2c">燃費-' + Math.round((1 - UPG_FUEL[lv]) * 100) + '%</span>' : '');   // [親方FB] 実効ステータスを数字で常時表示（強化Lv込み・自動作業にも同じ数字が効く）
       let acts = '';
       if (fcost > 0) acts += '<button class="g-btn fuel" data-refuel="' + f.u + '">⛽給油<br><small>' + fcost + '万円</small></button>';   // [keiei P1] 満タンで非表示。[keiei P2] 給油はライフライン=赤字でも可
       if (lv < UPG_MAX) { const c = upgCost(m, lv), pctUp = Math.round((UPG_RATE[lv + 1] / UPG_RATE[lv] - 1) * 100); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化 掘+' + pctUp + '%<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + ' 掘+' + pctUp + '%<br><small>' + c + '万円</small></button>'; }   // [親方FB] 次Lvで掘る速さが何%上がるかをボタンに明記
@@ -2823,6 +2840,7 @@
       parkedAuto: () => parked.map(function (p) { return { u: p.u, id: p.id, auto: !!p.auto, blade: +(p.blade || 0).toFixed(2), x: +p.x.toFixed(2), z: +p.z.toFixed(2), tx: p.tx != null ? +p.tx.toFixed(2) : null, tz: p.tz != null ? +p.tz.toFixed(2) : null }; }),
       workers: () => JSON.parse(JSON.stringify(game.workers)), hire: () => hireWorker(), fire: (w) => fireWorker(w), assign: (u) => assignWorker(u), unassign: (u) => unassignUnit(u), workerOf: (u) => { const w = workerOfUnit(u); return w ? { w: w.w, name: w.name } : null; }, salaryDay: () => salaryPerDay(), daysVal: () => +levelDays.toFixed(2), setDays: (v) => { levelDays = v; }, WAGE: WAGE, HIRE_FEE: HIRE_FEE,   // [keiei P2] 検証用
       companyValue: () => companyValue(), fleetValue: () => fleetValue(), companyRank: () => companyRank(), rankSeen: () => game.rankSeen, setRankSeen: (v) => { game.rankSeen = v; }, sell: (u) => sellUnit(u), SELL_RATE: SELL_RATE, RANKS: COMPANY_RANKS,   // [keiei P3/P4] 検証用
+      hardAt: (x, z) => { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return +hard[j * V + i].toFixed(2); }, setHardAt: (x, z, v, r0) => { const rr = r0 || 2; for (let idx = 0; idx < N; idx++) { const dx = vx[idx] - x, dz = vz[idx] - z; if (dx * dx + dz * dz < rr * rr) hard[idx] = v; } syncGeometry(); }, hardCutAt: (x, z, pw) => { const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID))); return +hardCut(j * V + i, pw).toFixed(3); }, powerOf: (id, lv) => effPower(machineById(id || game.machine), lv || 0), SOILS: { gravel: SOIL_GRAVEL, dirt: SOIL_DIRT, cobble: SOIL_COBBLE, rock: SOIL_ROCK },   // [親方FB 地質] 検証用
       buyUnit: (id) => { const m = machineById(id); game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); checkAchievements(); return f.u; },
       migrate: (s) => buildFleetFromSave(s),
       getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
