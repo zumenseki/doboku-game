@@ -36,6 +36,10 @@
   #money-badge .v { color:#b8860b; }
   #blade-badge .v { color:#7a5a2a; } #blade-badge.over { background:#ffd6d6; }
   #fuel-badge .v { color:#2a6a3a; } #fuel-badge.low { background:#ffd6d6; } #fuel-badge.low .v { color:#c22020; }
+  #fuel-badge { pointer-events:auto; cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:manipulation; }   /* [親方FB] #hud-topがpointer-events:noneで押せなかった→バッジ単体で復活＝押すと給油 */
+  #fuel-badge:active { transform:scale(.93); }
+  #fuel-badge .fb-go { display:inline-block; background:#2d9c4a; color:#fff; border-radius:8px; padding:1px 8px; margin-left:6px; font-size:10.5px; font-weight:800; vertical-align:1px; }
+  #fuel-badge.low .fb-go { background:#c22020; animation:badgePulse .9s ease infinite; }
   .badge.done { background:#cdeccd; }
   #garage { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
   #garage.show { display:flex; animation:fade .3s ease; }
@@ -133,6 +137,8 @@
   #mapBtn:active { transform:scale(.95); }
   #workersBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 256px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
   #workersBtn:active { transform:scale(.95); }
+  #yardBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 296px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:4; font-size:13px; }
+  #yardBtn:active { transform:scale(.95); }
   #crew-badge .v { color:#8a5a10; }
   #money-badge.debt { background:#ffd6d6; } #money-badge.debt .v { color:#c22020; }
   #w-sum { font-size:13px; color:var(--ink); opacity:.85; margin:0 0 8px; font-weight:700; }
@@ -141,8 +147,8 @@
   /* [親方FB] 右側ボタン(最初から/ショップ/音/実績/マップ)は☰メニューで開閉。普段は隠す＝画面スッキリ */
   #menuBtn { position:fixed; right:calc(env(safe-area-inset-right,0px) + 14px); top:calc(env(safe-area-inset-top,0px) + 12px); background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:9px 13px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:5; font-size:16px; line-height:1; }
   #menuBtn:active { transform:scale(.95); }
-  #reset, #shop, #mute, #achBtn, #mapBtn, #workersBtn { display:none; }
-  body.menu-open #reset, body.menu-open #shop, body.menu-open #mute, body.menu-open #achBtn, body.menu-open #mapBtn, body.menu-open #workersBtn { display:block; }
+  #reset, #shop, #mute, #achBtn, #mapBtn, #workersBtn, #yardBtn { display:none; }
+  body.menu-open #reset, body.menu-open #shop, body.menu-open #mute, body.menu-open #achBtn, body.menu-open #mapBtn, body.menu-open #workersBtn, body.menu-open #yardBtn { display:block; }
   #mapsel { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
   #mapsel.show { display:flex; animation:fade .3s ease; }
   .m-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -157,6 +163,19 @@
   #workers { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.55); z-index:9; }
   #workers.show { display:flex; animation:fade .3s ease; }
   #w-close { margin-top:6px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
+  #yard { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,30,40,.6); z-index:9; }
+  #yard.show { display:flex; animation:fade .3s ease; }
+  #yard .b-box { width:min(96vw,560px); }
+  #y-summary { background:linear-gradient(135deg,#2a4a6a,#1c3550); color:#fff; border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+  .y-rank { font-size:17px; } .y-rank small { font-size:11px; opacity:.85; font-weight:600; }
+  .y-bar { height:8px; background:rgba(255,255,255,.22); border-radius:5px; overflow:hidden; margin:8px 0; } .y-bar i { display:block; height:100%; background:#7fd08a; }
+  .y-stats { font-size:12px; opacity:.95; line-height:1.6; }
+  .y-h { font-size:13px; font-weight:800; color:var(--ink); margin:12px 0 6px; border-bottom:2px solid #e2e8ec; padding-bottom:3px; }
+  #y-hire { display:block; width:100%; background:#2d9c4a; color:#fff; border:none; border-radius:12px; padding:10px; font-weight:800; font-size:13px; margin:6px 0; cursor:pointer; } #y-hire:disabled { background:#9ab; opacity:.6; }
+  #y-buy { display:block; width:100%; background:#c98a20; color:#fff; border:none; border-radius:12px; padding:10px; font-weight:800; font-size:13px; margin:6px 0; cursor:pointer; }
+  #y-close { margin-top:8px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
+  .fuelmini { display:inline-block; width:42px; height:7px; background:#dfe6ea; border-radius:4px; vertical-align:middle; overflow:hidden; } .fuelmini i { display:block; height:100%; background:#3aa055; }
+  .g-btn.sell { background:#e0a53a; color:#3a2a08; } .g-btn.ng2 { background:#e6b0b0; color:#5a1a1a; }
   #mc-close { margin-top:10px; width:100%; background:var(--panel); color:var(--ink); border:none; border-radius:12px; padding:11px; font-weight:800; cursor:pointer; }
   .mc-tag { display:inline-block; margin-top:3px; font-size:10px; font-weight:800; padding:1px 7px; border-radius:8px; background:#dde6ec; color:#456; }
   .mc-tag.cur { background:#9ccf9c; color:#143a14; }
@@ -221,7 +240,7 @@
     <div class="badge" id="total-badge">全体の水 <span class="v" id="total">0</span><small> m³</small></div>
     <div class="badge" id="money-badge">💴 <span class="v" id="money">0</span><small> 万円</small></div>
     <div class="badge" id="blade-badge">🪣 <span class="v" id="blade">0</span><small>/<span id="bladeCap">12</span> m³</small></div>
-    <div class="badge" id="fuel-badge">⛽ <span class="v" id="fuel">100</span><small>%</small></div>
+    <div class="badge" id="fuel-badge">⛽ <span class="v" id="fuel">100</span><small>%</small><b class="fb-go">給油</b></div>
     <div class="badge" id="crew-badge" style="display:none">👷 <span class="v" id="crew">0</span><small>人 <span id="crewWage">0</span>万/日</small></div>
     <div class="badge" id="elev-badge">⛰<span class="v" id="elev">0.0</span><small>m</small></div>
     <div class="badge" id="koki-badge" style="display:none">⏳ <span id="kokiLabel">工期</span> <span class="v" id="koki">0</span><small>日</small></div>
@@ -242,6 +261,7 @@
   <button id="achBtn">🏅 実績</button>
   <button id="mapBtn">🗺 マップ</button>
   <button id="workersBtn">👷 作業員</button>
+  <button id="yardBtn">🏭 ヤード</button>
   <button id="menuBtn" aria-label="メニュー">☰</button>
   <div id="hint">…</div>
   <div id="rotate"><div class="rot-ic">📱</div><div>横向きにしてください</div><div class="rot-sub">スマホを横にすると始まります</div></div>
@@ -251,6 +271,7 @@
   <div id="mchooser"><div class="b-box"><h2>🚜 重機を切り替え</h2><button id="mc-recall-all">🧹 現場を片付ける</button><div id="mc-list"></div><div id="mc-note"></div><button id="mc-close">とじる</button></div></div>
   <div id="tchooser"><div class="b-box"><h2>🚛 トラックを切り替え</h2><button id="tc-recall-all">🧹 トラックを片付ける</button><div id="tc-list"></div><div id="tc-note"></div><button id="tc-close">とじる</button></div></div>
   <div id="workers"><div class="b-box"><h2>👷 作業員</h2><div id="w-sum"></div><div id="w-list"></div><button id="w-hire">👷 雇う</button><button id="w-close">とじる</button></div></div>
+  <div id="yard"><div class="b-box"><h2>🏭 ヤード（会社の拠点）</h2><div id="y-summary"></div><div class="y-h">👷 作業員</div><div id="y-workers"></div><button id="y-hire">👷 作業員を雇う</button><div class="y-h">🚜 所有重機・トラック</div><div id="y-machines"></div><button id="y-buy">➕ 重機を買う（ショップ）</button><button id="y-close">とじる</button></div></div>
   <div id="achToast"></div>
   <div id="buyToast"></div>
   <div id="win"><h1 id="win-title">完成！</h1><div id="win-stars"></div><p id="win-text"></p><button id="again">次のレベルへ ▶</button></div>
@@ -437,6 +458,40 @@
       showBuyToast('👷 ' + w.name + 'さんを解雇'); SND.click(); tryVibrate(10); refreshHUD(); save();
       return true;
     }
+    // ===================== 経営モード Phase4: 本格経営（会社ランク・拡大・売却）親方GO 2026-07-02 =====================
+    // 会社価値=所持金(0下限)+所有重機の定価合計。稼ぐ/拡大するほど上のランクへ。資金はレベル持ち越し（既存）。
+    const COMPANY_RANKS = [
+      { min: 0, name: '個人親方', icon: '🧍' },
+      { min: 900, name: '零細土建', icon: '🛖' },
+      { min: 2500, name: '町の土建屋', icon: '🏠' },
+      { min: 6000, name: '中堅ゼネコン', icon: '🏢' },
+      { min: 15000, name: '大手建設', icon: '🏙️' },
+      { min: 35000, name: '業界最大手', icon: '👑' }
+    ];
+    const SELL_RATE = 0.5;   // 売却=定価の半額で戻る
+    function fleetValue() { let v = 0; for (let i = 0; i < game.fleet.length; i++) v += machineById(game.fleet[i].id).price; return v; }
+    function companyValue() { return Math.max(0, Math.round(game.money)) + fleetValue(); }
+    function companyRankIdx() { const v = companyValue(); let idx = 0; for (let i = 0; i < COMPANY_RANKS.length; i++) if (v >= COMPANY_RANKS[i].min) idx = i; return idx; }
+    function companyRank() { const idx = companyRankIdx(), r = COMPANY_RANKS[idx], nxt = COMPANY_RANKS[idx + 1] || null; return { idx: idx, name: r.name, icon: r.icon, value: companyValue(), min: r.min, next: nxt, toNext: nxt ? Math.max(0, nxt.min - companyValue()) : 0 }; }
+    function checkRankUp() {   // 昇格したらトースト（降格は通知しない）。初回/タイトル中は現ランクを静かに採用
+      const idx = companyRankIdx();
+      if (game.rankSeen == null || _titleGuard) { game.rankSeen = idx; return; }
+      if (idx > game.rankSeen) { game.rankSeen = idx; const r = COMPANY_RANKS[idx]; showBuyToast('🎉 会社ランクアップ！ ' + r.icon + ' ' + r.name); SND.buy(); tryVibrate(30); }
+    }
+    function sellUnit(u) {   // 重機/トラックを売却（定価の半額）。運転中・最後の1台は不可。現場なら回収（土を戻す）＋割当解除
+      if (game.fleet.length <= 1) { setHint('最後の1台は売却できません'); return false; }
+      if (u === game.driveU) { setHint('運転中の車両は売却できません（別の車両に乗り換えてから）'); return false; }
+      const f = unitById(u); if (!f) return false;
+      const m = machineById(f.id);
+      const pe = parked.find(function (x) { return x.u === u; }); if (pe) recallEntry(pe);   // 現場に居れば回収（抱えた土を地面へ＝土量保存）
+      const w = workerOfUnit(u); if (w) w.assigned = null;
+      const refund = Math.round(m.price * SELL_RATE);
+      game.fleet = game.fleet.filter(function (x) { return x.u !== u; }); syncOwned();
+      game.money += refund;
+      showBuyToast('💰 ' + m.icon + ' ' + m.name + ' を売却 +' + refund + '万円'); SND.buy(); tryVibrate(20);
+      updateMachineBtn(); syncGeometry(); refreshHUD(); checkAchievements(); save();
+      return refund;
+    }
     // 実績バッジ（cond は game を受け真偽。判定は購入/クリア/強化など「変化時のみ」呼ぶ＝毎フレーム禁止）
     function distinctOwned() { return game.owned.length; }
     function distinctMakers() { const s = {}; for (let k = 0; k < game.owned.length; k++) s[machineById(game.owned[k]).maker] = 1; return Object.keys(s).length; }
@@ -466,7 +521,7 @@
     const waterD = new Float32Array(N_MAX);
     const fL = new Float32Array(N_MAX), fR = new Float32Array(N_MAX), fT = new Float32Array(N_MAX), fB = new Float32Array(N_MAX);
     // [親方FB] 持ち物は「1台ごと」(fleet)。各ユニット={u:固有番号, id:機種, lv:その台の強化Lv}。driveU=今乗ってる台のu。owned/machineはfleetから同期する互換用。
-    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer', 'igx250'], machine: 'dozer', fleet: [{ u: 1, id: 'dozer', lv: 0 }, { u: 2, id: 'igx250', lv: 0 }], driveU: 1, nextUid: 3, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {}, stars: {}, workers: [], nextWid: 1 };   // [keiei P2] workers=雇用中の作業員 [{w,name,hiredDay,assigned:重機u|null}]   // [親方FB] 初期持ち物=コマシD-51(操作中)＋小さいトラック イスズGIGA-250(待機)。stars[levelIndex]=その面の最高★(1-3)
+    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer', 'igx250'], machine: 'dozer', fleet: [{ u: 1, id: 'dozer', lv: 0 }, { u: 2, id: 'igx250', lv: 0 }], driveU: 1, nextUid: 3, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {}, stars: {}, workers: [], nextWid: 1, rankSeen: null };   // [keiei P4] rankSeen=既知の最高会社ランク（初回nullで現ランクを静かに採用）   // [keiei P2] workers=雇用中の作業員 [{w,name,hiredDay,assigned:重機u|null}]   // [親方FB] 初期持ち物=コマシD-51(操作中)＋小さいトラック イスズGIGA-250(待機)。stars[levelIndex]=その面の最高★(1-3)
     let camYaw = 0, camPitch = 0.95, camDist = CAM_DIST, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
     // ===================== 工期（時間制・L11+）=====================
@@ -1574,7 +1629,7 @@
       bladePile.position.y = -999;
     }
     // ===================== 監督モード[batch4/v2]：待機重機に「作業ON/🎯派遣」→自動で整地（削った土は自分の荷台p.bladeへ＝総量厳密保存） =====================
-    const AUTO_SPEED = 0.42, AUTO_PATROL = 4.6;   // 自動運転の速さ（操作機の約4割）と作業(往復)半径(m)
+    const AUTO_SPEED = 0.62, AUTO_PATROL = 4.6;   // 自動運転の速さ（操作機の約6割・[親方FB]0.42→0.62=自動化の仕事量UP）と作業(往復)半径(m)
     let pendingDispatchU = null;   // [v2] 「🎯派遣」で地面タップ待ちの重機u
     const autoRings = (function () {   // [v2] 監督モードの作業範囲リング（作業中の重機の中心に表示）
       const arr = [];
@@ -1636,7 +1691,68 @@
       if (!g || u == null || !dispatchUnit(u, g.x, g.z)) { setHint('派遣をキャンセルしました'); return; }
       SND.click(); tryVibrate(15); setHint('🚧 その場所へ派遣しました');
     }
-    function autoGradeCells(p, dt) {   // gradePush一般化：p足元基準cutHで高い土を削りp.bladeへ / 低い所へp.bladeから埋める。土は heights＋p.blade で厳密保存。changedを返す。
+    function goalHeightAt(i, j) {   // [親方FB 自動化を意味あるものに] そのセルの「レベル目標の高さ」。目標が無い所は null（=従来の足元基準）
+      if (!LV) return null;
+      if (LV.type === 'grade' && LV.A && inRect(i, j, LV.A)) return LV.gradeTarget;          // 整地=目標高さへ
+      if (LV.type === 'level' && LV.A && inRect(i, j, LV.A)) return LV.subFloor;             // 掘り取り=床の高さへ
+      if (LV.type === 'haul') {
+        if (LV.A && inRect(i, j, LV.A)) return LV.digRef;                                    // 造成=山ゾーンは掘り下げ基準へ
+        if (LV.B && inRect(i, j, LV.B)) return LV.fillRef;                                   // 造成=埋めゾーンは埋め基準へ
+      }
+      return null;
+    }
+    function goalZoneOf(x, z) {   // [親方FB] その地点が属する「目標ゾーン」のrect（無ければnull）
+      if (!LV) return null;
+      const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID)));
+      if ((LV.type === 'grade' || LV.type === 'level') && LV.A && inRect(i, j, LV.A)) return LV.A;
+      if (LV.type === 'haul') { if (LV.A && inRect(i, j, LV.A)) return LV.A; if (LV.B && inRect(i, j, LV.B)) return LV.B; }
+      return null;
+    }
+    function zoneHasIncomingTruck(p) {   // [親方FB] 自分の作業ゾーンへ運搬中（捨て場がこのゾーン内）の自動トラックが居るか＝土待ちすべきか
+      const cx0 = (p.tx != null) ? p.tx : p.x, cz0 = (p.tz != null) ? p.tz : p.z;
+      const Z = goalZoneOf(cx0, cz0); if (!Z) return false;
+      for (let k = 0; k < parked.length; k++) {
+        const q = parked[k];
+        if (!q.auto || !q.dumpTarget || machineKind(machineById(q.id)) !== 'truck') continue;
+        const qi = Math.max(0, Math.min(GRID, Math.round((q.dumpTarget.x / WORLD + 0.5) * GRID))), qj = Math.max(0, Math.min(GRID, Math.round((q.dumpTarget.z / WORLD + 0.5) * GRID)));
+        if (inRect(qi, qj, Z)) return true;
+      }
+      return false;
+    }
+    function nextGoalSpot(p) {   // [親方FB] 同じゾーン内で「まだ目標とズレている・今の作業円の外で一番近い」次の仕事場
+      const cx0 = (p.tx != null) ? p.tx : p.x, cz0 = (p.tz != null) ? p.tz : p.z;
+      const Z = goalZoneOf(cx0, cz0); if (!Z) return null;
+      let best = null, bd = 1e9;
+      for (let j = Z.j0; j <= Z.j1; j++) for (let i = Z.i0; i <= Z.i1; i++) {
+        const idx = j * V + i; if (waterD[idx] > WATER_EPS) continue;
+        const gh = goalHeightAt(i, j); if (gh == null) continue;
+        if (Math.abs(heights[idx] - gh) <= 0.08) continue;   // ほぼ目標＝完了セル
+        const x = worldX(i), z = worldZ(j);
+        if (Math.hypot(x - cx0, z - cz0) < AUTO_PATROL * 0.9) continue;   // 今やって停滞した円内は除外（無限ループ防止）
+        const d = Math.hypot(x - p.x, z - p.z);
+        if (d < bd) { bd = d; best = { x: x, z: z }; }
+      }
+      return best;
+    }
+    function graderSpoil(p) {   // [親方FB] 行き場のない土(blade)を目標ゾーンの外の近くへ置く（残土処理）。heights↔p.bladeのみ=土量保存。置けたらtrue
+      if ((p.blade || 0) <= 0.5) return false;
+      let bx = null, bz = null, bd = 1e9;
+      const half = WORLD / 2 - 1;
+      for (let a = 0; a < 12; a++) for (let rr = 3; rr <= 9; rr += 2) {
+        const ang = p.yaw + a * (Math.PI / 6), x = p.x + Math.sin(ang) * rr, z = p.z + Math.cos(ang) * rr;
+        if (Math.abs(x) >= half || Math.abs(z) >= half) continue;
+        const i = Math.round((x / WORLD + 0.5) * GRID), j = Math.round((z / WORLD + 0.5) * GRID);
+        if (goalHeightAt(i, j) != null) continue;   // 目標ゾーン内には捨てない
+        if (sampleWater(x, z) > 0.001) continue;    // 水の上にも捨てない
+        if (rr < bd) { bd = rr; bx = x; bz = z; }
+      }
+      if (bx == null) return false;
+      const ceil = Math.min(MAX_H, sampleHeight(bx, bz) + 2.5);
+      const left = depositInto(bx, bz, 2.0, p.blade, ceil);
+      const placed = p.blade - left; p.blade = Math.max(0, left);
+      return placed > 0.001;
+    }
+    function autoGradeCells(p, dt) {   // gradePush一般化。基準=レベル目標(goalHeightAt)＞無ければ足元cutH。高い土をp.bladeへ/低い所へ埋める。土は heights＋p.blade で厳密保存。changedを返す。
       const M = machineById(p.id), RAD = M.digRadius, cap = M.bladeCap, FOOT2 = 0.9 * 0.9;
       const cutH = (p.cutH != null) ? p.cutH : sampleHeight(p.x, p.z);
       const fx = p.x + Math.sin(p.yaw) * 1.2, fz = p.z + Math.cos(p.yaw) * 1.2;
@@ -1645,7 +1761,8 @@
         const dx = vx[idx] - fx, dz = vz[idx] - fz, d2 = dx * dx + dz * dz; if (d2 >= RAD * RAD) continue;
         const fdx = vx[idx] - p.x, fdz = vz[idx] - p.z; if (fdx * fdx + fdz * fdz < FOOT2) continue;   // 足元は触らない（沈み防止）
         if (waterD[idx] > WATER_EPS) continue;   // 自動は水中に触れない（水位保存を乱さない）
-        const over = heights[idx] - cutH;
+        const gh = goalHeightAt(idx % V, (idx / V) | 0);   // [親方FB] 目標ゾーン内は目標高さに向かって働く＝自動でクリアが進む
+        const over = heights[idx] - ((gh != null) ? gh : cutH);
         const step = M.digRate * dt * Math.max(0.4, 1 - Math.sqrt(d2) / RAD);
         if (over > 0.01) { const room = cap - blade; if (room <= 0.0001) continue; const cut = Math.min(over, step, room / CELL_AREA); if (cut > 0) { heights[idx] -= cut; blade += cut * CELL_AREA; changed = true; } }
         else if (over < -0.01 && blade > 0) { const fill = Math.min(-over, step, blade / CELL_AREA); if (fill > 0) { heights[idx] += fill; blade -= fill * CELL_AREA; changed = true; } }
@@ -1670,9 +1787,26 @@
       }
       if (Math.abs(nx) < half && Math.abs(nz) < half && canStand(nx, nz)) { p.x = nx; p.z = nz; }
       const ch = autoGradeCells(p, dt);
-      if ((p.blade || 0) > 0.3) { const tk = nearestWorkerTruck(p.x, p.z); if (tk) autoLoadTruck(p, tk, M, dt); }   // [v4] ブレードに土を持っていて近くに運搬トラックが居れば荷台へ積む（地形不変・ローダー動作）
+      let gaveTruck = false, spoiled = false;
+      if ((p.blade || 0) > 0.3) { const tk = nearestWorkerTruck(p.x, p.z); if (tk) gaveTruck = autoLoadTruck(p, tk, M, dt); }   // [v4] ブレードに土を持っていて近くに運搬トラックが居れば荷台へ積む（地形不変・ローダー動作）
+      if (!gaveTruck && (p.blade || 0) >= M.bladeCap * 0.92) { if (graderSpoil(p)) spoiled = true; }   // [親方FB] 満杯間近＝即ゾーン外へ残土処理（詰まらず削り続ける）
+      if (dCenter <= AUTO_PATROL) {   // [親方FB] この場が進まない→①満杯ならゾーン外へ残土処理→②ゾーン内の次のズレ地点へ自走→③どこにも無ければ停止
+        if (ch || gaveTruck) { p.gStall = 0; p.gHops = 0; }
+        else {
+          p.gStall = (p.gStall || 0) + dt;
+          if (p.gStall >= 4) {
+            if ((p.blade || 0) > 0.5 && graderSpoil(p)) { spoiled = true; p.gStall = 0; }   // 残土をゾーン外へ→また削れる
+            else if (zoneHasIncomingTruck(p)) { p.gStall = 0; p.gHops = 0; }   // [親方FB] このゾーンへ運搬中のトラックが居る=土待ち（帰らない・届いたら均す）
+            else {
+              const nxt = ((p.gHops || 0) < 8) ? nextGoalSpot(p) : null;   // 進捗なし移動は8回まで（手詰まりの無限行脚防止）
+              if (nxt) { p.tx = nxt.x; p.tz = nxt.z; p.homeX = nxt.x; p.homeZ = nxt.z; p.gStall = 0; p.gHops = (p.gHops || 0) + 1; }
+              else { p.auto = false; p.tx = null; p.tz = null; p.gStall = 0; p.gHops = 0; setHint('🚧 ' + M.name + ' が整地を終えて停止しました'); }
+            }
+          }
+        }
+      } else p.gStall = 0;
       p.model.position.set(p.x, sampleHeight(p.x, p.z), p.z); p.model.rotation.y = p.yaw;
-      return ch;
+      return ch || spoiled;
     }
     // ===================== 監督モードv3: 自動バックホウ（掘る→旋回→ダンプの自律サイクル・設計書=自動バックホウ_設計.md）=====================
     // 土は必ず heights↔p.bucket の間だけで移動（総量厳密保存）。水セルは掘らない/埋めない。移動なし=その場旋回照準のみ。
@@ -1681,7 +1815,7 @@
     function bhTurn(p, want, dt) {   // 目標方向へ旋回。到達(±0.1rad)でtrue
       let da = want - p.yaw; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
       if (Math.abs(da) <= 0.1) return true;
-      const step = 1.8 * dt; p.yaw += Math.max(-step, Math.min(step, da));
+      const step = 2.4 * dt; p.yaw += Math.max(-step, Math.min(step, da));   // [親方FB] 自動の旋回1.8→2.4rad/s=サイクル短縮
       return false;
     }
     function backhoeDigFor(p, dt, M) {   // backhoeDigのp基準一般化（FX/実績/HUD無し・水セル不可・heights→p.bucketのみ）
@@ -1693,9 +1827,10 @@
         const room = cap - bucket; if (room <= 0.0001) break;
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz); if (dist >= RAD) continue;
         if (waterD[idx] > WATER_EPS) continue;   // 自動は水セルを触らない（水量保存）
-        const h = heights[idx]; if (h <= floor + 0.001) continue;
+        const gh = goalHeightAt(idx % V, (idx / V) | 0); const flo = (gh != null && gh > floor) ? gh : floor;   // [親方FB] 目標ゾーンでは目標より深く掘らない＝精度も出る
+        const h = heights[idx]; if (h <= flo + 0.001) continue;
         const step = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
-        const cut = Math.min(h - floor, step * hardCut(idx, M.digRate), room / CELL_AREA);
+        const cut = Math.min(h - flo, step * hardCut(idx, M.digRate), room / CELL_AREA);
         if (cut > 0) { heights[idx] = h - cut; bucket += cut * CELL_AREA; changed = true; }
       }
       p.bucket = Math.min(cap, bucket);
@@ -1711,9 +1846,10 @@
         if (bucket <= 0.0001) break;
         const dx = vx[idx] - fx, dz = vz[idx] - fz, dist = Math.sqrt(dx * dx + dz * dz); if (dist >= RAD) continue;
         if (waterD[idx] > WATER_EPS) continue;   // 水セルへは埋めない
-        const h = heights[idx]; if (h >= ceil - 0.001) continue;
+        const gh = goalHeightAt(idx % V, (idx / V) | 0); const cei = (gh != null && gh < ceil) ? gh : ceil;   // [親方FB] 埋めゾーンでは目標より高く盛らない
+        const h = heights[idx]; if (h >= cei - 0.001) continue;
         const give = M.digRate * dt * Math.max(0.4, 1 - dist / RAD);
-        const add = Math.min(give, ceil - h, bucket / CELL_AREA);
+        const add = Math.min(give, cei - h, bucket / CELL_AREA);
         if (add > 0) { heights[idx] = h + add; bucket -= add * CELL_AREA; changed = true; }
       }
       p.bucket = Math.max(0, bucket);
@@ -1797,9 +1933,11 @@
     function truckAutoDump(p, dt) {   // 荷台の土を車体後方の地面へ放出（updateActiveTruckのダンプをp基準に）。土量保存(p.blade→heights)
       if ((p.blade || 0) <= 0.0001) return false;
       const s = Math.sin(p.yaw), c = Math.cos(p.yaw), fx = p.x - s * 3.2, fz = p.z - c * 3.2;
-      const ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(p.blade, 40 * dt);
+      let ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(p.blade, 40 * dt);
+      const gi = Math.max(0, Math.min(GRID, Math.round((fx / WORLD + 0.5) * GRID))), gj = Math.max(0, Math.min(GRID, Math.round((fz / WORLD + 0.5) * GRID)));
+      const gh = goalHeightAt(gi, gj); if (gh != null && gh < ceil) ceil = gh;   // [親方FB] 埋めゾーンへの放土は目標高さまで（盛りすぎない）
       const left = depositInto(fx, fz, 2.1, amt, ceil); p.blade = Math.max(0, p.blade - (amt - left));
-      return true;
+      return (amt - left) > 0.0001;
     }
     function truckStuck(p, dist, dt, why) {   // 進捗ゼロ監視＝6秒近づけなければ安全停止（水/場外の捨て場・詰まり）
       if (p._pd != null && dist >= p._pd - 0.002) p.autoStall += dt; else p.autoStall = 0;
@@ -1840,8 +1978,12 @@
         else if (truckStuck(p, d, dt, '捨て場に着けず')) { setPose(); return false; }
       } else if (p.autoState === 'DUMPING') {
         dumping = p.blade > 0.0001;
-        if (dumping) changed = truckAutoDump(p, dt);
-        if (p.blade <= 0.0001) { p.autoState = 'TO_LOAD'; p.autoStall = 0; p._pd = null; }
+        if (dumping) {
+          changed = truckAutoDump(p, dt);
+          if (changed) p.autoStall = 0;
+          else { p.autoStall += dt; if (p.autoStall >= TRUCK_AUTO_STALL) { p.auto = false; p.autoState = null; p.autoStall = 0; p._pd = null; setHint('🚚 ' + machineById(p.id).name + ' の捨て場がいっぱいになり自動運搬を停止しました'); dumping = false; } }   // [親方FB] 目標高さ到達で置けない→安全停止（無限ダンプ防止）
+        }
+        if (p.auto && p.blade <= 0.0001) { p.autoState = 'TO_LOAD'; p.autoStall = 0; p._pd = null; }
       }
       setPose();
       return changed;
@@ -1929,7 +2071,7 @@
     const workEl = document.getElementById("work"), basinEl = document.getElementById("basin"), basinTEl = document.getElementById("basinT"), totalEl = document.getElementById("total"), lvnumEl = document.getElementById("lvnum"), moneyEl = document.getElementById("money"), workLabelEl = document.getElementById("workLabel"), bladeEl = document.getElementById("blade"), bladeCapEl = document.getElementById("bladeCap"), bladeBadge = document.getElementById("blade-badge"), elevEl = document.getElementById("elev");
     const workBadge = document.getElementById("b-work"), basinBadge = document.getElementById("b-main"), barEl = document.querySelector("#bar > i"), machineBtn = document.getElementById("machineBtn");
     const fuelEl = document.getElementById("fuel"), fuelBadge = document.getElementById("fuel-badge");   // [keiei P1] 燃料バッジ（タップ=操作機に給油）
-    fuelBadge.addEventListener("click", function () { refuelUnit(game.driveU); });
+    fuelBadge.addEventListener("click", function () { if (!refuelUnit(game.driveU)) { setHint('⛽ 満タンです'); SND.click(); } });   // [親方FB] 押せば給油（満タンでも無反応にしない）
     function drainOf(z, w0) { return w0 > 0 ? Math.max(0, Math.min(1, 1 - zoneVol(z) / w0)) : 0; }
     function levelDone() {
       if (LV.type === 'drain') return drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev && zoneVol(LV.B) >= LV.tB;
@@ -1948,6 +2090,7 @@
       const M = curM(); const carry = (machineKind(M) === 'backhoe') ? game.bucket : game.blade; const cCap = M.bladeCap; bladeEl.textContent = carry.toFixed(1); bladeCapEl.textContent = cCap; bladeBadge.classList.toggle("over", carry > cCap + 0.01);   // トラック/ブル=荷台・ブレード(game.blade)／バックホウ=バケット[親方FB]
       { const fu = activeUnit(); if (fu) { const pct = Math.round(fuelOf(fu) / fuelCap(M) * 100); fuelEl.textContent = pct; fuelBadge.classList.toggle("low", pct <= 20); } }   // [keiei P1] 操作機の燃料%（20%以下で赤）
       { const cb = document.getElementById("crew-badge"); if (game.workers.length) { cb.style.display = ''; document.getElementById("crew").textContent = game.workers.length; document.getElementById("crewWage").textContent = salaryPerDay().toFixed(1); } else cb.style.display = 'none'; document.getElementById("money-badge").classList.toggle("debt", game.money < 0); }   // [keiei P2] 作業員バッジ＋赤字表示
+      checkRankUp();   // [keiei P4] 会社ランク昇格チェック（金銭変化のたびに拾う・昇格時のみトースト）
       { const _st = levelSteps(), _gs = document.getElementById('goal-steps'); if (_gs) { if (_st) { _gs.style.display = ''; _gs.innerHTML = _st.map(function (s) { return '<span class="stp' + (s.d ? ' done' : '') + '">' + (s.d ? '☑ ' : '☐ ') + s.l + '</span>'; }).join('<span class="stp-arrow">→</span>'); } else { _gs.style.display = 'none'; _gs.innerHTML = ''; } } }   // [batch3] 工程チェックリスト描画
       if (LV.type === 'haul') {   // 大規模造成＝掘削%(b-work) と 埋立 m³(b-main) の2目標
         const exc = zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol), dig = LV.A0exc > 0 ? Math.max(0, Math.min(1, 1 - exc / LV.A0exc)) : 1;
@@ -2459,7 +2602,7 @@
 
     // ===================== 右側ボタンの☰メニュー開閉[親方FB] =====================
     document.getElementById("menuBtn").addEventListener("click", function () { document.body.classList.toggle("menu-open"); this.classList.remove('pulse'); try { localStorage.setItem('doboku_seen_v1', '1'); } catch (_) {} SND.click(); });   // [即効パック] 一度開いたら初回ガイドの脈動は止める
-    ['reset', 'shop', 'mute', 'achBtn', 'mapBtn', 'workersBtn'].forEach(function (id) { const b = document.getElementById(id); if (b) b.addEventListener("click", function () { document.body.classList.remove("menu-open"); }); });   // メニュー項目を押したら自動で閉じる＝画面スッキリ
+    ['reset', 'shop', 'mute', 'achBtn', 'mapBtn', 'workersBtn', 'yardBtn'].forEach(function (id) { const b = document.getElementById(id); if (b) b.addEventListener("click", function () { document.body.classList.remove("menu-open"); }); });   // メニュー項目を押したら自動で閉じる＝画面スッキリ
 
     // ===================== 作業員メニュー（雇う/解雇/一覧）[keiei P2] =====================
     const workersEl = document.getElementById("workers");
@@ -2486,12 +2629,57 @@
       if (fb) { fireWorker(+fb.dataset.fire); renderWorkers(); }
     });
 
+    // ===================== 🏭 ヤード（会社ダッシュボード）[keiei P3] =====================
+    const yardEl = document.getElementById("yard");
+    function yardUnitRow(f) {
+      const m = machineById(f.id), st = unitState(f.u), w = workerOfUnit(f.u);
+      const stTag = st === 'active' ? '<b style="color:#2c7a2c">運転中</b>' : st === 'field' ? '現場' : '待機';
+      const fpct = Math.round(fuelOf(f) / fuelCap(m) * 100), fcost = refuelCost(f);
+      const gauge = '<span class="fuelmini"><i style="width:' + fpct + '%' + (fpct <= 20 ? ';background:#c22020' : '') + '"></i></span> ' + fpct + '%';
+      const wtag = w ? '👷' + w.name : '<span style="opacity:.6">作業員なし</span>';
+      let btns = '';
+      if (fcost > 0) btns += '<button class="g-btn fuel" data-yrefuel="' + f.u + '">⛽給油<br><small>' + fcost + '万</small></button>';
+      if (st === 'field') btns += w ? '<button class="g-btn wk" data-yunassign="' + f.u + '">👷外す</button>' : (freeWorker() ? '<button class="g-btn wk" data-yassign="' + f.u + '">👷配属</button>' : '');
+      else if (st === 'storage') btns += '<button class="g-btn dispatch" data-ydeploy="' + f.u + '">🏗現場へ</button>';
+      if (f.u !== game.driveU && game.fleet.length > 1) btns += '<button class="g-btn sell" data-ysell="' + f.u + '">💰売却<br><small>+' + Math.round(m.price * SELL_RATE) + '</small></button>';
+      return '<div class="g-card"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + stTag + ' ／ ' + wtag + '<br>' + gauge + '</small></div><div class="g-btns">' + btns + '</div></div>';
+    }
+    function renderYard() {
+      const r = companyRank();
+      const barPct = r.next ? Math.max(0, Math.min(100, Math.round((r.value - r.min) / (r.next.min - r.min) * 100))) : 100;
+      document.getElementById("y-summary").innerHTML =
+        '<div class="y-rank">' + r.icon + ' <b>' + r.name + '</b>' + (r.next ? ' <small>次: ' + r.next.icon + r.next.name + ' まで ' + r.toNext + '万</small>' : ' <small>最高ランク到達！</small>') + '</div>'
+        + '<div class="y-bar"><i style="width:' + barPct + '%"></i></div>'
+        + '<div class="y-stats">会社価値 <b>' + r.value + '</b>万 ／ 所持金 <b' + (game.money < 0 ? ' style="color:#ffb0b0"' : '') + '>' + game.money + '</b>万 ／ 給料 <b>' + salaryPerDay().toFixed(1) + '</b>万/日<br>重機 ' + game.fleet.length + '台 ／ 作業員 ' + game.workers.length + '人（空き' + (game.workers.filter(function (w) { return w.assigned == null; }).length) + '人）</div>';
+      let wh = '';
+      for (let i = 0; i < game.workers.length; i++) { const w = game.workers[i], f = w.assigned != null ? unitById(w.assigned) : null, m = f ? machineById(f.id) : null; wh += '<div class="g-card"><div class="g-ic">👷</div><div class="g-info"><b>' + w.name + ' さん</b><small>日給' + WAGE + '万 ／ ' + (m ? m.icon + m.name + '担当' : '未割当') + '</small></div><div class="g-btns"><button class="g-btn ng2" data-yfire="' + w.w + '">解雇</button></div></div>'; }
+      if (!game.workers.length) wh = '<div class="mc-empty">作業員なし（監督モードの自動作業に必要）</div>';
+      document.getElementById("y-workers").innerHTML = wh;
+      let mh = ''; for (let i = 0; i < game.fleet.length; i++) mh += yardUnitRow(game.fleet[i]);
+      document.getElementById("y-machines").innerHTML = mh;
+      const hb = document.getElementById("y-hire"); hb.disabled = game.money < 0 || game.money < HIRE_FEE; hb.textContent = '👷 作業員を雇う（一時金 ' + HIRE_FEE + '万・日給 ' + WAGE + '万/日）' + (game.money < 0 ? '［赤字中は不可］' : '');
+    }
+    document.getElementById("yardBtn").addEventListener("click", function () { renderYard(); yardEl.classList.add("show"); SND.click(); });
+    document.getElementById("y-close").addEventListener("click", function () { yardEl.classList.remove("show"); SND.click(); });
+    yardEl.addEventListener("click", function (e) { if (e.target === yardEl) { yardEl.classList.remove("show"); SND.click(); } });   // 暗転部タップで閉じる
+    document.getElementById("y-hire").addEventListener("click", function () { hireWorker(); renderYard(); });
+    document.getElementById("y-buy").addEventListener("click", function () { yardEl.classList.remove("show"); renderGarage(); garage.classList.add("show"); document.body.classList.remove('need-shop'); SND.click(); });
+    document.getElementById("yard").addEventListener("click", function (e) {
+      const t = e.target.closest ? e.target : null; if (!t) return;
+      const rf = e.target.closest('[data-yrefuel]'); if (rf) { refuelUnit(+rf.dataset.yrefuel); renderYard(); return; }
+      const as = e.target.closest('[data-yassign]'); if (as) { assignWorker(+as.dataset.yassign); renderYard(); return; }
+      const ua = e.target.closest('[data-yunassign]'); if (ua) { unassignUnit(+ua.dataset.yunassign); SND.click(); save(); renderYard(); return; }
+      const dp = e.target.closest('[data-ydeploy]'); if (dp) { if (!deployUnit(+dp.dataset.ydeploy, false)) setHint('現場がいっぱいです（最大' + MAX_DEPLOY + '台）'); renderYard(); return; }   // [P3] ヤードから現場へ配置（乗らない）→配属可能に
+      const sl = e.target.closest('[data-ysell]'); if (sl) { sellUnit(+sl.dataset.ysell); renderYard(); return; }
+      const fr = e.target.closest('[data-yfire]'); if (fr) { fireWorker(+fr.dataset.yfire); renderYard(); return; }
+    });
+
     // 保存
     const UNLOCK_ALL = /[?&](all|test)\b/.test(location.search);   // 検証用リンク(?all)：18台全部解放[親方FB]。別セーブKEYで通常進行(購入制)を汚さない。
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
     let _titleGuard = true;   // [親方FB トップページ] タイトル表示中は save() を無効化＝既存セーブを保護。beginGame() で false にする
     function save() { if (_titleGuard) return; try { const rd = function (a) { const o = new Array(N); for (let i = 0; i < N; i++) o[i] = Math.round(a[i] * 1000) / 1000; return o; };   // [即効パック] 保存軽量化：使っている範囲(N)だけ＋mm(小数3桁)丸めで文字列を圧縮（小マップ約9割減・大マップも約6割減）。load側は length===_act を既に受理。
-      localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: rd(heights), b: rd(baseHeights), w: rd(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, wk: game.workers, nw: game.nextWid, ld: Math.round(levelDays), pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [keiei P2] wk/nw/ld=作業員・経過日数（旧セーブ=無し→初期値）   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
+      localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: rd(heights), b: rd(baseHeights), w: rd(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, wk: game.workers, nw: game.nextWid, ld: Math.round(levelDays), rs: game.rankSeen, pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [keiei P2] wk/nw/ld=作業員・経過日数（旧セーブ=無し→初期値）[keiei P4] rs=会社ランク既知   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
@@ -2518,6 +2706,7 @@
         { const wk = Array.isArray(s.wk) ? s.wk : []; const out = []; let mw = 0;   // [keiei P2] 作業員復元（割当先ユニットが実在しなければ未割当へ・旧セーブ=空）
           for (let i = 0; i < wk.length; i++) { const w = wk[i]; if (!w || typeof w.name !== 'string') continue; const wid = (w.w | 0) > 0 ? (w.w | 0) : mw + 1; const asg = (w.assigned != null && unitById(w.assigned)) ? w.assigned : null; out.push({ w: wid, name: w.name.slice(0, 12), hiredDay: 0, assigned: asg }); if (wid > mw) mw = wid; }
           game.workers = out; game.nextWid = Math.max((s.nw | 0), mw + 1, 1); }
+        game.rankSeen = (typeof s.rs === 'number') ? s.rs : null;   // [keiei P4] 会社ランク既知（旧セーブ=null→現ランクを静かに採用）
         loadLevel(s.level, s);
         levelDays = Math.max(0, +s.ld || 0);   // [keiei P2] 経過日数を復元（loadLevelのリセット後に上書き）
         checkAchievements(true); // 移行直後＝既に条件を満たす所有/メーカー系バッジを静かに解禁（トースト無し）
@@ -2556,7 +2745,7 @@
     const HAS_SAVE = !!(localStorage.getItem(KEY) || localStorage.getItem(KEY_OLD));
     loadLevel(0);   // 背景描画用の既定シーン（この時点の game は初期状態＝はじめから用の新規状態。まだ load() も save() もしない＝既存セーブ保護）
     normalsDone = false; syncGeometry(); syncWater(0); refreshHUD(); resize(); requestAnimationFrame(loop);
-    function applyUnlockAll() { if (UNLOCK_ALL) { game.fleet = MACHINES.map(function (m, i) { return { u: i + 1, id: m.id, lv: 0 }; }); game.nextUid = MACHINES.length + 1; if (!unitById(game.driveU)) game.driveU = 1; game.machine = unitById(game.driveU) ? unitById(game.driveU).id : MACHINES[0].id; syncOwned(); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; applyMachine(); refreshHUD(); } }   // 検証用(?all/?test)：全機種+資金。[宿題] 読み込んだ操作中機体を尊重
+    function applyUnlockAll() { if (UNLOCK_ALL) { game.fleet = MACHINES.map(function (m, i) { return { u: i + 1, id: m.id, lv: 0 }; }); game.nextUid = MACHINES.length + 1; if (!unitById(game.driveU)) game.driveU = 1; game.machine = unitById(game.driveU) ? unitById(game.driveU).id : MACHINES[0].id; syncOwned(); if (game.money < 9000000) game.money = 9999999; game.unlocked = NLV - 1; game.rankSeen = companyRankIdx(); applyMachine(); refreshHUD(); } }   // 検証用(?all/?test)：全機種+資金。[宿題] 読み込んだ操作中機体を尊重。[keiei P4] ランクは検証資金を既知にして偽昇格トーストを抑止
     let _saveStarted = false;
     function beginGame(cont) {
       _titleGuard = false;   // ここからセーブ有効（ゲーム開始）
@@ -2621,6 +2810,7 @@
       setTruckAuto: (u, on) => setTruckAuto(u, on !== false), truckTarget: (u, dx, dz) => { const p = parked.find((x) => x.u === u); if (!p) return false; p.dumpTarget = { x: dx, z: dz }; p.auto = true; p.autoState = 'TO_LOAD'; p.autoStall = 0; p._pd = null; return true; },   // [v4] テスト用
       parkedAuto: () => parked.map(function (p) { return { u: p.u, id: p.id, auto: !!p.auto, blade: +(p.blade || 0).toFixed(2), x: +p.x.toFixed(2), z: +p.z.toFixed(2), tx: p.tx != null ? +p.tx.toFixed(2) : null, tz: p.tz != null ? +p.tz.toFixed(2) : null }; }),
       workers: () => JSON.parse(JSON.stringify(game.workers)), hire: () => hireWorker(), fire: (w) => fireWorker(w), assign: (u) => assignWorker(u), unassign: (u) => unassignUnit(u), workerOf: (u) => { const w = workerOfUnit(u); return w ? { w: w.w, name: w.name } : null; }, salaryDay: () => salaryPerDay(), daysVal: () => +levelDays.toFixed(2), setDays: (v) => { levelDays = v; }, WAGE: WAGE, HIRE_FEE: HIRE_FEE,   // [keiei P2] 検証用
+      companyValue: () => companyValue(), fleetValue: () => fleetValue(), companyRank: () => companyRank(), rankSeen: () => game.rankSeen, setRankSeen: (v) => { game.rankSeen = v; }, sell: (u) => sellUnit(u), SELL_RATE: SELL_RATE, RANKS: COMPANY_RANKS,   // [keiei P3/P4] 検証用
       buyUnit: (id) => { const m = machineById(id); game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); checkAchievements(); return f.u; },
       migrate: (s) => buildFleetFromSave(s),
       getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
