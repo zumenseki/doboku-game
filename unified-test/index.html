@@ -319,6 +319,7 @@
     const UPG_RATE = [1.0, 1.18, 1.36, 1.55, 1.75, 2.0];   // 掘る速さ
     const UPG_RAD  = [1.0, 1.06, 1.12, 1.18, 1.24, 1.30];  // 削る幅（広げ過ぎ注意で控えめ）
     const UPG_SPD  = [1.0, 1.08, 1.16, 1.24, 1.32, 1.40];  // 移動速さ
+    const UPG_FUEL = [1.0, 0.96, 0.92, 0.88, 0.84, 0.80];  // [親方FB 強化の意味UP] 燃費（Lvごと4%改善・Lv5で軽油2割引）
     function upgCost(M, lv) { // 現Lv(0..UPG_MAX-1)→lv+1 の費用(万円)。値段帯で段階化
       const p = M.price || 0;
       const base = p < 200 ? 40 : (p < 400 ? 70 : (p < 600 ? 110 : 160));
@@ -394,13 +395,21 @@
       _eff.underwaterFull = M.underwaterFull; _eff.id = M.id;
       return _eff;
     }
+    function unitLvOf(u) { const f = unitById(u); return f ? Math.max(0, Math.min(UPG_MAX, f.lv | 0)) : 0; }
+    const _effU = {};
+    function unitEff(p) {   // [親方FB 強化の意味UP] parkedユニットの強化Lv込み実効ステータス（自動作業用・使い回しオブジェクト＝1ユニット処理中のみ有効）
+      const M = machineById(p.id), lv = unitLvOf(p.u);
+      _effU.digRadius = M.digRadius * UPG_RAD[lv]; _effU.digRate = M.digRate * UPG_RATE[lv]; _effU.moveSpeed = M.moveSpeed * UPG_SPD[lv];
+      _effU.bladeCap = M.bladeCap; _effU.lv = lv; _effU.id = M.id; _effU.price = M.price;
+      return _effU;
+    }
     // ===================== 経営モード Phase1: 軽油（タンク制・親方GO 2026-07-02）=====================
     // 各1台(fleet unit)が燃料タンクを持つ。作業/移動で消費・空だと動けない・切替窓/HUDバッジから給油（¥＝不足分×単価）。
     // 燃料は f.fuel(L)。無い(旧セーブ/新規購入)＝満タン扱い＝後方互換。土量/水量には一切触れない。
     const FUEL_PRICE = 0.1;   // 給油単価（万円/L）＝10Lで1万円
     const FUEL_MOVE = 0.6, FUEL_AUTO = 0.5;   // 消費倍率：移動のみ=6割／監督モード自動機=5割（作業中=フル）
     function fuelCap(M) { return Math.round(60 + M.price * 0.2); }      // タンク容量(L)＝大型ほど大（D-51:80L / D-11改:220L）
-    function fuelRate(M) { return 0.25 + M.price / 1000; }              // 消費(L/s)＝大型ほど燃費が悪い（D-51:0.35 / D-11改:1.05）
+    function fuelRate(M, lv) { return (0.25 + M.price / 1000) * UPG_FUEL[Math.max(0, Math.min(UPG_MAX, lv | 0))]; }   // 消費(L/s)＝大型ほど燃費が悪い（D-51:0.35 / D-11改:1.05）。[親方FB] 強化Lvで燃費改善(Lv5=2割引)
     function fuelOf(f) { if (f.fuel == null) f.fuel = fuelCap(machineById(f.id)); return f.fuel; }
     function fuelEmpty(f) { return fuelOf(f) <= 0.001; }
     function fuelEmptyFx(f) { const M = machineById(f.id); setHint('⛽ ' + M.name + ' が燃料切れ！重機/トラック窓の「⛽給油」か燃料バッジで給油'); SND.click(); tryVibrate(30); }
@@ -1617,7 +1626,7 @@
       }
       const dumping = acting && game.blade > 0.0001 && !game.won && !_noFuel;
       truckTilt = Math.max(0, Math.min(1, truckTilt + (dumping ? dt * 3 : -dt * 3)));   // ダンプアップ動作
-      if (fUnit && !game.won && (drive !== 0 || dumping)) useFuel(fUnit, fuelRate(M) * (dumping ? 1 : FUEL_MOVE) * dt);   // [keiei P1] トラックの燃料消費
+      if (fUnit && !game.won && (drive !== 0 || dumping)) useFuel(fUnit, fuelRate(M, activeLv()) * (dumping ? 1 : FUEL_MOVE) * dt);   // [keiei P1] トラックの燃料消費（強化Lvで燃費改善）
       if (dumping) {   // 下ろす：荷台の土を車体後方へ放出（荷台を持ち上げながら）
         const s = Math.sin(game.myaw), c = Math.cos(game.myaw), fx = game.mx - s * 3.2, fz = game.mz - c * 3.2;
         const ceil = Math.min(MAX_H, sampleHeight(fx, fz) + 2.6), amt = Math.min(game.blade, 45 * dt);
@@ -1753,7 +1762,7 @@
       return placed > 0.001;
     }
     function autoGradeCells(p, dt) {   // gradePush一般化。基準=レベル目標(goalHeightAt)＞無ければ足元cutH。高い土をp.bladeへ/低い所へ埋める。土は heights＋p.blade で厳密保存。changedを返す。
-      const M = machineById(p.id), RAD = M.digRadius, cap = M.bladeCap, FOOT2 = 0.9 * 0.9;
+      const E = unitEff(p), RAD = E.digRadius, cap = E.bladeCap, digR = E.digRate, FOOT2 = 0.9 * 0.9;   // [親方FB] 強化Lvが自動作業にも効く
       const cutH = (p.cutH != null) ? p.cutH : sampleHeight(p.x, p.z);
       const fx = p.x + Math.sin(p.yaw) * 1.2, fz = p.z + Math.cos(p.yaw) * 1.2;
       let blade = p.blade || 0, changed = false;
@@ -1763,7 +1772,7 @@
         if (waterD[idx] > WATER_EPS) continue;   // 自動は水中に触れない（水位保存を乱さない）
         const gh = goalHeightAt(idx % V, (idx / V) | 0);   // [親方FB] 目標ゾーン内は目標高さに向かって働く＝自動でクリアが進む
         const over = heights[idx] - ((gh != null) ? gh : cutH);
-        const step = M.digRate * dt * Math.max(0.4, 1 - Math.sqrt(d2) / RAD);
+        const step = digR * dt * Math.max(0.4, 1 - Math.sqrt(d2) / RAD);
         if (over > 0.01) { const room = cap - blade; if (room <= 0.0001) continue; const cut = Math.min(over, step, room / CELL_AREA); if (cut > 0) { heights[idx] -= cut; blade += cut * CELL_AREA; changed = true; } }
         else if (over < -0.01 && blade > 0) { const fill = Math.min(-over, step, blade / CELL_AREA); if (fill > 0) { heights[idx] += fill; blade -= fill * CELL_AREA; changed = true; } }
       }
@@ -1771,7 +1780,7 @@
       return changed;
     }
     function updateAutoUnit(p, dt) {   // [v2] 作業中心(cx,cz=派遣先 or その場)へ寄り、着いたら半径内を往復整地。terrain変化を返す。土量はp.bladeで保存。
-      const M = machineById(p.id), half = WORLD / 2 - 0.8;
+      const E = unitEff(p), mvSp = E.moveSpeed, dgRt = E.digRate, bcap = E.bladeCap, mName = machineById(p.id).name, half = WORLD / 2 - 0.8;   // [親方FB] 強化Lvが自動作業にも効く
       if (p.dir == null) { p.dir = 1; p.cutH = sampleHeight(p.x, p.z); }
       if (p.homeX == null) { p.homeX = p.x; p.homeZ = p.z; }
       const cx = (p.tx != null) ? p.tx : p.homeX, cz = (p.tz != null) ? p.tz : p.homeZ;
@@ -1780,16 +1789,16 @@
       if (dCenter > AUTO_PATROL) {   // 遠い→作業中心へ旋回して直進
         const desired = Math.atan2(ddx, ddz); let da = desired - p.yaw; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
         p.yaw += Math.max(-2.2 * dt, Math.min(2.2 * dt, da));
-        const sp = M.moveSpeed * AUTO_SPEED * dt; nx = p.x + Math.sin(p.yaw) * sp; nz = p.z + Math.cos(p.yaw) * sp;
+        const sp = mvSp * AUTO_SPEED * dt; nx = p.x + Math.sin(p.yaw) * sp; nz = p.z + Math.cos(p.yaw) * sp;
       } else {   // 到着→半径内を往復整地
-        const sp = M.moveSpeed * AUTO_SPEED * dt * p.dir; nx = p.x + Math.sin(p.yaw) * sp; nz = p.z + Math.cos(p.yaw) * sp;
+        const sp = mvSp * AUTO_SPEED * dt * p.dir; nx = p.x + Math.sin(p.yaw) * sp; nz = p.z + Math.cos(p.yaw) * sp;
         if (Math.hypot(nx - cx, nz - cz) >= AUTO_PATROL || Math.abs(nx) >= half || Math.abs(nz) >= half || !canStand(nx, nz)) { p.dir *= -1; p.cutH = sampleHeight(p.x, p.z); nx = p.x; nz = p.z; }
       }
       if (Math.abs(nx) < half && Math.abs(nz) < half && canStand(nx, nz)) { p.x = nx; p.z = nz; }
       const ch = autoGradeCells(p, dt);
       let gaveTruck = false, spoiled = false;
-      if ((p.blade || 0) > 0.3) { const tk = nearestWorkerTruck(p.x, p.z); if (tk) gaveTruck = autoLoadTruck(p, tk, M, dt); }   // [v4] ブレードに土を持っていて近くに運搬トラックが居れば荷台へ積む（地形不変・ローダー動作）
-      if (!gaveTruck && (p.blade || 0) >= M.bladeCap * 0.92) { if (graderSpoil(p)) spoiled = true; }   // [親方FB] 満杯間近＝即ゾーン外へ残土処理（詰まらず削り続ける）
+      if ((p.blade || 0) > 0.3) { const tk = nearestWorkerTruck(p.x, p.z); if (tk) gaveTruck = autoLoadTruck(p, tk, dgRt, dt); }   // [v4] ブレードに土を持っていて近くに運搬トラックが居れば荷台へ積む（地形不変・ローダー動作）
+      if (!gaveTruck && (p.blade || 0) >= bcap * 0.92) { if (graderSpoil(p)) spoiled = true; }   // [親方FB] 満杯間近＝即ゾーン外へ残土処理（詰まらず削り続ける）
       if (dCenter <= AUTO_PATROL) {   // [親方FB] この場が進まない→①満杯ならゾーン外へ残土処理→②ゾーン内の次のズレ地点へ自走→③どこにも無ければ停止
         if (ch || gaveTruck) { p.gStall = 0; p.gHops = 0; }
         else {
@@ -1800,7 +1809,7 @@
             else {
               const nxt = ((p.gHops || 0) < 8) ? nextGoalSpot(p) : null;   // 進捗なし移動は8回まで（手詰まりの無限行脚防止）
               if (nxt) { p.tx = nxt.x; p.tz = nxt.z; p.homeX = nxt.x; p.homeZ = nxt.z; p.gStall = 0; p.gHops = (p.gHops || 0) + 1; }
-              else { p.auto = false; p.tx = null; p.tz = null; p.gStall = 0; p.gHops = 0; setHint('🚧 ' + M.name + ' が整地を終えて停止しました'); }
+              else { p.auto = false; p.tx = null; p.tz = null; p.gStall = 0; p.gHops = 0; setHint('🚧 ' + mName + ' が整地を終えて停止しました'); }
             }
           }
         }
@@ -1858,7 +1867,7 @@
     function bhAutoStop(p, why) { p.auto = false; p.autoState = null; p.autoStall = 0; setHint('🚧 ' + machineById(p.id).name + ' が' + why + '自動作業を終了しました'); }
     function updateAutoBackhoe(p, dt) {   // 状態機械: DIG→SWING_TO_DUMP→DUMP→SWING_TO_DIG→…（SWING中は土を触らない＝排他）
       if (!p.digTarget || !p.dumpTarget) return false;   // 2点指定が揃うまでアイドル
-      const M = machineById(p.id), cap = M.bladeCap;
+      const M = unitEff(p), cap = M.bladeCap;   // [親方FB] 強化Lvが自動掘削にも効く（掘る速さ/幅）
       if (p.autoStall == null) p.autoStall = 0;
       if (!p.autoState) p.autoState = 'DIG';
       let changed = false;
@@ -1878,7 +1887,7 @@
       } else if (p.autoState === 'DUMP') {
         const tk = nearestWorkerTruck(p.x, p.z);   // [v4] 近くに運搬トラックが居れば地面でなく荷台へ積む（満杯/不在は地面）
         let moved = false, terr = false;
-        if (tk) moved = autoLoadTruck(p, tk, M, dt);
+        if (tk) moved = autoLoadTruck(p, tk, M.digRate, dt);
         if (!moved) { terr = backhoeDumpFor(p, dt, M); moved = terr; }
         if (terr) changed = true;
         if (moved) p.autoStall = 0;
@@ -1913,10 +1922,10 @@
       for (let i = 0; i < parked.length; i++) { const p = parked[i]; if (machineKind(machineById(p.id)) !== 'truck' || !p.auto || !workerOfUnit(p.u)) continue; const cap = machineById(p.id).bladeCap; if ((p.blade || 0) >= cap - 0.05) continue; const d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = p; } }
       return best;
     }
-    function autoLoadTruck(src, tk, M, dt) {   // 重機のバケット/ブレード→トラック荷台（土量保存・地形不変）。積めたらtrue
+    function autoLoadTruck(src, tk, rate, dt) {   // 重機のバケット/ブレード→トラック荷台（土量保存・地形不変）。rate=積込速度(強化Lv込み)。積めたらtrue
       const tcap = machineById(tk.id).bladeCap, room = tcap - (tk.blade || 0); if (room <= 0.0001) return false;
       const key = ((src.bucket || 0) > 0.0001) ? 'bucket' : (((src.blade || 0) > 0.0001) ? 'blade' : null); if (!key) return false;
-      const give = Math.min(src[key], M.digRate * dt, room); if (give <= 0.0001) return false;
+      const give = Math.min(src[key], rate * dt, room); if (give <= 0.0001) return false;
       src[key] -= give; tk.blade = (tk.blade || 0) + give;
       setTruckBed(tk.model.userData, tk.blade, tcap, tk.tilt || 0);
       return true;
@@ -1952,7 +1961,7 @@
       return p.auto;
     }
     function updateAutoTruck(p, dt) {   // [v4] 状態機械: TO_LOAD→LOADING→TO_DUMP→DUMPING。戻り値=地形変化(放土時のみ)
-      const M = machineById(p.id), cap = M.bladeCap;
+      const M = unitEff(p), cap = M.bladeCap;   // [親方FB] 強化Lvが自動運搬にも効く（移動速さ）
       p.blade = p.blade || 0; if (p.autoStall == null) p.autoStall = 0; if (p.tilt == null) p.tilt = 0;
       let changed = false, dumping = false;
       const setPose = function () { p.tilt = Math.max(0, Math.min(1, p.tilt + (dumping ? dt * 3 : -dt * 3))); p.model.position.set(p.x, sampleHeight(p.x, p.z), p.z); p.model.rotation.y = p.yaw; setTruckBed(p.model.userData, p.blade, cap, p.tilt); };
@@ -1994,8 +2003,8 @@
         if (p.auto && !game.won && k === 'truck') {   // [v4] 自動運搬トラック：燃料消費は走行/放土中のみ（積込待ちは消費なし）
           const fu = unitById(p.u);
           if (fu && fuelEmpty(fu)) { p.model.position.y = sampleHeight(p.x, p.z); setTruckBed(p.model.userData, p.blade || 0, machineById(p.id).bladeCap, p.tilt || 0); }
-          else { if (updateAutoTruck(p, dt)) autoActed = true; const mv = p.dumpTarget && (p.autoState === 'TO_LOAD' || p.autoState === 'TO_DUMP' || p.autoState === 'DUMPING'); if (fu && mv) useFuel(fu, fuelRate(machineById(p.id)) * FUEL_AUTO * dt); }
-        } else if (p.auto && !game.won && k !== 'truck') { const fu = unitById(p.u); const bhIdle = (k === 'backhoe') && (!p.digTarget || !p.dumpTarget); if (fu && fuelEmpty(fu)) { p.model.position.y = sampleHeight(p.x, p.z); } else { if ((k === 'backhoe') ? updateAutoBackhoe(p, dt) : updateAutoUnit(p, dt)) autoActed = true; if (fu && !bhIdle) useFuel(fu, fuelRate(machineById(p.id)) * FUEL_AUTO * dt); } }
+          else { if (updateAutoTruck(p, dt)) autoActed = true; const mv = p.dumpTarget && (p.autoState === 'TO_LOAD' || p.autoState === 'TO_DUMP' || p.autoState === 'DUMPING'); if (fu && mv) useFuel(fu, fuelRate(machineById(p.id), unitLvOf(p.u)) * FUEL_AUTO * dt); }
+        } else if (p.auto && !game.won && k !== 'truck') { const fu = unitById(p.u); const bhIdle = (k === 'backhoe') && (!p.digTarget || !p.dumpTarget); if (fu && fuelEmpty(fu)) { p.model.position.y = sampleHeight(p.x, p.z); } else { if ((k === 'backhoe') ? updateAutoBackhoe(p, dt) : updateAutoUnit(p, dt)) autoActed = true; if (fu && !bhIdle) useFuel(fu, fuelRate(machineById(p.id), unitLvOf(p.u)) * FUEL_AUTO * dt); } }
         else { p.model.position.y = sampleHeight(p.x, p.z); if (k === 'truck') setTruckBed(p.model.userData, p.blade || 0, machineById(p.id).bladeCap, p.tilt || 0); } }   // 停車中：作業ON=自動整地/自動バックホウ[v3]/自動運搬[v4]（燃料消費・空なら停止・指示待ちは消費なし[keiei P1]）／通常=地面追従＋トラック荷台表示[親方FB/batch4]
       if (autoActed) syncGeometry();   // 監督モードで地形が変わった→反映
       { let ri = 0; for (let pi = 0; pi < parked.length && ri < autoRings.length; pi++) { const p = parked[pi]; if (!p.auto || !isAutoGrader(p.id)) continue; const cx = (p.tx != null) ? p.tx : (p.homeX != null ? p.homeX : p.x), cz = (p.tz != null) ? p.tz : (p.homeZ != null ? p.homeZ : p.z); const r = autoRings[ri++]; r.position.set(cx, sampleHeight(cx, cz) + 0.08, cz); r.material.opacity = 0.26 + 0.14 * Math.sin(selRingT * 4); } for (; ri < autoRings.length; ri++) autoRings[ri].position.y = -999; }   // [v2] 作業範囲リング（作業中の重機の中心に緑リング）
@@ -2052,7 +2061,7 @@
         } else pushing = false;
         animateArm(dt, null);   // 非バックホウ時は腕を待機（表示中の腕がないので無害）
       }
-      if (fUnit && !game.won && (moving || worked)) useFuel(fUnit, fuelRate(curM()) * (worked ? 1 : FUEL_MOVE) * dt);   // [keiei P1] 操作機の燃料消費：作業=フル／移動のみ=6割
+      if (fUnit && !game.won && (moving || worked)) useFuel(fUnit, fuelRate(curM(), activeLv()) * (worked ? 1 : FUEL_MOVE) * dt);   // [keiei P1] 操作機の燃料消費：作業=フル／移動のみ=6割（強化Lvで燃費改善）
       prevActing = acting;
       if (digPulse > 0) {
         digPulse = Math.max(0, digPulse - dt); bladePhase += dt * 32;
@@ -2376,6 +2385,8 @@
       if (game.money < cost) return;
       game.money -= cost; f.lv = lv + 1;
       if (u === game.driveU) applyMachine(); // 今乗ってる台なら実効ステータス整合（見た目は不変）
+      { const nl = lv + 1;   // [親方FB] 強化の変化を数字で見せる（before→after・自動作業にも効く）
+        showBuyToast('⬆ ' + m.icon + ' ' + m.name + ' <b>Lv' + nl + '</b>！<br><small>掘る速さ ' + (m.digRate * UPG_RATE[lv]).toFixed(1) + '→<b>' + (m.digRate * UPG_RATE[nl]).toFixed(1) + '</b> ／ 削る幅 ' + (m.digRadius * UPG_RAD[lv]).toFixed(2) + '→<b>' + (m.digRadius * UPG_RAD[nl]).toFixed(2) + '</b>m<br>移動 ' + (m.moveSpeed * UPG_SPD[lv]).toFixed(1) + '→<b>' + (m.moveSpeed * UPG_SPD[nl]).toFixed(1) + '</b> ／ 燃費 ' + fuelRate(m, lv).toFixed(2) + '→<b>' + fuelRate(m, nl).toFixed(2) + '</b>L/s</small>', 3800); }
       checkAchievements(); refreshHUD(); save(); SND.buy(); tryVibrate(20);
     }
     let achQueue = [], achToastTimer = 0;
@@ -2422,7 +2433,7 @@
       return sanitizeFleet(fl);
     }
     let buyToastTimer = 0;
-    function showBuyToast(msg) { const el = document.getElementById("buyToast"); if (!el) return; el.innerHTML = msg; el.classList.add("show"); clearTimeout(buyToastTimer); buyToastTimer = setTimeout(function () { el.classList.remove("show"); }, 1500); }   // [親方FB] 購入成功バナー
+    function showBuyToast(msg, ms) { const el = document.getElementById("buyToast"); if (!el) return; el.innerHTML = msg; el.classList.add("show"); clearTimeout(buyToastTimer); buyToastTimer = setTimeout(function () { el.classList.remove("show"); }, ms || 1500); }   // [親方FB] 購入成功バナー（ms=滞在時間・強化の数字表示は長め）
     const garage = document.getElementById("garage"), gList = document.getElementById("g-list");
     function renderGarage() {
       let html = '', lastMaker = '';
@@ -2433,7 +2444,7 @@
         if (game.money >= m.price) btn = '<button class="g-btn buy" data-id="' + m.id + '">' + m.price + '万円 購入</button>';
         else btn = '<button class="g-btn ng" disabled>' + m.price + '万円<br><small>あと' + (m.price - game.money) + '</small></button>';
         const ownTag = n > 0 ? ' <b style="color:#2c7a2c">所有' + n + '台</b>' : '';
-        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '・容量' + m.bladeCap + 'm³' + ownTag + '</small></div><div class="g-btns">' + btn + '</div></div>';
+        html += '<div class="g-card' + (cur ? ' cur' : '') + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + m.name + '</b><small>' + m.ability + '<br>⛏' + m.digRate + ' 幅' + m.digRadius + 'm 速' + m.moveSpeed + ' 容量' + m.bladeCap + 'm³' + ownTag + '</small></div><div class="g-btns">' + btn + '</div></div>';
       }
       gList.innerHTML = html;
     }
@@ -2491,9 +2502,10 @@
       const idxTag = ord ? ord + '台目 ' : '';
       const fpct = Math.round(fuelOf(f) / fuelCap(m) * 100), fcost = refuelCost(f);   // [keiei P1] 燃料%と給油費
       const fuelTag = '<span class="mc-lv"' + (fpct <= 20 ? ' style="color:#c22020"' : '') + '>⛽' + fpct + '%</span>';
+      const statTag = '⛏' + (m.digRate * UPG_RATE[lv]).toFixed(1) + ' 幅' + (m.digRadius * UPG_RAD[lv]).toFixed(2) + 'm 速' + (m.moveSpeed * UPG_SPD[lv]).toFixed(1) + (lv > 0 ? ' <span style="color:#2c7a2c">燃費-' + Math.round((1 - UPG_FUEL[lv]) * 100) + '%</span>' : '');   // [親方FB] 実効ステータスを数字で常時表示（強化Lv込み・自動作業にも同じ数字が効く）
       let acts = '';
       if (fcost > 0) acts += '<button class="g-btn fuel" data-refuel="' + f.u + '">⛽給油<br><small>' + fcost + '万円</small></button>';   // [keiei P1] 満タンで非表示。[keiei P2] 給油はライフライン=赤字でも可
-      if (lv < UPG_MAX) { const c = upgCost(m, lv); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + '<br><small>' + c + '万円</small></button>'; }
+      if (lv < UPG_MAX) { const c = upgCost(m, lv), pctUp = Math.round((UPG_RATE[lv + 1] / UPG_RATE[lv] - 1) * 100); acts += (game.money >= c) ? '<button class="g-btn upg" data-upg="' + f.u + '">⬆強化 掘+' + pctUp + '%<br><small>' + c + '万円</small></button>' : '<button class="g-btn ng" disabled>⬆Lv' + (lv + 1) + ' 掘+' + pctUp + '%<br><small>' + c + '万円</small></button>'; }   // [親方FB] 次Lvで掘る速さが何%上がるかをボタンに明記
       else acts += '<button class="g-btn maxed" disabled>強化MAX</button>';
       if (st === 'field') acts += '<button class="g-btn recall" data-recall="' + f.u + '">🧹回収</button>';
       const _k = machineKind(m), _wk = workerOfUnit(f.u);   // [keiei P2] 割当作業員（監督モードの必要条件）。[v4] トラックにも配属可
@@ -2501,7 +2513,7 @@
       if (st === 'field' && _k !== 'backhoe' && _k !== 'truck') { const pk = parked.find(function (x) { return x.u === f.u; }); const on = pk && pk.auto; acts += !_wk ? '<button class="g-btn ng" disabled>🚧要作業員</button>' : '<button class="g-btn auto' + (on ? ' on' : '') + '" data-auto="' + f.u + '">🚧' + (on ? '作業中■' : '作業ON') + '</button><button class="g-btn dispatch" data-dispatch="' + f.u + '">🎯派遣</button>'; }   // [batch4/v2] 監督モード：自動整地ON/OFF＋地点指定派遣（要作業員[keiei P2]）
       else if (st === 'field' && _k === 'backhoe') { const pk = parked.find(function (x) { return x.u === f.u; }); const on = pk && pk.auto; acts += !_wk ? '<button class="g-btn ng" disabled>🚧要作業員</button>' : (on ? '<button class="g-btn auto on" data-bhauto="' + f.u + '">🚧作業中■</button>' : '<button class="g-btn dispatch" data-bhauto="' + f.u + '">🚧掘って運ぶ</button>'); }   // [v3] 自動バックホウ：ON=2点指定へ／作業中■=停止（要作業員[keiei P2]）
       else if (st === 'field' && _k === 'truck') { const pk = parked.find(function (x) { return x.u === f.u; }); const on = pk && pk.auto; acts += !_wk ? '<button class="g-btn ng" disabled>🚚要作業員</button>' : (on ? '<button class="g-btn auto on" data-truckauto="' + f.u + '">🚚運搬中■</button>' : '<button class="g-btn dispatch" data-truckauto="' + f.u + '">🚚運搬ON</button>'); }   // [v4] 自動運搬トラック：ON=捨て場タップへ／運搬中■=停止（要作業員）
-      return '<div class="g-card mc-unit' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + idxTag + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + ' ' + fuelTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
+      return '<div class="g-card mc-unit' + (st === 'active' ? ' cur' : '') + '" data-u="' + f.u + '"><div class="g-ic">' + m.icon + '</div><div class="g-info"><b>' + idxTag + m.name + '</b><small>容量' + m.bladeCap + 'm³ ' + lvTag + ' ' + fuelTag + '<br>' + statTag + '<br>' + statusTag + '</small></div><div class="g-btns">' + acts + '</div></div>';
     }
     function renderChooserInto(listEl, isTruck) {   // listEl に「左=待機中 / 右=出動中」の2列を描く（isTruck=トラック窓か）
       const fleet = game.fleet.filter(function (f) { return isTruckUnit(f) === isTruck; });
@@ -2632,8 +2644,8 @@
     // ===================== 🏭 ヤード（会社ダッシュボード）[keiei P3] =====================
     const yardEl = document.getElementById("yard");
     function yardUnitRow(f) {
-      const m = machineById(f.id), st = unitState(f.u), w = workerOfUnit(f.u);
-      const stTag = st === 'active' ? '<b style="color:#2c7a2c">運転中</b>' : st === 'field' ? '現場' : '待機';
+      const m = machineById(f.id), st = unitState(f.u), w = workerOfUnit(f.u), _ylv = Math.max(0, Math.min(UPG_MAX, f.lv | 0));
+      const stTag = (st === 'active' ? '<b style="color:#2c7a2c">運転中</b>' : st === 'field' ? '現場' : '待機') + (_ylv > 0 ? ' <b style="color:#b8860b">Lv' + _ylv + '</b>' : '');
       const fpct = Math.round(fuelOf(f) / fuelCap(m) * 100), fcost = refuelCost(f);
       const gauge = '<span class="fuelmini"><i style="width:' + fpct + '%' + (fpct <= 20 ? ';background:#c22020' : '') + '"></i></span> ' + fpct + '%';
       const wtag = w ? '👷' + w.name : '<span style="opacity:.6">作業員なし</span>';
@@ -2814,7 +2826,7 @@
       buyUnit: (id) => { const m = machineById(id); game.money -= m.price; const f = { u: game.nextUid++, id: id, lv: 0 }; game.fleet.push(f); syncOwned(); checkAchievements(); return f.u; },
       migrate: (s) => buildFleetFromSave(s),
       getCum: () => JSON.parse(JSON.stringify(game.cum)), getAch: () => Object.keys(game.unlockedAch),
-      fuelOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? +fuelOf(f).toFixed(3) : null; }, setFuel: (u, v) => { const f = unitById(u == null ? game.driveU : u); if (f) f.fuel = v; refreshHUD(); }, fuelCapOf: (id) => fuelCap(machineById(id || game.machine)), fuelRateOf: (id) => fuelRate(machineById(id || game.machine)), refuel: (u) => refuelUnit(u == null ? game.driveU : u), refuelCostOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? refuelCost(f) : null; }, FUEL_PRICE: FUEL_PRICE, FUEL_MOVE: FUEL_MOVE, FUEL_AUTO: FUEL_AUTO,   // [keiei P1] 燃料検証用
+      fuelOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? +fuelOf(f).toFixed(3) : null; }, setFuel: (u, v) => { const f = unitById(u == null ? game.driveU : u); if (f) f.fuel = v; refreshHUD(); }, fuelCapOf: (id) => fuelCap(machineById(id || game.machine)), fuelRateOf: (id, lv) => fuelRate(machineById(id || game.machine), lv || 0), unitEffOf: (u) => { const p = parked.find((x) => x.u === u) || { id: (unitById(u) || {}).id, u: u }; return p.id ? JSON.parse(JSON.stringify(unitEff(p))) : null; }, refuel: (u) => refuelUnit(u == null ? game.driveU : u), refuelCostOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? refuelCost(f) : null; }, FUEL_PRICE: FUEL_PRICE, FUEL_MOVE: FUEL_MOVE, FUEL_AUTO: FUEL_AUTO,   // [keiei P1] 燃料検証用
       effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
