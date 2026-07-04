@@ -278,7 +278,7 @@
   <div id="title"><div class="t-box">
     <div class="t-logo">🚜</div>
     <div class="t-name">どぼくランド</div>
-    <div class="t-sub">重機で整地しよう ・ 全20レベル</div>
+    <div class="t-sub">重機で整地しよう ・ 全22レベル</div>
     <div id="t-menu">
       <button id="t-continue" class="t-btn t-cont">つづきから</button>
       <button id="t-new" class="t-btn t-new">はじめから</button>
@@ -685,6 +685,24 @@
         heights[idx] = clamp(h);
       }
     }
+    function genGravelPit(L) { // L21 砂利採取場：左の砂利の山(A)を掘って右のストックヤード(B)へ運ぶ（小マップ36・砂利=掘りが速いメカの見せ場・短工期）
+      clearWater();
+      const A = L.A;
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0;
+        let h = 0.2 + rnd2(0.1);                               // 全体ほぼ平地
+        if (inRect(i, j, A)) h = 0.2 + gauss(x, z, -7, 0, 2.6, 3.4) + gauss(x, z, -7, 6, 1.4, 2.4) + rnd2(0.1);   // 左に砂利の山（主峰+子峰）
+        heights[idx] = clamp(h);
+      }
+    }
+    function genStrata(L) { // L22 岩盤とりで：中央の3層の丘（外=砂利/中=礫/芯=岩）を撤去（小マップ36・地質フルコース・💪の見せ場）。地質はsetHardness(L.soils)で付与
+      clearWater();
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx];
+        const h = rnd2(0.1) + gauss(x, z, 0, 0, 3.8, 5.2);     // 中央のどっしりした丘（撤去対象）
+        heights[idx] = clamp(h);
+      }
+    }
     function genRiverFix(L) { // L17 河川改修：雨で増え続ける氾濫原(A・手前)の水を、中央の堤を掘って河道(B・奥/低い)へ流す（小マップ36・天候=雨メカの見せ場）
       clearWater();
       const A = L.A, B = L.B;
@@ -918,7 +936,20 @@
         rain: 0.01, rainZone: rect(10, 98, 8, 49), rainMaxH: 0.8, rainTarget: 0.5, koki: 400, reward: 420,
         goal: '大規模治水：☔大雨で<b>氾濫した広大な低地（緑枠）の水</b>を、中央の<b>大堤を掘って大型調整池（青枠）へ排水</b>し、街を守ろう。集大成の大仕事—<b>工期内</b>でボーナス',
         hint: '緑枠＝氾濫した低地・青枠＝大型調整池（低い）。中央の大堤に幅広い排水路を掘って大量の水を流す。大マップ＋雨で時間がかかる。工期に注意',
-        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genFloodControl }
+        markers: [['A', 0x2faa55], ['B', 0x2f7fd6]], gen: genFloodControl },
+      // ===== L21-22：地質メカの見せ場（砂利=速い／礫・岩=💪依存）[親方FB 2026-07-03] =====
+      { type: 'haul', name: '砂利採取場', mainLabel: 'ストック', grid: 36, A: rect(2, 16, 6, 30), B: rect(22, 33, 8, 28), noWater: true,
+        digRef: 0.2, fillRef: 0.9, clearTol: 0.4, startZ: 0.0, koki: 180, reward: 200,
+        soils: [{ zone: rect(2, 16, 6, 30), hard: -0.35 }],   // 山エリア全体が砂利＝掘りがとても速い
+        goal: '砂利採取場：左の<b>砂利の山（赤枠）</b>を掘り、🚛トラックで運んで右の<b>ストックヤード（青枠）に積み上げ</b>よう。砂利は<b>掘りがとても速い</b>—短い工期を活かしてスピード勝負！',
+        hint: '明るい砂色＝砂利（どの重機でも速く掘れる）。掘る→トラックで運ぶ→青枠に盛る。監督モードのチーム自動化も速い。短い工期に注意',
+        markers: [['A', 0xd06a2f], ['B', 0x2f7fd6]], gen: genGravelPit },
+      { type: 'level', name: '岩盤とりで', mainLabel: '', grid: 36, A: rect(8, 28, 8, 28), noWater: true,
+        maxDev: 0.6, tFrac: 0, startZ: 6.3, subFloor: 0.2, clearTol: 0.4, koki: 300, reward: 320,
+        soils: [{ cx: 0, cz: 0, r: 7.5, hard: -0.35 }, { cx: 0, cz: 0, r: 5.0, hard: 0.55 }, { cx: 0, cz: 0, r: 2.8, hard: 0.95 }],   // 同心円: 外=砂利/中=礫/芯=岩（後勝ちで内側上書き）
+        goal: '岩盤とりで：中央の<b>3層の丘を撤去</b>しよう。外側は<b>砂利（速い）</b>・その内側は<b>礫（硬い）</b>・芯は<b>岩盤（最硬）</b>。<b>掘る力💪の強い重機</b>でないと芯は歯が立たない。<b>工期内</b>でボーナス',
+        hint: '砂色＝砂利（速い）→ 薄い灰＝礫（硬い）→ 濃い灰＝岩盤（最硬・💪5級推奨）。外から順に剥がして、芯は強い重機で。工期に注意',
+        markers: [['A', 0x8a8d92]], gen: genStrata }
     ];
     const NLV = LEVEL_DEFS.length;
 
@@ -1479,15 +1510,20 @@
       return 1 - hd * (1 - sp);
     }
     function effPower(M, lv) { return (M.power || 2) + Math.max(0, Math.min(UPG_MAX, lv | 0)) * 0.4; }   // 実効💪＝機体の強さ＋強化(Lv5で+2相当)
-    function setHardness(L) {   // [親方FB] レベル定義(hardZone=岩)＋全レベル共通の砂利/礫パッチ（レベル番号から決定的に生成＝リロードでも同じ場所）
+    function setHardness(L) {   // [親方FB] レベル定義(soils=地質デザイン/hardZone=岩)＋地質指定の無い面は砂利/礫パッチを自動配置（レベル番号から決定的＝リロードでも同じ場所）
       for (let i = 0; i < N; i++) hard[i] = 0;
-      { let s = (curLevel + 7) * 2654435761 % 2147483647;   // 決定的LCG（Math.random不使用＝セーブ復元でも同配置）
+      if (!L || !L.soils) { let s = (curLevel + 7) * 2654435761 % 2147483647;   // 決定的LCG（Math.random不使用＝セーブ復元でも同配置）
         const rnd = function () { s = (s * 48271) % 2147483647; return s / 2147483647; };
         const half = WORLD / 2 - 3;
         for (let k = 0; k < 4; k++) {   // 砂利2＋礫2パッチ（半径2〜3.5m・面積は控えめ＝バランス影響小）
           const px = (rnd() * 2 - 1) * half, pz = (rnd() * 2 - 1) * half, pr = 2 + rnd() * 1.5, hv = (k < 2) ? SOIL_GRAVEL : SOIL_COBBLE;
           for (let idx = 0; idx < N; idx++) { const dx = vx[idx] - px, dz = vz[idx] - pz; if (dx * dx + dz * dz < pr * pr) hard[idx] = hv; }
         } }
+      if (L && L.soils) for (let k = 0; k < L.soils.length; k++) {   // [親方FB L21/22] デザインされた地質（rect or 円・配列順=後勝ちで内側上書き）
+        const so = L.soils[k];
+        if (so.zone) zoneEach(so.zone, (idx) => { hard[idx] = so.hard; });
+        else for (let idx = 0; idx < N; idx++) { const dx = vx[idx] - so.cx, dz = vz[idx] - so.cz; if (dx * dx + dz * dz < so.r * so.r) hard[idx] = so.hard; }
+      }
       if (L && L.hardZone) { const hv = (L.hardVal != null) ? L.hardVal : 1; zoneEach(L.hardZone, (idx) => { hard[idx] = hv; }); }   // 岩は最後＝パッチより優先
     }
     // 押し均し[本物ブル移植 2026-06-25]：押し始めの足元の高さ(cutHeight)を基準に、前方で「それより高い土」を削ってブレードに溜め（その重機の上限 bladeCap まで＝満杯で削り止め・後ろに出さない）→「それより低い所」へ運んで埋める。色/目標に依らない物理動作。持ち切れぬ土は bladeUnload（ならすを離して進む）で運ぶ。土は保存（地面＋ブレード一定）。
