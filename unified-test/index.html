@@ -915,7 +915,9 @@
         A: rect(14, 94, 50, 58), gradeTarget: 1.5, gradeTol: 0.6, startZ: 0,
         goal: '道路建設：脇の<b>山から土を取り</b>、中央を横断する<b>道（黄枠）を高さ1.5mまで盛って</b>上を平らに仕上げよう',
         hint: '黄枠＝道路。脇の小山を掘り、トラックやブルで道に運んで盛り、目標の高さで平らに均す',
-        markers: [['A', 0xe0b020]], gen: genRoad },
+        markers: [['A', 0xe0b020]],
+        signs: [ { t: '⛏ 土をここから', x: -22, z: -18, bg: 'rgba(120,72,28,0.92)' }, { t: '⛏ 土をここから', x: 22, z: 18, bg: 'rgba(120,72,28,0.92)' }, { t: '⛏ 土をここから', x: -18, z: 24, bg: 'rgba(120,72,28,0.92)' }, { t: '🚧 ここに盛る（高さ1.5m）', x: 0, z: 0, y: 6.5, bg: 'rgba(190,120,20,0.94)' } ],   // [土源段取り試作] 借土山3か所=土源／道路中央=盛土先。座標は genRoad の borrow 位置に対応（見た目専用）
+        gen: genRoad },
       { type: 'grade', name: '宅地造成', mainLabel: '', grid: 108,
         A: rect(24, 84, 24, 84), gradeTarget: 0, gradeTol: 0.6, startZ: 0,
         goal: '宅地造成：傾いた広い土地（黄枠）を、<b>高い側を削って低い側へ盛り</b>、一枚の<b>平らな土地（高さ0）</b>に仕上げよう',
@@ -1161,6 +1163,7 @@
 
     // ゾーン旗・枠
     const markerGroup = new THREE.Group(); scene.add(markerGroup);
+    const signGroup = new THREE.Group(); scene.add(signGroup);   // [親方FB 土源段取り] 掘る場所/盛る場所を示す浮き看板（見た目専用・地形/土量/セーブに無関係）
     function rebuildMarkers(list) {
       for (let k = markerGroup.children.length - 1; k >= 0; k--) { const c = markerGroup.children[k]; markerGroup.remove(c); if (c.geometry) c.geometry.dispose(); }
       list.forEach(function (m) {
@@ -1175,6 +1178,28 @@
           const flag = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.06), flagMat); flag.position.set(c[0] + 0.45, 2.7, c[1]); markerGroup.add(flag);
         });
       });
+    }
+    // [親方FB 土源段取り] 浮き看板：掘る場所/盛る場所を文字で明示。カメラ常時正対のスプライト＝見た目専用で、クリア判定・土量・水・セーブに一切関与しない。
+    function makeSign(text, bg) {
+      const fs = 46, pad = 20, c = document.createElement('canvas'), g = c.getContext('2d');
+      g.font = 'bold ' + fs + "px 'Segoe UI',sans-serif";
+      const tw = Math.ceil(g.measureText(text).width);
+      c.width = tw + pad * 2; c.height = fs + pad * 2;                 // 幅変更でcontextがリセットされる→下で再設定
+      g.font = 'bold ' + fs + "px 'Segoe UI',sans-serif"; g.textBaseline = 'middle'; g.textAlign = 'center';
+      const w = c.width, h = c.height, r = 16;
+      g.fillStyle = bg || 'rgba(60,42,22,0.9)';                        // 角丸パネル
+      g.beginPath(); g.moveTo(r, 0); g.arcTo(w, 0, w, h, r); g.arcTo(w, h, 0, h, r); g.arcTo(0, h, 0, 0, r); g.arcTo(0, 0, w, 0, r); g.closePath(); g.fill();
+      g.lineWidth = 5; g.strokeStyle = 'rgba(255,255,255,0.92)'; g.stroke();
+      g.fillStyle = '#fff'; g.fillText(text, w / 2, h / 2 + 2);
+      const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+      sp.scale.set(w / h * 2.4, 2.4, 1);                              // 高さ約2.4mの看板（幅は文字量で自動）
+      return sp;
+    }
+    function rebuildSigns(list) {
+      for (let k = signGroup.children.length - 1; k >= 0; k--) { const s = signGroup.children[k]; signGroup.remove(s); if (s.material) { if (s.material.map) s.material.map.dispose(); s.material.dispose(); } }
+      if (!list) return;
+      list.forEach(function (o) { const sp = makeSign(o.t, o.bg); sp.position.set(o.x, (o.y == null ? 5.5 : o.y), o.z); sp.renderOrder = 10; signGroup.add(sp); });
     }
 
     // 重機
@@ -2419,7 +2444,7 @@
       document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade' || LV.type === 'sort') ? 'none' : '';
       document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade' || LV.type === 'sort' || LV.noWater) ? 'none' : '';   // 造成/整地/仕分け/水なしレベルは水バッジを隠す[レビュー修正]
       document.getElementById("win").classList.remove("show");
-      rebuildMarkers(LV.markers); setHint(LV.hint, curLevel === 0);   // [即効パック] 最初のレベルはヒントを固定表示（触っても消えない・30秒）
+      rebuildMarkers(LV.markers); rebuildSigns(LV.signs); setHint(LV.hint, curLevel === 0);   // [即効パック] 最初のレベルはヒントを固定表示（触っても消えない・30秒）／[土源段取り] 看板も再構築
       canClear = false; updateClearBtn();   // [親方FB] レベル切替でクリアボタンを一旦隠す（新レベルは未達成）
       if (!saved) { game.treasureCount = 0; game.treasureNext = 90 + Math.random() * 40; }   // [親方FB] 新しい面は埋蔵金カウンタをリセット（1面1〜2回）。セーブ復元時は途中経過を保つ
       syncGeometry(); syncWater(0); refreshHUD(); save();
@@ -3035,7 +3060,9 @@
       fuelOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? +fuelOf(f).toFixed(3) : null; }, setFuel: (u, v) => { const f = unitById(u == null ? game.driveU : u); if (f) f.fuel = v; refreshHUD(); }, fuelCapOf: (id) => fuelCap(machineById(id || game.machine)), fuelRateOf: (id, lv) => fuelRate(machineById(id || game.machine), lv || 0), unitEffOf: (u) => { const p = parked.find((x) => x.u === u) || { id: (unitById(u) || {}).id, u: u }; return p.id ? JSON.parse(JSON.stringify(unitEff(p))) : null; }, refuel: (u) => refuelUnit(u == null ? game.driveU : u), refuelCostOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? refuelCost(f) : null; }, FUEL_PRICE: FUEL_PRICE, FUEL_MOVE: FUEL_MOVE, FUEL_AUTO: FUEL_AUTO,   // [keiei P1] 燃料検証用
       effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
-      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
+      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; },
+      signCount: () => signGroup.children.length, signPositions: () => signGroup.children.map((s) => ({ x: +s.position.x.toFixed(1), y: +s.position.y.toFixed(1), z: +s.position.z.toFixed(1), sx: +s.scale.x.toFixed(2), depthTest: s.material.depthTest })),   // [土源段取り] 看板検証用
+      markerCount: () => markerGroup.children.length
     };
   })();
   </script>
