@@ -27,7 +27,7 @@
   }
   #app { position:fixed; inset:0; }
   canvas { display:block; touch-action:none; }
-  #hud-top { position:fixed; top:env(safe-area-inset-top,8px); left:0; right:0; display:flex; justify-content:center; gap:6px; flex-wrap:wrap; pointer-events:none; padding:8px env(safe-area-inset-right,8px) 0 env(safe-area-inset-left,8px); }
+  #hud-top { position:fixed; top:env(safe-area-inset-top,8px); left:0; right:0; display:flex; justify-content:center; gap:6px; flex-wrap:wrap; pointer-events:none; padding:8px calc(env(safe-area-inset-right,8px) + 64px) 0 calc(env(safe-area-inset-left,8px) + 64px); }   /* [親方FB] 左右に余白＝バッジ列が隅のボタン(☰/🚜/🚛)に重ならないよう中央へ寄せる */
   .badge { background:var(--panel); color:var(--ink); border-radius:13px; padding:6px 10px; font-weight:800; font-size:12.5px; box-shadow:0 2px 8px rgba(0,0,0,.15); font-variant-numeric:tabular-nums; white-space:nowrap; }
   .badge small { font-weight:700; opacity:.7; font-size:.72em; }
   #b-work .v { color:var(--fill); }
