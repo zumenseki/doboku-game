@@ -539,7 +539,7 @@
     const waterD = new Float32Array(N_MAX);
     const fL = new Float32Array(N_MAX), fR = new Float32Array(N_MAX), fT = new Float32Array(N_MAX), fB = new Float32Array(N_MAX);
     // [親方FB] 持ち物は「1台ごと」(fleet)。各ユニット={u:固有番号, id:機種, lv:その台の強化Lv}。driveU=今乗ってる台のu。owned/machineはfleetから同期する互換用。
-    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer', 'igx250'], machine: 'dozer', fleet: [{ u: 1, id: 'dozer', lv: 0 }, { u: 2, id: 'igx250', lv: 0 }], driveU: 1, nextUid: 3, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {}, stars: {}, workers: [], nextWid: 1, rankSeen: null, treasureNext: 45 };   // [親方FB] treasureNext=次の埋蔵金までの残り掘削量(m³)   // [keiei P4] rankSeen=既知の最高会社ランク（初回nullで現ランクを静かに採用）   // [keiei P2] workers=雇用中の作業員 [{w,name,hiredDay,assigned:重機u|null}]   // [親方FB] 初期持ち物=コマシD-51(操作中)＋小さいトラック イスズGIGA-250(待機)。stars[levelIndex]=その面の最高★(1-3)
+    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer', 'igx250'], machine: 'dozer', fleet: [{ u: 1, id: 'dozer', lv: 0 }, { u: 2, id: 'igx250', lv: 0 }], driveU: 1, nextUid: 3, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {}, stars: {}, workers: [], nextWid: 1, rankSeen: null, treasureNext: 90, treasureCount: 0 };   // [親方FB] treasureNext=次の埋蔵金までの残り掘削量(m³)・treasureCount=この面で出た回数(最大2)   // [keiei P4] rankSeen=既知の最高会社ランク（初回nullで現ランクを静かに採用）   // [keiei P2] workers=雇用中の作業員 [{w,name,hiredDay,assigned:重機u|null}]   // [親方FB] 初期持ち物=コマシD-51(操作中)＋小さいトラック イスズGIGA-250(待機)。stars[levelIndex]=その面の最高★(1-3)
     let camYaw = 0, camPitch = 0.95, camDist = CAM_DIST, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
     // ===================== 工期（時間制・L11+）=====================
@@ -2278,8 +2278,9 @@
     // ===================== 埋蔵金[親方FB]：土を掘ると累計掘削量ごとにたまにお宝→収入 =====================
     function digProgress(vol, x, z) {   // 掘った体積volをためて閾値超えで埋蔵金（手動/自動どちらの掘削でも公平・累計方式）
       if (game.won || vol <= 0 || _titleGuard) return;
-      game.treasureNext = (game.treasureNext || 45) - vol;
-      if (game.treasureNext <= 0) { spawnTreasure(x, z); game.treasureNext = 35 + Math.random() * 45; }   // 次まで35〜80m³
+      if ((game.treasureCount || 0) >= 2) return;   // [親方FB] 1面あたり最大2回まで（出過ぎ防止のハードキャップ）
+      game.treasureNext = (game.treasureNext || 90) - vol;
+      if (game.treasureNext <= 0) { spawnTreasure(x, z); game.treasureCount = (game.treasureCount || 0) + 1; game.treasureNext = 90 + Math.random() * 70; }   // 次まで90〜160m³（＝掘削量の多い面でも1〜2回に収まる）
     }
     function spawnTreasure(x, z) {
       const big = Math.random() < 0.15;
@@ -2406,6 +2407,7 @@
       document.getElementById("win").classList.remove("show");
       rebuildMarkers(LV.markers); setHint(LV.hint, curLevel === 0);   // [即効パック] 最初のレベルはヒントを固定表示（触っても消えない・30秒）
       canClear = false; updateClearBtn();   // [親方FB] レベル切替でクリアボタンを一旦隠す（新レベルは未達成）
+      if (!saved) { game.treasureCount = 0; game.treasureNext = 90 + Math.random() * 40; }   // [親方FB] 新しい面は埋蔵金カウンタをリセット（1面1〜2回）。セーブ復元時は途中経過を保つ
       syncGeometry(); syncWater(0); refreshHUD(); save();
     }
 
@@ -2875,7 +2877,7 @@
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
     let _titleGuard = true;   // [親方FB トップページ] タイトル表示中は save() を無効化＝既存セーブを保護。beginGame() で false にする
     function save() { if (_titleGuard) return; try { const rd = function (a) { const o = new Array(N); for (let i = 0; i < N; i++) o[i] = Math.round(a[i] * 1000) / 1000; return o; };   // [即効パック] 保存軽量化：使っている範囲(N)だけ＋mm(小数3桁)丸めで文字列を圧縮（小マップ約9割減・大マップも約6割減）。load側は length===_act を既に受理。
-      localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: rd(heights), b: rd(baseHeights), w: rd(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, wk: game.workers, nw: game.nextWid, ld: Math.round(levelDays), rs: game.rankSeen, tn: game.treasureNext, pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [親方FB] tn=埋蔵金カウンタ   // [keiei P2] wk/nw/ld=作業員・経過日数（旧セーブ=無し→初期値）[keiei P4] rs=会社ランク既知   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
+      localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: rd(heights), b: rd(baseHeights), w: rd(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, wk: game.workers, nw: game.nextWid, ld: Math.round(levelDays), rs: game.rankSeen, tn: game.treasureNext, tc: game.treasureCount, pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [親方FB] tn/tc=埋蔵金カウンタ・当面出現回数   // [keiei P2] wk/nw/ld=作業員・経過日数（旧セーブ=無し→初期値）[keiei P4] rs=会社ランク既知   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
@@ -2903,7 +2905,8 @@
           for (let i = 0; i < wk.length; i++) { const w = wk[i]; if (!w || typeof w.name !== 'string') continue; const wid = (w.w | 0) > 0 ? (w.w | 0) : mw + 1; const asg = (w.assigned != null && unitById(w.assigned)) ? w.assigned : null; out.push({ w: wid, name: w.name.slice(0, 12), hiredDay: 0, assigned: asg }); if (wid > mw) mw = wid; }
           game.workers = out; game.nextWid = Math.max((s.nw | 0), mw + 1, 1); }
         game.rankSeen = (typeof s.rs === 'number') ? s.rs : null;   // [keiei P4] 会社ランク既知（旧セーブ=null→現ランクを静かに採用）
-        game.treasureNext = (typeof s.tn === 'number') ? s.tn : 45;   // [親方FB] 埋蔵金カウンタ（旧セーブ=初期値）
+        game.treasureNext = (typeof s.tn === 'number') ? s.tn : 90;   // [親方FB] 埋蔵金カウンタ（旧セーブ=初期値）
+        game.treasureCount = (typeof s.tc === 'number') ? s.tc : 0;   // [親方FB] この面で出た回数（旧セーブ=0）
         loadLevel(s.level, s);
         levelDays = Math.max(0, +s.ld || 0);   // [keiei P2] 経過日数を復元（loadLevelのリセット後に上書き）
         checkAchievements(true); // 移行直後＝既に条件を満たす所有/メーカー系バッジを静かに解禁（トースト無し）
