@@ -1001,7 +1001,7 @@
         goal: '競技場ボウル：<b>中央ほど深く・縁は浅い「すり鉢状（観客席型）」の窪み</b>を正確に掘ろう。掘った土は外へ運ぶ。目標の断面にぴったり合わせるほど★UP・<b>工期内</b>でボーナス',
         hint: '中心ほど深く、縁は浅い、お椀の内側の形に掘る。目標の高さに合わせる（掘りすぎ注意）。余り土は場外へ運ぶ。工期に注意',
         markers: [['A', 0x2f7fd6]], gen: genBowl },
-      { type: 'sort', name: '資材仕分け', mainLabel: '', grid: 36, noWater: true,
+      { type: 'sort', name: '資材仕分け', mainLabel: '', grid: 36, noWater: true, startZ: 0.0,
         A: rect(3, 13, 4, 15), A2: rect(3, 13, 21, 32), B: rect(23, 33, 4, 15), B2: rect(23, 33, 21, 32),
         digRef: 0.2, fillRef: 1.0, clearTol: 0.4, koki: 340, reward: 320,
         soils: [{ zone: rect(3, 13, 4, 15), hard: -0.35 }, { zone: rect(3, 13, 21, 32), hard: 0.95 }],
@@ -2387,7 +2387,7 @@
       if (saved && saved.pk) restoreParked(saved.pk);   // [宿題] セーブ復元時は配備中の重機(位置/積載)を再現＝消えない+土量保存
       applyMachine();
       if (saved) { game.mx = saved.mx; game.mz = saved.mz; game.myaw = saved.myaw != null ? saved.myaw : Math.PI; }
-      else { game.mx = 0; game.mz = LV.startZ; game.myaw = Math.PI; findDryStart(); }
+      else { game.mx = 0; game.mz = (typeof LV.startZ === 'number') ? LV.startZ : 0; game.myaw = Math.PI; findDryStart(); }   // [親方FB 防御] startZ未設定でもNaN化させない（sampleHeight→undefined→.toFixedクラッシュ防止）
       lvnumEl.textContent = (curLevel + 1);
       // 工期リセット（L11+のみ有効・セーブ復元時は残り工期を引き継ぐ）
       kokiActive = !!LV.koki; kokiLeft = LV.koki || 0; kokiOver = 0;
