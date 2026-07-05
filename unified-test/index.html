@@ -86,6 +86,11 @@
   /* [即効パック] 初回ガイド：操作ボタン/メニュー/ショップを数回だけ脈動させ「ここを押す」を示す */
   @keyframes hintPulse { 0%,100%{ box-shadow:0 3px 10px rgba(0,0,0,.2); } 50%{ box-shadow:0 0 0 5px rgba(47,127,214,.55), 0 3px 10px rgba(0,0,0,.25); } }
   body.intro .dbtn, body.intro #act { animation: hintPulse 1.15s ease-in-out 4; }
+  /* [親方FB] トラック運転時＝ドライブ風の両手操作: 左に左右(操舵)／右に前後ろ＋下ろす */
+  body.truck-ctrl #dpad { grid-template-columns:repeat(2,60px); grid-template-rows:60px; }
+  body.truck-ctrl #d-left { grid-area:1/1/2/2; } body.truck-ctrl #d-right { grid-area:1/2/2/3; }
+  body.truck-ctrl #d-up { position:fixed; right:calc(env(safe-area-inset-right,0px) + 130px); bottom:calc(env(safe-area-inset-bottom,0px) + 90px); width:60px; height:60px; grid-area:auto; z-index:4; }
+  body.truck-ctrl #d-down { position:fixed; right:calc(env(safe-area-inset-right,0px) + 130px); bottom:calc(env(safe-area-inset-bottom,0px) + 22px); width:60px; height:60px; grid-area:auto; z-index:4; }
   #menuBtn.pulse { animation: hintPulse 1.2s ease-in-out infinite; }
   body.need-shop #shop { display:block; animation: hintPulse 1.3s ease-in-out infinite; }
   /* [即効パック] クリア演出：星のポップ＋満杯バッジのパルス */
@@ -2452,6 +2457,7 @@
       activeDump = model.userData.dump || null;
       activeBeacon = model.userData.beacon || null;
       activeTruck = (machineKind(M) === 'truck') ? model.userData : null; driving = (machineKind(M) === 'truck') ? 'truck' : 'machine'; truckTilt = 0;   // [親方FB] トラックは重機の一種＝荷台アクセサ・運転種別・ダンプ角を整合
+      document.body.classList.toggle('truck-ctrl', machineKind(M) === 'truck');   // [親方FB] トラック運転時だけ操作配置を切替（左=左右／右=前後ろ+下ろす）
       if (activeBlade) resetBladePart(activeBlade); if (activeArm) resetArmPose(activeArm);
       dozer.scale.setScalar(machineScale(M));
       updateMachineBtn(); // 置いてある重機があれば「機械チェンジ」表示[親方FB]
