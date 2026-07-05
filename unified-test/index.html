@@ -40,7 +40,7 @@
   #fuel-badge:active { transform:scale(.93); }
   #fuel-badge .fb-go { display:inline-block; background:#2d9c4a; color:#fff; border-radius:8px; padding:1px 8px; margin-left:6px; font-size:10.5px; font-weight:800; vertical-align:1px; }
   #fuel-badge.low .fb-go { background:#c22020; animation:badgePulse .9s ease infinite; }
-  #clearBtn { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,0px) + 150px); transform:translateX(-50%) scale(.92); background:linear-gradient(135deg,#2eae4e,#1c8a3c); color:#fff; border:none; border-radius:16px; padding:12px 22px; font-weight:900; font-size:16px; box-shadow:0 4px 16px rgba(0,0,0,.35); cursor:pointer; z-index:8; display:none; text-align:center; line-height:1.25; }   /* [親方FB] クリア条件達成中だけ出す「ここでクリア」ボタン（押すまで自動クリアしない） */
+  #clearBtn { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,0px) + 26px); transform:translateX(-50%) scale(.92); background:linear-gradient(135deg,#2eae4e,#1c8a3c); color:#fff; border:none; border-radius:16px; padding:10px 20px; font-weight:900; font-size:15px; box-shadow:0 4px 16px rgba(0,0,0,.35); cursor:pointer; z-index:8; display:none; text-align:center; line-height:1.2; }   /* [親方FB] クリア条件達成中だけ出す「ここでクリア」ボタン（真ん中で邪魔→下のほうへ移動・押すまで自動クリアしない） */
   #clearBtn.show { display:block; animation:clearPulse 1.1s ease infinite; }
   #clearBtn .cb-stars { display:block; font-size:13px; color:#ffe9a0; margin-top:2px; letter-spacing:2px; }
   #clearBtn:active { transform:translateX(-50%) scale(.85); }
@@ -69,7 +69,10 @@
   #machineBtn.sub { background:#cfe6f6; }
   #shop:active, #machineBtn:active { transform:scale(.95); }
   #lv-badge { background:rgba(32,48,58,.82); color:#fff; }
-  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 50px); right:calc(env(safe-area-inset-right,0px) + 14px); width:min(56vw,300px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; max-width:calc(100vw - 24px); z-index:3; }   /* [親方FB] 中央上→右上へ移動（プレイ画面の中央を塞がない） */
+  #goal { position:fixed; top:calc(env(safe-area-inset-top,8px) + 50px); right:calc(env(safe-area-inset-right,0px) + 14px); width:min(56vw,300px); background:var(--panel); border-radius:12px; padding:7px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:auto; cursor:pointer; max-width:calc(100vw - 24px); z-index:3; }   /* [親方FB] 中央上→右上へ移動。タップでクエスト表示をON/OFF折りたたみ */
+  body.quest-min #goal { width:auto; padding:6px 11px; }   /* [親方FB] クエストOFF＝小さな見出しだけ（タップで戻す） */
+  body.quest-min #goalLabel, body.quest-min #goal-steps, body.quest-min #bar { display:none; }
+  body.quest-min #goal::after { content:'📋 クエスト（タップで表示）'; font-size:12px; font-weight:800; color:var(--ink); opacity:.85; white-space:nowrap; }
   #goal .label { font-size:12px; font-weight:700; color:var(--ink); opacity:.85; margin-bottom:4px; line-height:1.45; }
   #bar { display:none; }   /* [親方FB] 中央の進捗バーは非表示（進捗はバッジの%で表示） */
   #bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#7db5ec,#2f7fd6); transition:width .2s ease; }
@@ -552,6 +555,7 @@
     // 報酬: 工期内クリア=基本R×1.5(満額+ボーナス) / 超過=1日1%線形減・下限R×0.5。
     let kokiLeft = 0, kokiOver = 0, kokiActive = false;
     let levelDays = 0;   // [keiei P2] このレベルの経過日数(1日=1秒)。給料精算の基礎。レベル切替でリセット
+    const DAY_RATE = 1 / 3;       // [親方FB] 工期・給料日数のカウント速度（1日=3秒＝従来の1/3速）
     const KOKI_BONUS = 0.5;       // 工期内クリアの上乗せ率（基本Rに対して）
     const KOKI_DECAY = 0.01;      // 超過1日(=1秒)あたりの減少率
     const KOKI_FLOOR = 0.5;       // 超過時の報酬下限（基本Rに対する割合）
@@ -1775,14 +1779,14 @@
       }
       if (!isAutoGrader(p.id)) { p.auto = false; return false; }
       p.auto = !!on;
-      if (p.auto) { p.dir = 1; p.homeX = p.x; p.homeZ = p.z; p.cutH = sampleHeight(p.x, p.z); }
-      else { p.tx = null; p.tz = null; }
+      if (p.auto) { p.dir = 1; p.homeX = p.x; p.homeZ = p.z; p.cutH = sampleHeight(p.x, p.z); p.gradeH = null; }   // 作業ON(その場)=レベル目標追従（gradeH無し）
+      else { p.tx = null; p.tz = null; p.gradeH = null; }
       return p.auto;
     }
-    function dispatchUnit(u, tx, tz) {   // [v2] 地点指定：その場所へ移動して整地。割当作業員が必要[keiei P2]
+    function dispatchUnit(u, tx, tz) {   // [v2] 地点指定：その場所へ移動して整地。[親方FB] 派遣先の地面の高さ＝仕上げ目標。割当作業員が必要[keiei P2]
       const p = parked.find(function (x) { return x.u === u; }); if (!p || !isAutoGrader(p.id)) return false;
       if (!workerOfUnit(u)) { setHint('👷 自動で動かすには作業員の配属が必要です（重機窓の「👷配属」）'); return false; }
-      p.auto = true; p.tx = tx; p.tz = tz; p.homeX = tx; p.homeZ = tz; p.dir = 1; p.cutH = sampleHeight(p.x, p.z);
+      p.auto = true; p.tx = tx; p.tz = tz; p.homeX = tx; p.homeZ = tz; p.dir = 1; p.gradeH = sampleHeight(tx, tz); p.cutH = p.gradeH;   // [親方FB] 指定した場所の高さに周囲をならす
       return true;
     }
     function tapGround(clientX, clientY) {   // 画面タップ→地面の世界座標
@@ -1908,7 +1912,7 @@
         const dx = vx[idx] - fx, dz = vz[idx] - fz, d2 = dx * dx + dz * dz; if (d2 >= RAD * RAD) continue;
         const fdx = vx[idx] - p.x, fdz = vz[idx] - p.z; if (fdx * fdx + fdz * fdz < FOOT2) continue;   // 足元は触らない（沈み防止）
         if (waterD[idx] > WATER_EPS) continue;   // 自動は水中に触れない（水位保存を乱さない）
-        const gh = goalHeightAt(idx % V, (idx / V) | 0);   // [親方FB] 目標ゾーン内は目標高さに向かって働く＝自動でクリアが進む
+        const gh = (p.gradeH != null) ? p.gradeH : goalHeightAt(idx % V, (idx / V) | 0);   // [親方FB] 派遣で指定した高さ優先→無ければレベル目標→足元。自動でクリアが進む
         const over = heights[idx] - ((gh != null) ? gh : cutH);
         const step = digR * dt * Math.max(0.4, 1 - Math.sqrt(d2) / RAD);
         if (over > 0.01) { const room = cap - blade; if (room <= 0.0001) continue; const cut = Math.min(over, step * hardCut(idx, pwr), room / CELL_AREA); if (cut > 0) { heights[idx] -= cut; blade += cut * CELL_AREA; dug += cut * CELL_AREA; changed = true; } }   // [親方FB 地質] 自動ブルも砂利=速い/礫・岩=💪依存
@@ -2806,6 +2810,7 @@
 
     // ===================== 右側ボタンの☰メニュー開閉[親方FB] =====================
     document.getElementById("menuBtn").addEventListener("click", function () { document.body.classList.toggle("menu-open"); this.classList.remove('pulse'); try { localStorage.setItem('doboku_seen_v1', '1'); } catch (_) {} SND.click(); });   // [即効パック] 一度開いたら初回ガイドの脈動は止める
+    document.getElementById("goal").addEventListener("click", function () { document.body.classList.toggle("quest-min"); SND.click(); });   // [親方FB] クエスト表示をタップでON/OFF
     ['reset', 'shop', 'mute', 'achBtn', 'mapBtn', 'workersBtn', 'yardBtn'].forEach(function (id) { const b = document.getElementById(id); if (b) b.addEventListener("click", function () { document.body.classList.remove("menu-open"); }); });   // メニュー項目を押したら自動で閉じる＝画面スッキリ
 
     // ===================== 作業員メニュー（雇う/解雇/一覧）[keiei P2] =====================
@@ -2938,8 +2943,8 @@
       updateParticles(dust, dt, 4.5); updateParticles(chunk, dt, 9.0); updateParticles(splash, dt, 6.0); updateParticles(confetti, dt, 8.5);
       if (rainActive && !game.won) rainFx(); updateParticles(rainP, dt, 2.0);   // [③天候] 雨粒（見た目・勝利後は止める）[レビュー修正]
       if (shake > 0) shake = Math.max(0, shake - dt * 0.4);
-      if (kokiActive && !game.won) { if (kokiLeft > 0) { kokiLeft -= dt; if (kokiLeft < 0) kokiLeft = 0; } else kokiOver += dt; }   // 工期カウント（L11+）：残りが尽きたら超過を加算（失敗にはしない）
-      if (!_titleGuard && !game.won) levelDays += dt;   // [keiei P2] 給料用の経過日数（タイトル中・クリア後は止める）
+      if (kokiActive && !game.won) { if (kokiLeft > 0) { kokiLeft -= dt * DAY_RATE; if (kokiLeft < 0) kokiLeft = 0; } else kokiOver += dt * DAY_RATE; }   // 工期カウント（L11+）：残りが尽きたら超過を加算（失敗にはしない）。[親方FB]1日=3秒(1/3速)
+      if (!_titleGuard && !game.won) levelDays += dt * DAY_RATE;   // [keiei P2] 給料用の経過日数（タイトル中・クリア後は止める）。工期と同じ1/3速で整合
       hudAccum += dt; if (hudAccum > 0.15) { hudAccum = 0; refreshHUD(); checkWin(); }
       updateCamera(); renderer.render(scene, camera); requestAnimationFrame(loop);
     }
