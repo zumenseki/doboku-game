@@ -284,7 +284,7 @@
   <div id="title"><div class="t-box">
     <div class="t-logo">🚜</div>
     <div class="t-name">どぼくランド</div>
-    <div class="t-sub">重機で整地しよう ・ 全22レベル</div>
+    <div class="t-sub">重機で整地しよう ・ 全25レベル</div>
     <div id="t-menu">
       <button id="t-continue" class="t-btn t-cont">つづきから</button>
       <button id="t-new" class="t-btn t-new">はじめから</button>
@@ -533,12 +533,13 @@
     // ===================== データ =====================
     const heights = new Float32Array(N_MAX), baseHeights = new Float32Array(N_MAX);
     const hard = new Float32Array(N_MAX);   // [親方FB] 地盤の硬さ(0=普通土〜1=硬い岩)。レベル定義のhardZoneから毎回算出＝セーブ復元でも維持。削る速度だけ落とす(土量保存は不変)
+    const targetField = new Float32Array(N_MAX);   // [親方FB 新レベル] 平らでない目標高さ（段々畑テラス/競技場ボウル）。gradeShape付きレベルのゾーンAだけ意味を持つ
     const vx = new Float32Array(N_MAX), vz = new Float32Array(N_MAX);
     const passRef = new Float32Array(N_MAX), passTag = new Int32Array(N_MAX);
     const waterD = new Float32Array(N_MAX);
     const fL = new Float32Array(N_MAX), fR = new Float32Array(N_MAX), fT = new Float32Array(N_MAX), fB = new Float32Array(N_MAX);
     // [親方FB] 持ち物は「1台ごと」(fleet)。各ユニット={u:固有番号, id:機種, lv:その台の強化Lv}。driveU=今乗ってる台のu。owned/machineはfleetから同期する互換用。
-    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer', 'igx250'], machine: 'dozer', fleet: [{ u: 1, id: 'dozer', lv: 0 }, { u: 2, id: 'igx250', lv: 0 }], driveU: 1, nextUid: 3, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {}, stars: {}, workers: [], nextWid: 1, rankSeen: null, treasureNext: 45 };   // [親方FB] treasureNext=次の埋蔵金までの残り掘削量(m³)   // [keiei P4] rankSeen=既知の最高会社ランク（初回nullで現ランクを静かに採用）   // [keiei P2] workers=雇用中の作業員 [{w,name,hiredDay,assigned:重機u|null}]   // [親方FB] 初期持ち物=コマシD-51(操作中)＋小さいトラック イスズGIGA-250(待機)。stars[levelIndex]=その面の最高★(1-3)
+    const game = { blade: 0, bucket: 0, totalDug: 0, mx: 0, mz: 6.3, myaw: Math.PI, won: false, level: 0, money: 500, owned: ['dozer', 'igx250'], machine: 'dozer', fleet: [{ u: 1, id: 'dozer', lv: 0 }, { u: 2, id: 'igx250', lv: 0 }], driveU: 1, nextUid: 3, unlockedAch: {}, cum: { dugAll: 0, cleared: 0 }, unlocked: 0, clearedLv: {}, stars: {}, workers: [], nextWid: 1, rankSeen: null, treasureNext: 90, treasureCount: 0 };   // [親方FB] treasureNext=次の埋蔵金までの残り掘削量(m³)・treasureCount=この面で出た回数(最大2)   // [keiei P4] rankSeen=既知の最高会社ランク（初回nullで現ランクを静かに採用）   // [keiei P2] workers=雇用中の作業員 [{w,name,hiredDay,assigned:重機u|null}]   // [親方FB] 初期持ち物=コマシD-51(操作中)＋小さいトラック イスズGIGA-250(待機)。stars[levelIndex]=その面の最高★(1-3)
     let camYaw = 0, camPitch = 0.95, camDist = CAM_DIST, pushing = false, cutHeight = 0, pushId = 0, strokeX = 0, strokeZ = 0;
     let curLevel = 0, LV = null, winTimer = 0;
     // ===================== 工期（時間制・L11+）=====================
@@ -688,6 +689,37 @@
       for (let idx = 0; idx < N; idx++) {
         const x = vx[idx], z = vz[idx];
         const h = rnd2(0.1) + gauss(x, z, 0, 0, 3.0, 4.6);   // 中央の岩山（撤去対象）。周りはほぼ平地
+        heights[idx] = clamp(h);
+      }
+    }
+    function genTerrace(L) { // L23 段々畑テラス：ゾーンAを緩い斜面にして、プレイヤーが4段の平段に切る（gradeShape=terrace）
+      clearWater();
+      const A = L.A, base = (L.terraceBase != null) ? L.terraceBase : 0, bands = L.terraceBands || 4, step = L.terraceStep || 1.0, span = Math.max(1, A.j1 - A.j0 + 1), top = base + bands * step;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = 0.2 + rnd2(0.1);
+        if (inRect(i, j, A)) h = base + ((j - A.j0) / span) * (top - base) + rnd2(0.08);   // j0=低い→j1=高い なめらか斜面（目標は階段＝各段を切り出す）
+        heights[idx] = clamp(h);
+      }
+    }
+    function genBowl(L) { // L24 競技場ボウル：ゾーンAを縁(rim)高さの平地にして、プレイヤーがすり鉢に掘る（gradeShape=bowl）
+      clearWater();
+      const A = L.A, rim = (L.bowlRim != null) ? L.bowlRim : 0.5;
+      for (let idx = 0; idx < N; idx++) {
+        const i = idx % V, j = (idx / V) | 0; let h = 0.2 + rnd2(0.1);
+        if (inRect(i, j, A)) h = rim + rnd2(0.08);   // 平ら（縁の高さ）→中心ほど深く掘ってすり鉢に
+        heights[idx] = clamp(h);
+      }
+    }
+    function genSort(L) { // L25 資材仕分け：砂利の山(A)＋岩の山(A2)＋2つのヤード(B/B2)。地質はsetHardness(soils)で付与
+      clearWater();
+      const A = L.A, A2 = L.A2, B = L.B, B2 = L.B2;
+      const cxA = worldX((A.i0 + A.i1) / 2), czA = worldZ((A.j0 + A.j1) / 2), cxA2 = worldX((A2.i0 + A2.i1) / 2), czA2 = worldZ((A2.j0 + A2.j1) / 2);
+      const pit = (L.fillRef != null ? L.fillRef : 1.0) - 1.3;
+      for (let idx = 0; idx < N; idx++) {
+        const x = vx[idx], z = vz[idx], i = idx % V, j = (idx / V) | 0; let h = 0.2 + rnd2(0.1);
+        if (inRect(i, j, A)) h = 0.2 + gauss(x, z, cxA, czA, 2.4, 3.0) + rnd2(0.1);        // 砂利の山
+        else if (inRect(i, j, A2)) h = 0.2 + gauss(x, z, cxA2, czA2, 2.4, 3.0) + rnd2(0.1); // 岩の山
+        else if (inRect(i, j, B) || inRect(i, j, B2)) h = pit + rnd2(0.08);                 // ヤード（窪み）
         heights[idx] = clamp(h);
       }
     }
@@ -955,7 +987,27 @@
         soils: [{ cx: 0, cz: 0, r: 7.5, hard: -0.35 }, { cx: 0, cz: 0, r: 5.0, hard: 0.55 }, { cx: 0, cz: 0, r: 2.8, hard: 0.95 }],   // 同心円: 外=砂利/中=礫/芯=岩（後勝ちで内側上書き）
         goal: '岩盤とりで：中央の<b>3層の丘を撤去</b>しよう。外側は<b>砂利（速い）</b>・その内側は<b>礫（硬い）</b>・芯は<b>岩盤（最硬）</b>。<b>掘る力💪の強い重機</b>でないと芯は歯が立たない。<b>工期内</b>でボーナス',
         hint: '砂色＝砂利（速い）→ 薄い灰＝礫（硬い）→ 濃い灰＝岩盤（最硬・💪5級推奨）。外から順に剥がして、芯は強い重機で。工期に注意',
-        markers: [['A', 0x8a8d92]], gen: genStrata }
+        markers: [['A', 0x8a8d92]], gen: genStrata },
+      // ===== L23-25：形と目的が違う新レベル[親方FB 2026-07-04]（大きいだけの似たマップ対策）=====
+      { type: 'grade', name: '段々畑テラス', mainLabel: '', grid: 36, A: rect(6, 30, 5, 31), noWater: true,
+        gradeShape: 'terrace', terraceBands: 4, terraceBase: 0.0, terraceStep: 1.0, gradeTarget: 0,
+        maxDev: 0.6, tFrac: 0, startZ: 0.0, clearTol: 0.4, koki: 260, reward: 240,
+        goal: '段々畑テラス：斜面を<b>4段の平らな段（ひな壇）</b>に切り分けよう。段ごとに目標の高さが違う（手前=低い→奥=高い）。削った余り土は段の外へ。目標にぴったり揃えるほど★UP・<b>工期内</b>でボーナス',
+        hint: '斜面を階段状に。手前の低い段から奥の高い段へ、各段をその高さに平らに。青いガイドの高さに合わせる。余り土は場外へ。工期に注意',
+        markers: [['A', 0x2faa55]], gen: genTerrace },
+      { type: 'grade', name: '競技場ボウル', mainLabel: '', grid: 36, A: rect(7, 29, 7, 29), noWater: true,
+        gradeShape: 'bowl', bowlRim: 0.5, bowlDepth: 3.2, bowlR: 7.5, gradeTarget: 0,
+        maxDev: 0.7, tFrac: 0, startZ: 6.0, clearTol: 0.4, koki: 280, reward: 260,
+        goal: '競技場ボウル：<b>中央ほど深く・縁は浅い「すり鉢状（観客席型）」の窪み</b>を正確に掘ろう。掘った土は外へ運ぶ。目標の断面にぴったり合わせるほど★UP・<b>工期内</b>でボーナス',
+        hint: '中心ほど深く、縁は浅い、お椀の内側の形に掘る。目標の高さに合わせる（掘りすぎ注意）。余り土は場外へ運ぶ。工期に注意',
+        markers: [['A', 0x2f7fd6]], gen: genBowl },
+      { type: 'sort', name: '資材仕分け', mainLabel: '', grid: 36, noWater: true,
+        A: rect(3, 13, 4, 15), A2: rect(3, 13, 21, 32), B: rect(23, 33, 4, 15), B2: rect(23, 33, 21, 32),
+        digRef: 0.2, fillRef: 1.0, clearTol: 0.4, koki: 340, reward: 320,
+        soils: [{ zone: rect(3, 13, 4, 15), hard: -0.35 }, { zone: rect(3, 13, 21, 32), hard: 0.95 }],
+        goal: '資材仕分け：左上の<b>砂利の山（緑枠）を右上のヤード（青枠）</b>へ、左下の<b>岩の山（灰枠）を右下のヤード（橙枠）</b>へ、<b>種類ごとに分けて</b>運ぼう。砂利は掘りやすく岩は硬い（💪の強い重機が要る）。<b>工期内</b>でボーナス',
+        hint: '砂利＝緑枠→青枠 ／ 岩＝灰枠→橙枠。砂利は速く掘れる・岩は強い重機で。2種類を仕分けて運ぶ。工期に注意',
+        markers: [['A', 0x2faa55], ['A2', 0x8a8d92], ['B', 0x2f7fd6], ['B2', 0xd06a2f]], gen: genSort }
     ];
     const NLV = LEVEL_DEFS.length;
 
@@ -1759,13 +1811,34 @@
       if (!g || u == null || !dispatchUnit(u, g.x, g.z)) { setHint('派遣をキャンセルしました'); return; }
       SND.click(); tryVibrate(15); setHint('🚧 その場所へ派遣しました');
     }
+    function buildTargetField(L) {   // [親方FB 新レベル] gradeShapeから目標高さフィールドを生成（段々=階段/ボウル=すり鉢）。ゾーンA外は0（未使用）
+      targetField.fill(0);
+      if (!L || !L.gradeShape || !L.A) return;
+      const A = L.A;
+      if (L.gradeShape === 'terrace') {
+        const bands = L.terraceBands || 4, base = (L.terraceBase != null) ? L.terraceBase : 0, step = (L.terraceStep != null) ? L.terraceStep : 1.0, span = Math.max(1, A.j1 - A.j0 + 1);
+        for (let j = A.j0; j <= A.j1; j++) { const b = Math.min(bands - 1, Math.floor((j - A.j0) / span * bands)), tgt = base + b * step; for (let i = A.i0; i <= A.i1; i++) targetField[j * V + i] = tgt; }
+      } else if (L.gradeShape === 'bowl') {
+        const cx = worldX((A.i0 + A.i1) / 2), cz = worldZ((A.j0 + A.j1) / 2), R = L.bowlR || (Math.min(A.i1 - A.i0, A.j1 - A.j0) * (WORLD / GRID) / 2), rim = (L.bowlRim != null) ? L.bowlRim : 0.5, depth = (L.bowlDepth != null) ? L.bowlDepth : 3;
+        for (let j = A.j0; j <= A.j1; j++) for (let i = A.i0; i <= A.i1; i++) { const dx = worldX(i) - cx, dz = worldZ(j) - cz, r = Math.min(1, Math.hypot(dx, dz) / R); targetField[j * V + i] = rim - depth * (1 - r * r); }   // 中心=rim-depth（深い）／縁=rim（浅い）
+      }
+    }
+    function gradeWork(arr) {   // 整地の残仕事量＋最大ズレ。gradeShape付き=targetField（形状）／無し=scalar gradeTarget（平ら）
+      const A = LV.A, useF = !!LV.gradeShape; let work = 0, mx = 0;
+      zoneEach(A, function (idx) { const tgt = useF ? targetField[idx] : LV.gradeTarget; const d = Math.abs(arr[idx] - tgt); if (d > mx) mx = d; const e = d - FLAT_TOL; if (e > 0) work += e * CELL_AREA; });
+      return { work: work, maxDev: mx };
+    }
     function goalHeightAt(i, j) {   // [親方FB 自動化を意味あるものに] そのセルの「レベル目標の高さ」。目標が無い所は null（=従来の足元基準）
       if (!LV) return null;
-      if (LV.type === 'grade' && LV.A && inRect(i, j, LV.A)) return LV.gradeTarget;          // 整地=目標高さへ
+      if (LV.type === 'grade' && LV.A && inRect(i, j, LV.A)) return LV.gradeShape ? targetField[j * V + i] : LV.gradeTarget;   // 整地=目標高さへ（形状=フィールド）
       if (LV.type === 'level' && LV.A && inRect(i, j, LV.A)) return LV.subFloor;             // 掘り取り=床の高さへ
       if (LV.type === 'haul') {
         if (LV.A && inRect(i, j, LV.A)) return LV.digRef;                                    // 造成=山ゾーンは掘り下げ基準へ
         if (LV.B && inRect(i, j, LV.B)) return LV.fillRef;                                   // 造成=埋めゾーンは埋め基準へ
+      }
+      if (LV.type === 'sort') {   // [親方FB 新レベル] 資材仕分け＝2つの山(A/A2)を掘り下げ、2つのヤード(B/B2)を埋める
+        if ((LV.A && inRect(i, j, LV.A)) || (LV.A2 && inRect(i, j, LV.A2))) return LV.digRef;
+        if ((LV.B && inRect(i, j, LV.B)) || (LV.B2 && inRect(i, j, LV.B2))) return LV.fillRef;
       }
       return null;
     }
@@ -1774,6 +1847,7 @@
       const i = Math.max(0, Math.min(GRID, Math.round((x / WORLD + 0.5) * GRID))), j = Math.max(0, Math.min(GRID, Math.round((z / WORLD + 0.5) * GRID)));
       if ((LV.type === 'grade' || LV.type === 'level') && LV.A && inRect(i, j, LV.A)) return LV.A;
       if (LV.type === 'haul') { if (LV.A && inRect(i, j, LV.A)) return LV.A; if (LV.B && inRect(i, j, LV.B)) return LV.B; }
+      if (LV.type === 'sort') { if (LV.A && inRect(i, j, LV.A)) return LV.A; if (LV.A2 && inRect(i, j, LV.A2)) return LV.A2; if (LV.B && inRect(i, j, LV.B)) return LV.B; if (LV.B2 && inRect(i, j, LV.B2)) return LV.B2; }
       return null;
     }
     function zoneHasIncomingTruck(p) {   // [親方FB] 自分の作業ゾーンへ運搬中（捨て場がこのゾーン内）の自動トラックが居るか＝土待ちすべきか
@@ -2147,7 +2221,8 @@
       if (LV.type === 'drain') return drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev && zoneVol(LV.B) >= LV.tB;
       if (LV.type === 'level') return LV.A0exc > 0 ? (zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol) <= 0.05 * LV.A0exc) : true;   // 掘り取り＝残っている山が初期の5%以下[本体移植・バックホウ向き]
       if (LV.type === 'haul') return zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol) <= 0.05 * LV.A0exc && zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol) <= 0.05 * LV.A0def;   // 造成＝山の撤去95%以上 かつ 窪地の埋立95%以上
-      if (LV.type === 'grade') return zoneToTarget(heights, LV.A, LV.gradeTarget).work <= 0.05 * LV.A0work;   // 整地＝目標高さからのズレ土量が初期の5%以下
+      if (LV.type === 'grade') return gradeWork(heights).work <= 0.05 * LV.A0work;   // 整地／段々/ボウル＝目標(高さ or 形状)からのズレ土量が初期の5%以下
+      if (LV.type === 'sort') return zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol) <= 0.05 * LV.A0exc && zoneExcessAbove(heights, LV.A2, LV.digRef + LV.clearTol) <= 0.05 * LV.A0exc2 && zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol) <= 0.05 * LV.A0def && zoneDeficitBelow(heights, LV.B2, LV.fillRef - LV.clearTol) <= 0.05 * LV.A0def2;   // 資材仕分け＝2つの山を撤去 かつ 2つのヤードを埋立
       return zoneVol(LV.B) >= LV.tB;
     }
     function refreshHUD() {
@@ -2169,9 +2244,17 @@
         basinEl.textContent = (LV.A0def - def).toFixed(0); basinTEl.textContent = LV.A0def.toFixed(0); basinBadge.classList.toggle("done", def <= 0.05 * LV.A0def);
         barEl.style.width = (Math.min(dig, fill) * 100).toFixed(0) + "%"; return;
       }
-      if (LV.type === 'grade') {   // 整地＝目標高さへの達成%(b-work)
-        const g = zoneToTarget(heights, LV.A, LV.gradeTarget), p = LV.A0work > 0 ? Math.max(0, Math.min(1, 1 - g.work / LV.A0work)) : 1;
+      if (LV.type === 'grade') {   // 整地/段々/ボウル＝目標(高さ or 形状)への達成%(b-work)
+        const g = gradeWork(heights), p = LV.A0work > 0 ? Math.max(0, Math.min(1, 1 - g.work / LV.A0work)) : 1;
         workEl.textContent = Math.round(p * 100); workBadge.classList.toggle("done", g.work <= 0.05 * LV.A0work);
+        barEl.style.width = (p * 100).toFixed(0) + "%"; return;
+      }
+      if (LV.type === 'sort') {   // 資材仕分け＝4目標(2山撤去+2ヤード埋立)の総合%(b-work)
+        const e1 = zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol), e2 = zoneExcessAbove(heights, LV.A2, LV.digRef + LV.clearTol);
+        const d1 = zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol), d2 = zoneDeficitBelow(heights, LV.B2, LV.fillRef - LV.clearTol);
+        const p1 = 1 - Math.min(1, e1 / LV.A0exc), p2 = 1 - Math.min(1, e2 / LV.A0exc2), p3 = 1 - Math.min(1, d1 / LV.A0def), p4 = 1 - Math.min(1, d2 / LV.A0def2);
+        const p = Math.max(0, Math.min(1, (p1 + p2 + p3 + p4) / 4));
+        workEl.textContent = Math.round(p * 100); workBadge.classList.toggle("done", e1 <= 0.05 * LV.A0exc && e2 <= 0.05 * LV.A0exc2 && d1 <= 0.05 * LV.A0def && d2 <= 0.05 * LV.A0def2);
         barEl.style.width = (p * 100).toFixed(0) + "%"; return;
       }
       let overall = 0;
@@ -2195,8 +2278,9 @@
     // ===================== 埋蔵金[親方FB]：土を掘ると累計掘削量ごとにたまにお宝→収入 =====================
     function digProgress(vol, x, z) {   // 掘った体積volをためて閾値超えで埋蔵金（手動/自動どちらの掘削でも公平・累計方式）
       if (game.won || vol <= 0 || _titleGuard) return;
-      game.treasureNext = (game.treasureNext || 45) - vol;
-      if (game.treasureNext <= 0) { spawnTreasure(x, z); game.treasureNext = 35 + Math.random() * 45; }   // 次まで35〜80m³
+      if ((game.treasureCount || 0) >= 2) return;   // [親方FB] 1面あたり最大2回まで（出過ぎ防止のハードキャップ）
+      game.treasureNext = (game.treasureNext || 90) - vol;
+      if (game.treasureNext <= 0) { spawnTreasure(x, z); game.treasureCount = (game.treasureCount || 0) + 1; game.treasureNext = 90 + Math.random() * 70; }   // 次まで90〜160m³（＝掘削量の多い面でも1〜2回に収まる）
     }
     function spawnTreasure(x, z) {
       const big = Math.random() < 0.15;
@@ -2233,7 +2317,8 @@
     function clearResidual() {   // 0=完璧〜約0.05=ぎりぎりクリア（小さいほど丁寧）。types別に既存metricから算出
       if (LV.type === 'level') return LV.A0exc > 0 ? zoneExcessAbove(heights, LV.A, LV.subFloor + LV.clearTol) / LV.A0exc : 0;
       if (LV.type === 'haul') return Math.max(LV.A0exc > 0 ? zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol) / LV.A0exc : 0, LV.A0def > 0 ? zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol) / LV.A0def : 0);
-      if (LV.type === 'grade') return LV.A0work > 0 ? zoneToTarget(heights, LV.A, LV.gradeTarget).work / LV.A0work : 0;
+      if (LV.type === 'grade') return LV.A0work > 0 ? gradeWork(heights).work / LV.A0work : 0;
+      if (LV.type === 'sort') return Math.max(LV.A0exc > 0 ? zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol) / LV.A0exc : 0, LV.A0exc2 > 0 ? zoneExcessAbove(heights, LV.A2, LV.digRef + LV.clearTol) / LV.A0exc2 : 0, LV.A0def > 0 ? zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol) / LV.A0def : 0, LV.A0def2 > 0 ? zoneDeficitBelow(heights, LV.B2, LV.fillRef - LV.clearTol) / LV.A0def2 : 0);
       if (LV.type === 'drain') return LV.maxDev > 0 ? Math.min(0.05, zoneMaxDev(LV.A) / LV.maxDev * 0.05) : 0;   // 平ら度を残差(0〜0.05)へ写像
       return 0;   // fill 等：精度指標なし→残差0扱い（=精度★3・工期で判定）
     }
@@ -2243,6 +2328,7 @@
     function levelSteps() {   // [batch3] 工程チェックリスト（多目標の面だけ・☐→☑で今どこか見せる。表示専用・クリア判定は不変）
       if (LV.type === 'haul') return [{ l: '山を掘り取る', d: zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol) <= 0.05 * LV.A0exc }, { l: '窪地を埋める', d: zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol) <= 0.05 * LV.A0def }];
       if (LV.type === 'drain') return [{ l: '水を抜いて平らに', d: drainOf(LV.A, LV.A0water) >= LV.drainWin && zoneMaxDev(LV.A) <= LV.maxDev }, { l: 'ため池に貯める', d: zoneVol(LV.B) >= LV.tB }];
+      if (LV.type === 'sort') return [{ l: '砂利を運ぶ', d: zoneExcessAbove(heights, LV.A, LV.digRef + LV.clearTol) <= 0.05 * LV.A0exc && zoneDeficitBelow(heights, LV.B, LV.fillRef - LV.clearTol) <= 0.05 * LV.A0def }, { l: '岩を運ぶ', d: zoneExcessAbove(heights, LV.A2, LV.digRef + LV.clearTol) <= 0.05 * LV.A0exc2 && zoneDeficitBelow(heights, LV.B2, LV.fillRef - LV.clearTol) <= 0.05 * LV.A0def2 }];
       return null;
     }
     function showWin() {
@@ -2288,10 +2374,12 @@
       if (saved) { heights.set(saved.h); baseHeights.set(saved.b); clearWater(); waterD.set(saved.w); LV.A0water = saved.a0; LV.A0flat = saved.af; LV.tB = saved.tB; }
       else { D.gen(LV); baseHeights.set(heights); LV.A0water = LV.type === 'drain' ? Math.max(0.001, zoneVol(LV.A)) : 0; LV.A0flat = (LV.type === 'drain' || LV.type === 'level') ? Math.max(1, zoneFlatness(LV.A)) : 1; LV.tB = LV.tFrac * totalWater(); }
       setHardness(LV);   // [親方FB] 硬い地盤(岩)を適用（gen/セーブ復元どちらの後でも・新レベルのhardZoneだけ・既存レベルは無影響）
+      buildTargetField(LV);   // [親方FB 新レベル] 目標高さフィールド生成（段々/ボウル・A0work算出前に必須）
       LV.A0exc = (LV.type === 'level') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.subFloor + LV.clearTol))
-               : (LV.type === 'haul') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.digRef + LV.clearTol)) : 0;   // 掘り取り/造成[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
+               : (LV.type === 'haul' || LV.type === 'sort') ? Math.max(0.001, zoneExcessAbove(baseHeights, LV.A, LV.digRef + LV.clearTol)) : 0;   // 掘り取り/造成/仕分け[本体移植]：初期の山の量(baseHeights基準=セーブ復元でも一定)
       if (LV.type === 'haul') LV.A0def = Math.max(0.001, zoneDeficitBelow(baseHeights, LV.B, LV.fillRef - LV.clearTol));   // 造成：初期の窪地の量(=埋立目標 m³)
-      if (LV.type === 'grade') LV.A0work = Math.max(0.001, zoneToTarget(baseHeights, LV.A, LV.gradeTarget).work);   // 整地：初期の目標高さからのズレ土量(=整地の総仕事)
+      if (LV.type === 'sort') { LV.A0exc2 = Math.max(0.001, zoneExcessAbove(baseHeights, LV.A2, LV.digRef + LV.clearTol)); LV.A0def = Math.max(0.001, zoneDeficitBelow(baseHeights, LV.B, LV.fillRef - LV.clearTol)); LV.A0def2 = Math.max(0.001, zoneDeficitBelow(baseHeights, LV.B2, LV.fillRef - LV.clearTol)); }   // 仕分け：2山2ヤードの初期量
+      if (LV.type === 'grade') LV.A0work = Math.max(0.001, gradeWork(baseHeights).work);   // 整地/段々/ボウル：初期の目標(高さ/形状)からのズレ土量(=総仕事)
       game.blade = (saved && saved.blade) ? saved.blade : 0; game.bucket = (saved && saved.bucket) ? saved.bucket : 0; game.totalDug = 0; game.won = false; pushing = false; bhMode = null; prevActing = false; resetAct();   // [レビュー修正] blade(ブレード/荷台積載)も復元＝リロード越しの土量保存
       truckTilt = 0;   // レベル切替：荷台ダンプ角リセット（運転種別/積載は applyMachine と game.blade=0 で整合）[親方FB]
       if (typeof clearParked === 'function') clearParked();   // レベル切替で出した重機もリセット[親方FB]
@@ -2308,17 +2396,18 @@
       rainActive = !!LV.rain;   // [③天候] このレベルが雨か
       waterActive = rainActive || totalWater() > 0.0005; water.visible = waterActive;   // [即効パック] 水のある面だけ水計算＋水メッシュを有効化（無水面は止めて軽く）
       { const sky = rainActive ? 0x8a96a0 : 0xbfe3f2; renderer.setClearColor(sky, 1); scene.fog.color.setHex(sky); }   // 雨=灰色の空 / 通常=青空
-      workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : LV.type === 'haul' ? '山の撤去' : LV.type === 'grade' ? '整地' : '作業場';
+      workLabelEl.textContent = LV.type === 'level' ? '掘り取り' : LV.type === 'haul' ? '山の撤去' : LV.type === 'grade' ? (LV.gradeShape === 'terrace' ? '段づくり' : LV.gradeShape === 'bowl' ? 'すり鉢' : '整地') : LV.type === 'sort' ? '仕分け' : '作業場';
       document.getElementById("goalLabel").innerHTML = LV.goal;
       document.body.classList.toggle('need-shop', /🛒|ショップ|買/.test((LV.goal || '') + (LV.hint || '')));   // [即効パック] お題が「ショップで買え」と言う面はショップボタンを表に出す
       document.getElementById("mainLabel").textContent = LV.mainLabel;
       document.getElementById("mainIcon").textContent = (LV.type === 'haul') ? '⛰' : '💧';
-      document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level' || LV.type === 'haul' || LV.type === 'grade') ? '' : 'none';
-      document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade') ? 'none' : '';
-      document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade' || LV.noWater) ? 'none' : '';   // 造成/整地/水なしレベルは水バッジを隠す[レビュー修正]
+      document.getElementById("b-work").style.display = (LV.type === 'drain' || LV.type === 'level' || LV.type === 'haul' || LV.type === 'grade' || LV.type === 'sort') ? '' : 'none';
+      document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade' || LV.type === 'sort') ? 'none' : '';
+      document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade' || LV.type === 'sort' || LV.noWater) ? 'none' : '';   // 造成/整地/仕分け/水なしレベルは水バッジを隠す[レビュー修正]
       document.getElementById("win").classList.remove("show");
       rebuildMarkers(LV.markers); setHint(LV.hint, curLevel === 0);   // [即効パック] 最初のレベルはヒントを固定表示（触っても消えない・30秒）
       canClear = false; updateClearBtn();   // [親方FB] レベル切替でクリアボタンを一旦隠す（新レベルは未達成）
+      if (!saved) { game.treasureCount = 0; game.treasureNext = 90 + Math.random() * 40; }   // [親方FB] 新しい面は埋蔵金カウンタをリセット（1面1〜2回）。セーブ復元時は途中経過を保つ
       syncGeometry(); syncWater(0); refreshHUD(); save();
     }
 
@@ -2788,7 +2877,7 @@
     const KEY = UNLOCK_ALL ? "doboku_unified_verify_v1" : "doboku_unified_v1", KEY_OLD = "doboku_water_proto_v5";   // 統合版[2026-06-25]：water-proto v5 のセーブも引き継ぐ
     let _titleGuard = true;   // [親方FB トップページ] タイトル表示中は save() を無効化＝既存セーブを保護。beginGame() で false にする
     function save() { if (_titleGuard) return; try { const rd = function (a) { const o = new Array(N); for (let i = 0; i < N; i++) o[i] = Math.round(a[i] * 1000) / 1000; return o; };   // [即効パック] 保存軽量化：使っている範囲(N)だけ＋mm(小数3桁)丸めで文字列を圧縮（小マップ約9割減・大マップも約6割減）。load側は length===_act を既に受理。
-      localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: rd(heights), b: rd(baseHeights), w: rd(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, wk: game.workers, nw: game.nextWid, ld: Math.round(levelDays), rs: game.rankSeen, tn: game.treasureNext, pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [親方FB] tn=埋蔵金カウンタ   // [keiei P2] wk/nw/ld=作業員・経過日数（旧セーブ=無し→初期値）[keiei P4] rs=会社ランク既知   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
+      localStorage.setItem(KEY, JSON.stringify({ g: GRID, v: 8, level: curLevel, h: rd(heights), b: rd(baseHeights), w: rd(waterD), a0: LV.A0water, af: LV.A0flat, tB: LV.tB, mx: game.mx, mz: game.mz, myaw: game.myaw, cy: camYaw, cp: camPitch, money: game.money, fleet: game.fleet, driveU: game.driveU, nextUid: game.nextUid, machine: game.machine, ach: game.unlockedAch, cum: game.cum, unlocked: game.unlocked, clearedLv: game.clearedLv, bucket: game.bucket, blade: game.blade, kl: kokiLeft, ko: kokiOver, stars: game.stars, wk: game.workers, nw: game.nextWid, ld: Math.round(levelDays), rs: game.rankSeen, tn: game.treasureNext, tc: game.treasureCount, pk: parked.map(function (p) { return { u: p.u, id: p.id, x: p.x, z: p.z, yaw: p.yaw, bl: p.blade || 0, bk: p.bucket || 0 }; }) })); } catch (e) {} }   // [親方FB] tn/tc=埋蔵金カウンタ・当面出現回数   // [keiei P2] wk/nw/ld=作業員・経過日数（旧セーブ=無し→初期値）[keiei P4] rs=会社ランク既知   // [宿題] pk=配備中の重機(位置/向き/積載)＝リロードで残す+土量保存
     function load() {
       try {
         let raw = localStorage.getItem(KEY); if (!raw) raw = localStorage.getItem(KEY_OLD); // 旧v4セーブも読む（v4→v5移行）
@@ -2816,7 +2905,8 @@
           for (let i = 0; i < wk.length; i++) { const w = wk[i]; if (!w || typeof w.name !== 'string') continue; const wid = (w.w | 0) > 0 ? (w.w | 0) : mw + 1; const asg = (w.assigned != null && unitById(w.assigned)) ? w.assigned : null; out.push({ w: wid, name: w.name.slice(0, 12), hiredDay: 0, assigned: asg }); if (wid > mw) mw = wid; }
           game.workers = out; game.nextWid = Math.max((s.nw | 0), mw + 1, 1); }
         game.rankSeen = (typeof s.rs === 'number') ? s.rs : null;   // [keiei P4] 会社ランク既知（旧セーブ=null→現ランクを静かに採用）
-        game.treasureNext = (typeof s.tn === 'number') ? s.tn : 45;   // [親方FB] 埋蔵金カウンタ（旧セーブ=初期値）
+        game.treasureNext = (typeof s.tn === 'number') ? s.tn : 90;   // [親方FB] 埋蔵金カウンタ（旧セーブ=初期値）
+        game.treasureCount = (typeof s.tc === 'number') ? s.tc : 0;   // [親方FB] この面で出た回数（旧セーブ=0）
         loadLevel(s.level, s);
         levelDays = Math.max(0, +s.ld || 0);   // [keiei P2] 経過日数を復元（loadLevelのリセット後に上書き）
         checkAchievements(true); // 移行直後＝既に条件を満たす所有/メーカー系バッジを静かに解禁（トースト無し）
