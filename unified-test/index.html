@@ -83,6 +83,10 @@
   #act { position:fixed; right:calc(env(safe-area-inset-right,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 22px); width:96px; height:96px; border-radius:50%; border:none; color:#fff; font-weight:900; font-size:21px; background:var(--dig); box-shadow:0 6px 16px rgba(0,0,0,.28); cursor:pointer; line-height:1.1; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; touch-action:none; }
   #act span { font-size:11px; font-weight:700; opacity:.9; }
   #act.on { transform:scale(.93); filter:brightness(1.12); }
+  #actL { position:fixed; left:calc(env(safe-area-inset-left,0px) + 18px); bottom:calc(env(safe-area-inset-bottom,0px) + 92px); width:70px; height:70px; border-radius:50%; border:none; color:#fff; font-weight:900; font-size:16px; background:var(--dig); box-shadow:0 5px 14px rgba(0,0,0,.28); cursor:pointer; z-index:4; display:none; flex-direction:column; align-items:center; justify-content:center; line-height:1.1; touch-action:none; }   /* [親方FB] トラック時だけ左にも下ろすボタン（左手で操舵しながらダンプ可） */
+  #actL span { font-size:9.5px; font-weight:700; opacity:.9; }
+  body.truck-ctrl #actL { display:flex; }
+  #actL.on { transform:scale(.92); filter:brightness(1.12); }
   /* [即効パック] 操作ボタンの凡例（前進/後退/左/右の小キャプション）＝初見が「指3種」を理解できる */
   .dbtn { flex-direction:column; gap:0; }
   .dbtn small { font-size:8.5px; font-weight:800; opacity:.6; line-height:1; letter-spacing:0; margin-top:0; }
@@ -266,6 +270,7 @@
     <button class="dbtn" id="d-down" data-dir="down" aria-label="後退">▼<small>後退</small></button>
   </div>
   <button id="act">ならす<span>押す</span></button>
+  <button id="actL">下ろす<span>押す</span></button>
   <button id="clearBtn">✅ ここでクリア<span class="cb-stars">★☆☆</span></button>
   <button id="reset">最初から</button>
   <button id="shop">🛒 ショップ</button>
@@ -2422,14 +2427,15 @@
 
     // ボタン
     const actBtn = document.getElementById("act");
-    (function () {
+    (function () {   // [親方FB] 操作ボタンは複数（右=act／トラック時は左=actL）で共有＝どちらを押しても acting。指を離すと止まる
       const ptrs = new Set();
-      const clear = () => { ptrs.clear(); acting = false; actBtn.classList.remove("on"); };
+      const actBtns = [actBtn, document.getElementById("actL")].filter(Boolean);
+      const refresh = () => { acting = ptrs.size > 0; actBtns.forEach((b) => b.classList.toggle("on", acting)); };
+      const clear = () => { ptrs.clear(); refresh(); };
       resetAct = clear;
-      const on = (e) => { e.preventDefault(); if (ptrs.size === 0 && actBtn.setPointerCapture) { try { actBtn.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); acting = true; actBtn.classList.add("on"); hideHint(); };
-      const off = (e) => { ptrs.delete(e.pointerId); if (ptrs.size === 0) { acting = false; actBtn.classList.remove("on"); } };
-      actBtn.addEventListener("pointerdown", on); actBtn.addEventListener("pointerup", off); actBtn.addEventListener("pointercancel", off); actBtn.addEventListener("pointerleave", off);
-      actBtn.addEventListener("lostpointercapture", clear);
+      const on = (e) => { e.preventDefault(); if (e.currentTarget.setPointerCapture) { try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {} } ptrs.add(e.pointerId); refresh(); hideHint(); };
+      const off = (e) => { ptrs.delete(e.pointerId); refresh(); };
+      actBtns.forEach((b) => { b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("pointerleave", off); b.addEventListener("lostpointercapture", clear); });
     })();
     // [親方FB] 「🚛トラック召喚」ボタンは廃止＝トラックも「重機の一種」としてショップで買い、切替リストから出して運転する。
     // [親方FB C3] 「🚜重機を出す」ボタンは撤去（ショップに一本化＝機種を選んで出して乗る/現場の乗り換えは「機械チェンジ」）。deployMachine() 関数はテスト確認用に残置。
