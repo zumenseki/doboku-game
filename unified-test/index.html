@@ -1049,6 +1049,7 @@
     const cLow = new THREE.Color(0xc2a06c), cMid = new THREE.Color(0x9a6e3e), cHigh = new THREE.Color(0x5f3e1e), cWet = new THREE.Color(0x47301c), tmpC = new THREE.Color();  // 土寄せ[親方FB もっと土っぽく]：低=乾いた土/中=茶土/高=濃い掘りたて土/濡れ=黒っぽい泥
     const cRock = new THREE.Color(0x767a80);   // [親方FB] 硬い岩の色（灰色）
     const cGravel = new THREE.Color(0xcfc4a6);   // [親方FB 地質] 砂利の色（明るい砂色）
+    const cGrass = new THREE.Color(0x5b9440);   // [華やか 草原] 草の緑（未掘の素地に被せる）
     function colorFor(h, wet, out) {
       const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
       if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
@@ -1068,6 +1069,8 @@
         const gi = idx % V, gj = (idx / V) | 0;
         const hl = heights[gi > 0 ? idx - 1 : idx], hr = heights[gi < GRID ? idx + 1 : idx], hd = heights[gj > 0 ? idx - V : idx], hu = heights[gj < GRID ? idx + V : idx];
         const slope = (Math.abs(hl - hr) + Math.abs(hd - hu)) * 0.5;
+        // [華やか 草原] 未掘の素地(元地形からの変化<0.4m)・水無し・普通土(hard==0)・緩斜面 に草の緑を被せる。掘る/盛ると土色に戻る＝作業跡が土肌で見える。
+        if (!wet && hard[idx] === 0) { let gr = 1 - Math.abs(heights[idx] - baseHeights[idx]) / 0.4; if (gr > 0) { gr *= Math.max(0, 1 - slope * 1.15); if (gr > 0) tmpC.lerp(cGrass, Math.min(1, gr) * 0.85); } }
         const mul = Math.max(0.42, 1 - Math.min(0.42, slope * 0.24) + grain[idx] * (wet ? 0.04 : 0.09));  // 土寄せ[親方FB]：斜面の陰影と粒のザラつきを強める
         colors[idx * 3] = Math.min(1, tmpC.r * mul); colors[idx * 3 + 1] = Math.min(1, tmpC.g * mul); colors[idx * 3 + 2] = Math.min(1, tmpC.b * mul);
       }
@@ -1164,6 +1167,49 @@
     // ゾーン旗・枠
     const markerGroup = new THREE.Group(); scene.add(markerGroup);
     const signGroup = new THREE.Group(); scene.add(signGroup);   // [親方FB 土源段取り] 掘る場所/盛る場所を示す浮き看板（見た目専用・地形/土量/セーブに無関係）
+
+    // ===== [華やか] 草原の遠景(apron)＋雑木林(木・茂み)。全て見た目専用＝地形/土量/水/セーブに無関係。=====
+    const APRON_Y = -0.4;
+    const apron = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.MeshStandardMaterial({ color: 0x6f9f4c, roughness: 1 }));   // 作業地の外に広がる草原（遠景・霧に溶ける）
+    apron.rotation.x = -Math.PI / 2; apron.position.y = APRON_Y; apron.renderOrder = -2; apron.frustumCulled = false; scene.add(apron);
+    const DECOR_MAX = 220;
+    const trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.24, 1.4, 6), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.9, flatShading: true }), DECOR_MAX);   // 木の幹
+    const leafIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true }), DECOR_MAX);   // 葉（木の樹冠＋茂み・instanceColorで濃淡）
+    trunkIM.frustumCulled = false; leafIM.frustumCulled = false; trunkIM.count = 0; leafIM.count = 0; scene.add(trunkIM); scene.add(leafIM);
+    const _leafCols = [0x4e8a34, 0x5f9d3f, 0x3f7a2c, 0x6f9a3a, 0x86953a];   // 緑の濃淡＋一部やや枯れ色
+    const _dcm = new THREE.Object3D(), _dcc = new THREE.Color();
+    // 作業ゾーン(markers)と重ならない外周に、木と茂みを散らす。木の根元は地面/apronの高さに合わせる。レベル毎に再構築。
+    function rebuildDecor(L) {
+      const half = WORLD / 2;
+      const rects = (L.markers || []).map(function (m) { return L[m[0]]; }).filter(Boolean);
+      function inWork(x, z) { for (let r = 0; r < rects.length; r++) { const zr = rects[r]; if (x >= worldX(zr.i0) - 1.2 && x <= worldX(zr.i1) + 1.2 && z >= worldZ(zr.j0) - 1.2 && z <= worldZ(zr.j1) + 1.2) return true; } return false; }
+      function groundY(x, z) { return (Math.abs(x) < half - 0.5 && Math.abs(z) < half - 0.5) ? sampleHeight(x, z) : APRON_Y; }
+      const targetTrees = Math.min(70, Math.round(WORLD * 0.9)), targetBush = Math.min(70, Math.round(WORLD * 0.8));
+      let nT = 0, nL = 0, guard = 0;
+      while (nT < targetTrees && guard < targetTrees * 14) {   // 木＝幹1＋葉1
+        guard++;
+        const ang = Math.random() * 6.283, rad = half * (0.66 + Math.random() * 0.54), x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+        if (Math.abs(x) > half * 1.42 || Math.abs(z) > half * 1.42 || inWork(x, z)) continue;
+        const gy = groundY(x, z), s = 0.8 + Math.random() * 0.95, yaw = Math.random() * 6.283, cr = 1.25 * s;
+        _dcm.position.set(x, gy + 0.7 * s, z); _dcm.rotation.set(0, yaw, 0); _dcm.scale.set(s, s, s); _dcm.updateMatrix(); trunkIM.setMatrixAt(nT, _dcm.matrix);
+        _dcm.position.set(x, gy + 1.4 * s + cr * 0.45, z); _dcm.rotation.set(0, yaw, 0); _dcm.scale.set(cr, cr * (0.9 + Math.random() * 0.5), cr); _dcm.updateMatrix(); leafIM.setMatrixAt(nL, _dcm.matrix);
+        leafIM.setColorAt(nL, _dcc.setHex(_leafCols[(Math.random() * _leafCols.length) | 0]));
+        nT++; nL++;
+      }
+      guard = 0;
+      while (nL - nT < targetBush && nL < DECOR_MAX && guard < targetBush * 14) {   // 茂み＝葉だけ・地面
+        guard++;
+        const ang = Math.random() * 6.283, rad = half * (0.5 + Math.random() * 0.64), x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+        if (Math.abs(x) > half * 1.42 || Math.abs(z) > half * 1.42 || inWork(x, z)) continue;
+        const gy = groundY(x, z), s = 0.45 + Math.random() * 0.5;
+        _dcm.position.set(x, gy + s * 0.5, z); _dcm.rotation.set(0, Math.random() * 3.14, 0); _dcm.scale.set(s * 1.35, s, s * 1.35); _dcm.updateMatrix(); leafIM.setMatrixAt(nL, _dcm.matrix);
+        leafIM.setColorAt(nL, _dcc.setHex(_leafCols[(Math.random() * _leafCols.length) | 0]));
+        nL++;
+      }
+      trunkIM.count = nT; leafIM.count = nL;
+      trunkIM.instanceMatrix.needsUpdate = true; leafIM.instanceMatrix.needsUpdate = true;
+      if (leafIM.instanceColor) leafIM.instanceColor.needsUpdate = true;
+    }
     function rebuildMarkers(list) {
       for (let k = markerGroup.children.length - 1; k >= 0; k--) { const c = markerGroup.children[k]; markerGroup.remove(c); if (c.geometry) c.geometry.dispose(); }
       list.forEach(function (m) {
@@ -1465,6 +1511,10 @@
       let engOsc = null, engGain = null, engLP = null, engVibOsc = null, engVibGain = null;
       let fwdSrc = null, fwdGain = null, revSrc = null, revGain = null; // 走行音＝本物の録音（前進=戦車キャタピラ track-fwd / 後退=ブル作業音 track-rev）
       let digBus = null, digGain = null, lastDig = 0;
+      let bgmGain = null, bgmOscs = null, bgmTimer = null, bgmChord = 0, bgmStarted = false;   // [BGM] まったりシンセBGM（master経由＝mute連動）
+      const BGM_VOL = 0.16;
+      const BGM_CHORDS = [ [130.81, 164.81, 196.00], [130.81, 164.81, 220.00], [174.61, 220.00, 261.63], [146.83, 196.00, 246.94] ];   // C–Am–F–G（低音3声パッド・和音をゆっくり移す）
+      const BGM_MEL = [261.63, 293.66, 329.63, 392.00, 440.00];   // Cメジャーペンタ（やさしい単音を時々のせる）
       function makeNoiseBuffer() {
         const len = (ctx.sampleRate * 0.5) | 0, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.6;
@@ -1489,6 +1539,24 @@
         loadDrive('track-fwd.mp3', function (b) { fwdSrc = ctx.createBufferSource(); fwdSrc.buffer = b; fwdSrc.loop = true; fwdSrc.connect(fwdGain); fwdSrc.start(); });
         loadDrive('track-rev.mp3', function (b) { revSrc = ctx.createBufferSource(); revSrc.buffer = b; revSrc.loop = true; revSrc.connect(revGain); revSrc.start(); });
         ready = true;
+        startBgm();   // [BGM] 初回操作でctx生成→BGM開始（muteならmaster=0で無音・グラフは動く）
+      }
+      // [BGM] 柔らかい持続パッド(3声・微デチューン)＋時々のペンタ単音。和音は7秒ごとにゆっくり移す。master経由なのでmute/音量に連動。
+      function startBgm() {
+        if (!ctx || bgmStarted) return; bgmStarted = true;
+        bgmGain = ctx.createGain(); bgmGain.gain.value = 0.0001; bgmGain.connect(master);
+        bgmOscs = []; const det = [-4, 0, 5];
+        for (let i = 0; i < 3; i++) { const o = ctx.createOscillator(); o.type = 'sine'; o.detune.value = det[i]; const g = ctx.createGain(); g.gain.value = 0.33; o.connect(g); g.connect(bgmGain); o.start(); bgmOscs.push(o); }
+        applyChord(0);
+        bgmGain.gain.setTargetAtTime(BGM_VOL, ctx.currentTime, 3.0);   // ゆっくりフェードイン
+        bgmTimer = setInterval(function () { if (!ctx) return; bgmChord = (bgmChord + 1) % BGM_CHORDS.length; applyChord(bgmChord); if (Math.random() < 0.75) melodyNote(); }, 7000);
+      }
+      function applyChord(ci) { if (!ctx || !bgmOscs) return; const c = BGM_CHORDS[ci], now = ctx.currentTime; for (let i = 0; i < bgmOscs.length; i++) bgmOscs[i].frequency.setTargetAtTime(c[i], now, 1.6); }
+      function melodyNote() {
+        if (!ctx || muted || !bgmGain) return; const now = ctx.currentTime + 0.05, f = BGM_MEL[(Math.random() * BGM_MEL.length) | 0];
+        const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.09, now + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, now + 2.2);
+        o.connect(g); g.connect(bgmGain); o.start(now); o.stop(now + 2.35);
       }
       function ensure() {
         if (started) { if (ctx && ctx.state === 'suspended') ctx.resume(); return; }
@@ -1526,7 +1594,7 @@
         win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); },
         full: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(430, t, 0.05, 0.18, 'square'); beep(300, t + 0.05, 0.07, 0.16, 'square'); },   // [即効パック] 満杯の「カチッ」
         winStar: function (n) { if (!ready || muted) return; const t = ctx.currentTime; beep(720 + n * 190, t, 0.18, 0.2, 'triangle'); },   // [即効パック] 星が出るたびの上昇音
-        _diag: function () { return { ready: ready, ctx: ctx ? ctx.state : 'none', muted: muted, master: master ? +master.gain.value.toFixed(3) : null, fwdLoaded: !!fwdSrc, revLoaded: !!revSrc, fwdGain: fwdGain ? +fwdGain.gain.value.toFixed(3) : null, revGain: revGain ? +revGain.gain.value.toFixed(3) : null }; }
+        _diag: function () { return { ready: ready, ctx: ctx ? ctx.state : 'none', muted: muted, master: master ? +master.gain.value.toFixed(3) : null, fwdLoaded: !!fwdSrc, revLoaded: !!revSrc, fwdGain: fwdGain ? +fwdGain.gain.value.toFixed(3) : null, revGain: revGain ? +revGain.gain.value.toFixed(3) : null, bgm: bgmStarted, bgmGain: bgmGain ? +bgmGain.gain.value.toFixed(3) : null, bgmChord: bgmChord }; }
       };
     })();
 
@@ -2444,7 +2512,7 @@
       document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade' || LV.type === 'sort') ? 'none' : '';
       document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade' || LV.type === 'sort' || LV.noWater) ? 'none' : '';   // 造成/整地/仕分け/水なしレベルは水バッジを隠す[レビュー修正]
       document.getElementById("win").classList.remove("show");
-      rebuildMarkers(LV.markers); rebuildSigns(LV.signs); setHint(LV.hint, curLevel === 0);   // [即効パック] 最初のレベルはヒントを固定表示（触っても消えない・30秒）／[土源段取り] 看板も再構築
+      rebuildMarkers(LV.markers); rebuildSigns(LV.signs); rebuildDecor(LV); setHint(LV.hint, curLevel === 0);   // [即効パック] 最初のレベルはヒントを固定表示（触っても消えない・30秒）／[土源段取り] 看板／[華やか] 木・茂みも再構築
       canClear = false; updateClearBtn();   // [親方FB] レベル切替でクリアボタンを一旦隠す（新レベルは未達成）
       if (!saved) { game.treasureCount = 0; game.treasureNext = 90 + Math.random() * 40; }   // [親方FB] 新しい面は埋蔵金カウンタをリセット（1面1〜2回）。セーブ復元時は途中経過を保つ
       syncGeometry(); syncWater(0); refreshHUD(); save();
@@ -3062,7 +3130,8 @@
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; },
       signCount: () => signGroup.children.length, signPositions: () => signGroup.children.map((s) => ({ x: +s.position.x.toFixed(1), y: +s.position.y.toFixed(1), z: +s.position.z.toFixed(1), sx: +s.scale.x.toFixed(2), depthTest: s.material.depthTest })),   // [土源段取り] 看板検証用
-      markerCount: () => markerGroup.children.length
+      markerCount: () => markerGroup.children.length,
+      treeCount: () => trunkIM.count, leafCount: () => leafIM.count, hasInstanceColor: () => !!leafIM.instanceColor   // [華やか] 木・茂み検証用
     };
   })();
   </script>
