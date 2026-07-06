@@ -1049,7 +1049,7 @@
     const cLow = new THREE.Color(0xc2a06c), cMid = new THREE.Color(0x9a6e3e), cHigh = new THREE.Color(0x5f3e1e), cWet = new THREE.Color(0x47301c), tmpC = new THREE.Color();  // 土寄せ[親方FB もっと土っぽく]：低=乾いた土/中=茶土/高=濃い掘りたて土/濡れ=黒っぽい泥
     const cRock = new THREE.Color(0x767a80);   // [親方FB] 硬い岩の色（灰色）
     const cGravel = new THREE.Color(0xcfc4a6);   // [親方FB 地質] 砂利の色（明るい砂色）
-    const cGrass = new THREE.Color(0x5b9440);   // [華やか 草原] 草の緑（未掘の素地に被せる）
+    const cGrass = new THREE.Color(0x57943d), cGrassLight = new THREE.Color(0x78ad50), cGrassDark = new THREE.Color(0x376f31);   // [自然植生] 未掘の芝。明暗2色を粒むらで混ぜ、刈り込まれた瑞々しい面にする
     function colorFor(h, wet, out) {
       const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
       if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
@@ -1069,8 +1069,8 @@
         const gi = idx % V, gj = (idx / V) | 0;
         const hl = heights[gi > 0 ? idx - 1 : idx], hr = heights[gi < GRID ? idx + 1 : idx], hd = heights[gj > 0 ? idx - V : idx], hu = heights[gj < GRID ? idx + V : idx];
         const slope = (Math.abs(hl - hr) + Math.abs(hd - hu)) * 0.5;
-        // [華やか 草原] 未掘の素地(元地形からの変化<0.4m)・水無し・普通土(hard==0)・緩斜面 に草の緑を被せる。掘る/盛ると土色に戻る＝作業跡が土肌で見える。
-        if (!wet && hard[idx] === 0) { let gr = 1 - Math.abs(heights[idx] - baseHeights[idx]) / 0.4; if (gr > 0) { gr *= Math.max(0, 1 - slope * 1.15); if (gr > 0) tmpC.lerp(cGrass, Math.min(1, gr) * 0.85); } }
+        // [自然植生] 未掘の素地(元地形からの変化<0.4m)・水無し・普通土・緩斜面だけ芝色。掘る/盛ると土肌へ戻る既存条件は維持。
+        if (!wet && hard[idx] === 0) { let gr = 1 - Math.abs(heights[idx] - baseHeights[idx]) / 0.4; if (gr > 0) { gr *= Math.max(0, 1 - slope * 1.15); if (gr > 0) { const ga = Math.min(1, gr); tmpC.lerp(cGrass, ga * 0.78); tmpC.lerp(grain[idx] > 0.12 ? cGrassLight : cGrassDark, ga * (0.10 + Math.abs(grain[idx]) * 0.08)); } } }
         const mul = Math.max(0.42, 1 - Math.min(0.42, slope * 0.24) + grain[idx] * (wet ? 0.04 : 0.09));  // 土寄せ[親方FB]：斜面の陰影と粒のザラつきを強める
         colors[idx * 3] = Math.min(1, tmpC.r * mul); colors[idx * 3 + 1] = Math.min(1, tmpC.g * mul); colors[idx * 3 + 2] = Math.min(1, tmpC.b * mul);
       }
@@ -1512,10 +1512,8 @@
       let engOsc = null, engGain = null, engLP = null, engVibOsc = null, engVibGain = null;
       let fwdSrc = null, fwdGain = null, revSrc = null, revGain = null; // 走行音＝本物の録音（前進=戦車キャタピラ track-fwd / 後退=ブル作業音 track-rev）
       let digBus = null, digGain = null, lastDig = 0;
-      let bgmGain = null, bgmOscs = null, bgmTimer = null, bgmChord = 0, bgmStarted = false;   // [BGM] まったりシンセBGM（master経由＝mute連動）
-      const BGM_VOL = 0.16;
-      const BGM_CHORDS = [ [130.81, 164.81, 196.00], [130.81, 164.81, 220.00], [174.61, 220.00, 261.63], [146.83, 196.00, 246.94] ];   // C–Am–F–G（低音3声パッド・和音をゆっくり移す）
-      const BGM_MEL = [261.63, 293.66, 329.63, 392.00, 440.00];   // Cメジャーペンタ（やさしい単音を時々のせる）
+      let bgmGain = null, bgmTimer = null, bgmStarted = false, bgmStep = 0, bgmNext = 0, bgmNoise = null;   // [BGM] ポップBGM（16分ステップ先読みスケジューラ・master経由＝mute/音量連動）
+      const BGM_VOL = 0.26, BGM_BPM = 112;
       function makeNoiseBuffer() {
         const len = (ctx.sampleRate * 0.5) | 0, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.6;
@@ -1542,22 +1540,65 @@
         ready = true;
         startBgm();   // [BGM] 初回操作でctx生成→BGM開始（muteならmaster=0で無音・グラフは動く）
       }
-      // [BGM] 柔らかい持続パッド(3声・微デチューン)＋時々のペンタ単音。和音は7秒ごとにゆっくり移す。master経由なのでmute/音量に連動。
+      // [BGM] ポップなループBGM：ドラム(キック/スネア/ハイハット)＋弾むベース＋裏拍コードスタブ＋8分アルペジオ＋小節頭フック。112BPM・進行 C–G–Am–F。16分ステップの先読みスケジューラで駆動し、全ノートは bgmGain→master 経由＝mute/音量に連動。
+      const _mf = function (m) { return 440 * Math.pow(2, (m - 69) / 12); };   // MIDI番号→周波数
+      const BGM_PROG = [   // 1小節ごと：bass=ルートMIDI / tri=コード3声MIDI
+        { bass: 36, tri: [60, 64, 67] },   // C
+        { bass: 43, tri: [59, 62, 67] },   // G
+        { bass: 45, tri: [57, 60, 64] },   // Am
+        { bass: 41, tri: [57, 60, 65] }    // F
+      ];
+      function bgmKick(t) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.12);
+        g.gain.setValueAtTime(0.8, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+        o.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + 0.18);
+      }
+      function bgmSnare(t) {
+        const n = ctx.createBufferSource(); n.buffer = bgmNoise;
+        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1400;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.45, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+        n.connect(hp); hp.connect(g); g.connect(bgmGain); n.start(t); n.stop(t + 0.14);
+      }
+      function bgmHat(t, v) {
+        const n = ctx.createBufferSource(); n.buffer = bgmNoise;
+        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+        const g = ctx.createGain(); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+        n.connect(hp); hp.connect(g); g.connect(bgmGain); n.start(t); n.stop(t + 0.05);
+      }
+      function bgmTone(midi, t, dur, vol, type) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type; o.frequency.value = _mf(midi);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + dur + 0.02);
+      }
+      function bgmBassNote(midi, t, dur) {
+        const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+        o.type = 'sawtooth'; o.frequency.value = _mf(midi); lp.type = 'lowpass'; lp.frequency.value = 520;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(lp); lp.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + dur + 0.02);
+      }
+      function bgmPlayStep(step, t) {
+        if (muted) return;   // mute中はノート生成を省く（スケジューラは進む＝解除で即復帰）。master gain=0 でも二重に無音。
+        const bar = (step >> 4) & 3, s = step & 15, P = BGM_PROG[bar], sd = (60 / BGM_BPM) / 4;
+        if (s === 0 || s === 8 || s === 11) bgmKick(t);                                  // キック（1・3拍＋裏の弾み）
+        if (s === 4 || s === 12) bgmSnare(t);                                             // スネア（2・4拍のバックビート）
+        if (s % 2 === 0) bgmHat(t, (s === 6 || s === 14) ? 0.13 : 0.07);                  // ハイハット（8分・裏で少し開く）
+        if (s % 2 === 0) bgmBassNote(P.bass + ((s % 8 === 6) ? 12 : 0), t, sd * 1.7);     // ベース（8分の弾み・"a"で1oct上げ）
+        if (s === 2 || s === 6 || s === 10 || s === 14) { for (let i = 0; i < P.tri.length; i++) bgmTone(P.tri[i], t, 0.14, 0.05, 'square'); }   // 裏拍コードスタブ
+        if (s % 2 === 0) bgmTone(P.tri[(s / 2) % 3] + 12, t, 0.22, 0.075, 'triangle');    // 8分アルペジオ（コード3声を昇る・1oct上）
+        if (s === 0) bgmTone(P.tri[2] + 12, t, 0.5, 0.09, 'triangle');                    // 小節頭のフック音（トップ音をやや長く）
+      }
       function startBgm() {
         if (!ctx || bgmStarted) return; bgmStarted = true;
+        bgmNoise = makeNoiseBuffer();
         bgmGain = ctx.createGain(); bgmGain.gain.value = 0.0001; bgmGain.connect(master);
-        bgmOscs = []; const det = [-4, 0, 5];
-        for (let i = 0; i < 3; i++) { const o = ctx.createOscillator(); o.type = 'sine'; o.detune.value = det[i]; const g = ctx.createGain(); g.gain.value = 0.33; o.connect(g); g.connect(bgmGain); o.start(); bgmOscs.push(o); }
-        applyChord(0);
-        bgmGain.gain.setTargetAtTime(BGM_VOL, ctx.currentTime, 3.0);   // ゆっくりフェードイン
-        bgmTimer = setInterval(function () { if (!ctx) return; bgmChord = (bgmChord + 1) % BGM_CHORDS.length; applyChord(bgmChord); if (Math.random() < 0.75) melodyNote(); }, 7000);
-      }
-      function applyChord(ci) { if (!ctx || !bgmOscs) return; const c = BGM_CHORDS[ci], now = ctx.currentTime; for (let i = 0; i < bgmOscs.length; i++) bgmOscs[i].frequency.setTargetAtTime(c[i], now, 1.6); }
-      function melodyNote() {
-        if (!ctx || muted || !bgmGain) return; const now = ctx.currentTime + 0.05, f = BGM_MEL[(Math.random() * BGM_MEL.length) | 0];
-        const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = f;
-        g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.09, now + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, now + 2.2);
-        o.connect(g); g.connect(bgmGain); o.start(now); o.stop(now + 2.35);
+        bgmGain.gain.setTargetAtTime(BGM_VOL, ctx.currentTime, 1.2);   // 立ち上がりフェードイン
+        bgmStep = 0; bgmNext = ctx.currentTime + 0.12;
+        bgmTimer = setInterval(function () {                            // 先読みスケジューラ（25ms毎・120ms先まで予約＝タイミング安定）
+          if (!ctx) return; const sd = (60 / BGM_BPM) / 4;
+          while (bgmNext < ctx.currentTime + 0.12) { bgmPlayStep(bgmStep, bgmNext); bgmNext += sd; bgmStep = (bgmStep + 1) & 63; }
+        }, 25);
       }
       function ensure() {
         if (started) { if (ctx && ctx.state === 'suspended') ctx.resume(); return; }
@@ -1595,7 +1636,7 @@
         win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); },
         full: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(430, t, 0.05, 0.18, 'square'); beep(300, t + 0.05, 0.07, 0.16, 'square'); },   // [即効パック] 満杯の「カチッ」
         winStar: function (n) { if (!ready || muted) return; const t = ctx.currentTime; beep(720 + n * 190, t, 0.18, 0.2, 'triangle'); },   // [即効パック] 星が出るたびの上昇音
-        _diag: function () { return { ready: ready, ctx: ctx ? ctx.state : 'none', muted: muted, master: master ? +master.gain.value.toFixed(3) : null, fwdLoaded: !!fwdSrc, revLoaded: !!revSrc, fwdGain: fwdGain ? +fwdGain.gain.value.toFixed(3) : null, revGain: revGain ? +revGain.gain.value.toFixed(3) : null, bgm: bgmStarted, bgmGain: bgmGain ? +bgmGain.gain.value.toFixed(3) : null, bgmChord: bgmChord }; }
+        _diag: function () { return { ready: ready, ctx: ctx ? ctx.state : 'none', muted: muted, master: master ? +master.gain.value.toFixed(3) : null, fwdLoaded: !!fwdSrc, revLoaded: !!revSrc, fwdGain: fwdGain ? +fwdGain.gain.value.toFixed(3) : null, revGain: revGain ? +revGain.gain.value.toFixed(3) : null, bgm: bgmStarted, bgmGain: bgmGain ? +bgmGain.gain.value.toFixed(3) : null, bgmStep: bgmStep, bpm: BGM_BPM }; }
       };
     })();
 
