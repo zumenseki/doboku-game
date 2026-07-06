@@ -1177,6 +1177,7 @@
     const leafIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true }), DECOR_MAX);   // 葉（木の樹冠＋茂み・instanceColorで濃淡）
     trunkIM.frustumCulled = false; leafIM.frustumCulled = false; trunkIM.count = 0; leafIM.count = 0; scene.add(trunkIM); scene.add(leafIM);
     const _leafCols = [0x4e8a34, 0x5f9d3f, 0x3f7a2c, 0x6f9a3a, 0x86953a];   // 緑の濃淡＋一部やや枯れ色
+    const TREE_SCALE = 0.1;   // [親方FB] 木（幹＋樹冠）の大きさ倍率。1.0→0.1に縮小（大きすぎたFB）。茂みは別系統で据え置き
     const _dcm = new THREE.Object3D(), _dcc = new THREE.Color();
     // 作業ゾーン(markers)と重ならない外周に、木と茂みを散らす。木の根元は地面/apronの高さに合わせる。レベル毎に再構築。
     function rebuildDecor(L) {
@@ -1190,7 +1191,7 @@
         guard++;
         const ang = Math.random() * 6.283, rad = half * (0.66 + Math.random() * 0.54), x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
         if (Math.abs(x) > half * 1.42 || Math.abs(z) > half * 1.42 || inWork(x, z)) continue;
-        const gy = groundY(x, z), s = 0.8 + Math.random() * 0.95, yaw = Math.random() * 6.283, cr = 1.25 * s;
+        const gy = groundY(x, z), s = (0.8 + Math.random() * 0.95) * TREE_SCALE, yaw = Math.random() * 6.283, cr = 1.25 * s;
         _dcm.position.set(x, gy + 0.7 * s, z); _dcm.rotation.set(0, yaw, 0); _dcm.scale.set(s, s, s); _dcm.updateMatrix(); trunkIM.setMatrixAt(nT, _dcm.matrix);
         _dcm.position.set(x, gy + 1.4 * s + cr * 0.45, z); _dcm.rotation.set(0, yaw, 0); _dcm.scale.set(cr, cr * (0.9 + Math.random() * 0.5), cr); _dcm.updateMatrix(); leafIM.setMatrixAt(nL, _dcm.matrix);
         leafIM.setColorAt(nL, _dcc.setHex(_leafCols[(Math.random() * _leafCols.length) | 0]));
