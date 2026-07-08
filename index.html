@@ -915,7 +915,9 @@
         A: rect(14, 94, 50, 58), gradeTarget: 1.5, gradeTol: 0.6, startZ: 0,
         goal: '道路建設：脇の<b>山から土を取り</b>、中央を横断する<b>道（黄枠）を高さ1.5mまで盛って</b>上を平らに仕上げよう',
         hint: '黄枠＝道路。脇の小山を掘り、トラックやブルで道に運んで盛り、目標の高さで平らに均す',
-        markers: [['A', 0xe0b020]], gen: genRoad },
+        markers: [['A', 0xe0b020]],
+        signs: [ { t: '⛏ 土をここから', x: -22, z: -18, bg: 'rgba(120,72,28,0.92)' }, { t: '⛏ 土をここから', x: 22, z: 18, bg: 'rgba(120,72,28,0.92)' }, { t: '⛏ 土をここから', x: -18, z: 24, bg: 'rgba(120,72,28,0.92)' }, { t: '🚧 ここに盛る（高さ1.5m）', x: 0, z: 0, y: 6.5, bg: 'rgba(190,120,20,0.94)' } ],   // [土源段取り試作] 借土山3か所=土源／道路中央=盛土先。座標は genRoad の borrow 位置に対応（見た目専用）
+        gen: genRoad },
       { type: 'grade', name: '宅地造成', mainLabel: '', grid: 108,
         A: rect(24, 84, 24, 84), gradeTarget: 0, gradeTol: 0.6, startZ: 0,
         goal: '宅地造成：傾いた広い土地（黄枠）を、<b>高い側を削って低い側へ盛り</b>、一枚の<b>平らな土地（高さ0）</b>に仕上げよう',
@@ -1047,6 +1049,7 @@
     const cLow = new THREE.Color(0xc2a06c), cMid = new THREE.Color(0x9a6e3e), cHigh = new THREE.Color(0x5f3e1e), cWet = new THREE.Color(0x47301c), tmpC = new THREE.Color();  // 土寄せ[親方FB もっと土っぽく]：低=乾いた土/中=茶土/高=濃い掘りたて土/濡れ=黒っぽい泥
     const cRock = new THREE.Color(0x767a80);   // [親方FB] 硬い岩の色（灰色）
     const cGravel = new THREE.Color(0xcfc4a6);   // [親方FB 地質] 砂利の色（明るい砂色）
+    const cGrass = new THREE.Color(0x57943d), cGrassLight = new THREE.Color(0x78ad50), cGrassDark = new THREE.Color(0x376f31);   // [自然植生] 未掘の芝。明暗2色を粒むらで混ぜ、刈り込まれた瑞々しい面にする
     function colorFor(h, wet, out) {
       const t = Math.max(0, Math.min(1, (h - MIN_H) / (MAX_H - MIN_H)));
       if (t < 0.45) out.copy(cLow).lerp(cMid, t / 0.45); else out.copy(cMid).lerp(cHigh, (t - 0.45) / 0.55);
@@ -1066,6 +1069,8 @@
         const gi = idx % V, gj = (idx / V) | 0;
         const hl = heights[gi > 0 ? idx - 1 : idx], hr = heights[gi < GRID ? idx + 1 : idx], hd = heights[gj > 0 ? idx - V : idx], hu = heights[gj < GRID ? idx + V : idx];
         const slope = (Math.abs(hl - hr) + Math.abs(hd - hu)) * 0.5;
+        // [自然植生] 未掘の素地(元地形からの変化<0.4m)・水無し・普通土・緩斜面だけ芝色。掘る/盛ると土肌へ戻る既存条件は維持。
+        if (!wet && hard[idx] === 0) { let gr = 1 - Math.abs(heights[idx] - baseHeights[idx]) / 0.4; if (gr > 0) { gr *= Math.max(0, 1 - slope * 1.15); if (gr > 0) { const ga = Math.min(1, gr); tmpC.lerp(cGrass, ga * 0.78); tmpC.lerp(grain[idx] > 0.12 ? cGrassLight : cGrassDark, ga * (0.10 + Math.abs(grain[idx]) * 0.08)); } } }
         const mul = Math.max(0.42, 1 - Math.min(0.42, slope * 0.24) + grain[idx] * (wet ? 0.04 : 0.09));  // 土寄せ[親方FB]：斜面の陰影と粒のザラつきを強める
         colors[idx * 3] = Math.min(1, tmpC.r * mul); colors[idx * 3 + 1] = Math.min(1, tmpC.g * mul); colors[idx * 3 + 2] = Math.min(1, tmpC.b * mul);
       }
@@ -1161,6 +1166,123 @@
 
     // ゾーン旗・枠
     const markerGroup = new THREE.Group(); scene.add(markerGroup);
+    const signGroup = new THREE.Group(); scene.add(signGroup);   // [親方FB 土源段取り] 掘る場所/盛る場所を示す浮き看板（見た目専用・地形/土量/セーブに無関係）
+
+    // ===== [自然植生] 芝の遠景＋広葉樹/針葉樹/低木＋草房。全て表示専用で、地形・土量・水・セーブへ書き込まない。=====
+    const APRON_Y = -0.4;
+    function makeDecorTexture(w, h, draw) {
+      const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d'); draw(ctx, w, h);
+      const tex = new THREE.CanvasTexture(canvas); tex.encoding = THREE.sRGBEncoding;
+      tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy()); return tex;
+    }
+    const turfTex = makeDecorTexture(128, 128, function (ctx, w, h) {
+      ctx.fillStyle = '#638f49'; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 520; i++) {
+        const x = Math.random() * w, y = Math.random() * h, light = Math.random() > 0.48;
+        ctx.fillStyle = light ? 'rgba(157,190,100,0.19)' : 'rgba(39,91,43,0.18)';
+        ctx.fillRect(x, y, 0.8 + Math.random() * 1.4, 1.8 + Math.random() * 3.5);
+      }
+      ctx.strokeStyle = 'rgba(218,232,157,0.12)'; ctx.lineWidth = 0.55;
+      for (let y = 4; y < h; y += 9) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y + 2); ctx.stroke(); }
+    });
+    turfTex.wrapS = turfTex.wrapT = THREE.RepeatWrapping; turfTex.repeat.set(175, 175);
+    const apron = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.MeshStandardMaterial({ color: 0xffffff, map: turfTex, roughness: 1, metalness: 0 }));   // 刈り込み筋と細かな色むらを持つ遠景芝
+    apron.rotation.x = -Math.PI / 2; apron.position.y = APRON_Y; apron.renderOrder = -2; apron.frustumCulled = false; scene.add(apron);
+
+    const barkTex = makeDecorTexture(32, 64, function (ctx, w, h) {
+      ctx.fillStyle = '#ad835b'; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 34; i++) { const x = Math.random() * w; ctx.fillStyle = i % 3 ? 'rgba(72,45,29,0.34)' : 'rgba(225,190,135,0.24)'; ctx.fillRect(x, 0, 0.7 + Math.random() * 1.6, h); }
+      for (let i = 0; i < 18; i++) { ctx.fillStyle = 'rgba(56,39,26,0.22)'; ctx.fillRect(Math.random() * w, Math.random() * h, 3 + Math.random() * 8, 1); }
+    });
+    barkTex.wrapS = barkTex.wrapT = THREE.RepeatWrapping; barkTex.repeat.set(2, 3);
+    function drawGrassCard(ctx, w, h, flowers) {
+      ctx.clearRect(0, 0, w, h);
+      const cols = ['#477f35', '#5e9840', '#76a84b', '#356e32'];
+      for (let i = 0; i < 13; i++) {
+        const bx = w * (0.18 + i * 0.052), bh = h * (0.42 + (i % 5) * 0.09), lean = ((i % 3) - 1) * w * 0.11;
+        ctx.fillStyle = cols[i % cols.length]; ctx.beginPath(); ctx.moveTo(bx - 2.3, h); ctx.lineTo(bx + 2.3, h); ctx.lineTo(bx + lean, h - bh); ctx.closePath(); ctx.fill();
+      }
+      if (flowers) {
+        const spots = [[22, 22, '#f3d56a'], [43, 29, '#f5f0df'], [34, 15, '#e7b8ce']];
+        for (let i = 0; i < spots.length; i++) { const s = spots[i]; ctx.fillStyle = s[2]; for (let p = 0; p < 4; p++) { const a = p * 1.5708; ctx.beginPath(); ctx.arc(s[0] + Math.cos(a) * 2.3, s[1] + Math.sin(a) * 2.3, 2.1, 0, 6.283); ctx.fill(); } ctx.fillStyle = '#e7b84d'; ctx.beginPath(); ctx.arc(s[0], s[1], 1.8, 0, 6.283); ctx.fill(); }
+      }
+    }
+    const tuftTex = makeDecorTexture(64, 64, function (ctx, w, h) { drawGrassCard(ctx, w, h, false); });
+    const flowerTex = makeDecorTexture(64, 64, function (ctx, w, h) { drawGrassCard(ctx, w, h, true); });
+    function makeCrossCardGeometry() {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5,0,0, 0.5,0,0, 0.5,1,0, -0.5,1,0, 0,0,-0.5, 0,0,0.5, 0,1,0.5, 0,1,-0.5], 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute([0,0, 1,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,1], 2));
+      g.setIndex([0,1,2, 0,2,3, 4,5,6, 4,6,7]); g.computeVertexNormals(); return g;
+    }
+    const DECOR_MAX = 220, PINE_MAX = 110, TUFT_MAX = 320, FLOWER_MAX = 48;
+    const trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.24, 1.4, 7), new THREE.MeshStandardMaterial({ color: 0xffffff, map: barkTex, roughness: 0.96, flatShading: true }), 72);
+    const leafIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 0.88, flatShading: true }), DECOR_MAX);
+    const pineIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1.6, 7), new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true }), PINE_MAX);
+    const grassCardGeo = makeCrossCardGeometry();
+    const tuftIM = new THREE.InstancedMesh(grassCardGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, map: tuftTex, transparent: true, alphaTest: 0.42, side: THREE.DoubleSide, depthWrite: true, roughness: 1 }), TUFT_MAX);
+    const flowerIM = new THREE.InstancedMesh(grassCardGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, map: flowerTex, transparent: true, alphaTest: 0.42, side: THREE.DoubleSide, depthWrite: true, roughness: 1 }), FLOWER_MAX);
+    const _decorWhite = new THREE.Color(0xffffff);
+    [trunkIM, leafIM, pineIM, tuftIM, flowerIM].forEach(function (m) { m.frustumCulled = false; m.setColorAt(0, _decorWhite); m.count = 0; m.instanceColor.needsUpdate = true; scene.add(m); });   // r128: capacityが残る順でinstanceColorを作り、count=0由来の長さ0配列（黒化）を防ぐ
+    const _trunkCols = [0x8b6748, 0x76543b, 0x987153], _leafCols = [0x3e7b34, 0x4d8d3a, 0x5b9b42, 0x6b9f48, 0x34702f], _pineCols = [0x2f6538, 0x397746, 0x285b35], _tuftCols = [0xd9efbd, 0xc4e2a5, 0xe4efc3];
+    const TREE_SCALE = 0.1;   // [親方FB] 最近の木サイズ10%を維持。形の情報量だけ増やす
+    const _dcm = new THREE.Object3D(), _dcc = new THREE.Color();
+    const _decorAudit = { nonFinite: 0, workIntrusions: 0, driveIntrusions: 0, groundGapMax: 0, trees: 0, leaves: 0, conifers: 0, bushes: 0, tufts: 0, flowers: 0 };
+    function setDecorInstance(mesh, at, x, y, z, sx, sy, sz, yaw, color) {
+      _dcm.position.set(x, y, z); _dcm.rotation.set(0, yaw, 0); _dcm.scale.set(sx, sy, sz); _dcm.updateMatrix(); mesh.setMatrixAt(at, _dcm.matrix);
+      if (color != null) mesh.setColorAt(at, _dcc.setHex(color));
+    }
+    // 木・低木・草房は正方形の走行域より外側だけ。根元はapronへ接地し、面ごとの配置は固定乱数で安定させる。
+    function rebuildDecor(L) {
+      const half = WORLD / 2, rects = (L.markers || []).map(function (m) { return L[m[0]]; }).filter(Boolean);
+      let seed = (GRID * 73856093) ^ ((L.name || '').length * 19349663);
+      for (let si = 0; si < (L.name || '').length; si++) seed = Math.imul(seed ^ L.name.charCodeAt(si), 16777619);
+      function rnd() { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; }
+      function inWork(x, z) { for (let r = 0; r < rects.length; r++) { const zr = rects[r]; if (x >= worldX(zr.i0) - 1.2 && x <= worldX(zr.i1) + 1.2 && z >= worldZ(zr.j0) - 1.2 && z <= worldZ(zr.j1) + 1.2) return true; } return false; }
+      function groundY(x, z) { return (Math.abs(x) < half - 0.5 && Math.abs(z) < half - 0.5) ? sampleHeight(x, z) : APRON_Y; }
+      let px = 0, pz = 0;
+      function nextOuter(clearance, band) {
+        const side = (rnd() * 4) | 0, along = (rnd() * 2 - 1) * (half + band), out = half + clearance + rnd() * band;
+        if (side === 0) { px = -out; pz = along; } else if (side === 1) { px = out; pz = along; } else if (side === 2) { px = along; pz = -out; } else { px = along; pz = out; }
+      }
+      function auditRoot(x, z, radius, rootY) {
+        if (!isFinite(x) || !isFinite(z) || !isFinite(rootY) || !isFinite(radius)) _decorAudit.nonFinite++;
+        if (inWork(x, z)) _decorAudit.workIntrusions++;
+        if (Math.abs(x) - radius < half - 0.5 && Math.abs(z) - radius < half - 0.5) _decorAudit.driveIntrusions++;
+        _decorAudit.groundGapMax = Math.max(_decorAudit.groundGapMax, Math.abs(rootY - groundY(x, z)));
+      }
+      _decorAudit.nonFinite = _decorAudit.workIntrusions = _decorAudit.driveIntrusions = 0; _decorAudit.groundGapMax = 0;
+      const targetTrees = GRID >= 108 ? 52 : 28, targetBush = GRID >= 108 ? 54 : 28, targetTufts = GRID >= 108 ? 300 : 160, targetFlowers = GRID >= 108 ? 36 : 18;
+      let nT = 0, nL = 0, nP = 0, nB = 0, nG = 0, nF = 0;
+      while (nT < targetTrees) {
+        nextOuter(1.35, 5.5); const x = px, z = pz, gy = groundY(x, z), s = (0.85 + rnd() * 0.9) * TREE_SCALE, yaw = rnd() * 6.283, cr = 1.25 * s, conifer = nT % 3 === 2;
+        setDecorInstance(trunkIM, nT, x, gy + 0.7 * s, z, s, s, s, yaw, _trunkCols[(rnd() * _trunkCols.length) | 0]);
+        if (conifer) {
+          for (let k = 0; k < 2 && nP < PINE_MAX; k++) { const ps = cr * (k ? 0.67 : 0.95), py = gy + 1.28 * s + k * cr * 0.72; setDecorInstance(pineIM, nP, x, py, z, ps, ps, ps, yaw + k * 0.4, _pineCols[(nT + k) % _pineCols.length]); nP++; }
+        } else {
+          const co = cr * 0.36, cs = cr * 0.74, ca = Math.cos(yaw), sa = Math.sin(yaw);
+          for (let k = 0; k < 3 && nL < DECOR_MAX; k++) { const ox = k === 0 ? -co : k === 1 ? co : 0, oz = k === 2 ? -co * 0.22 : co * 0.25, cx = x + ox * ca - oz * sa, cz = z + ox * sa + oz * ca, cy = gy + 1.42 * s + (k === 2 ? cr * 0.52 : cr * 0.16), col = _leafCols[(nT + k) % _leafCols.length]; setDecorInstance(leafIM, nL, cx, cy, cz, cs * (k === 2 ? 0.88 : 1), cs * (k === 2 ? 0.92 : 0.78), cs, yaw + k, col); nL++; }
+        }
+        auditRoot(x, z, cr * 1.2, gy); nT++;
+      }
+      while (nB < targetBush && nL + 2 <= DECOR_MAX) {
+        nextOuter(1.25, 4.8); const x = px, z = pz, gy = groundY(x, z), s = 0.34 + rnd() * 0.34, yaw = rnd() * 6.283, ca = Math.cos(yaw), sa = Math.sin(yaw);
+        for (let k = 0; k < 2; k++) { const o = (k ? 1 : -1) * s * 0.3, cx = x + o * ca, cz = z + o * sa, sy = s * (k ? 0.56 : 0.63); setDecorInstance(leafIM, nL, cx, gy + sy, cz, s * 0.78, sy, s * 0.7, yaw + k, _leafCols[((nB * 2 + k) + 1) % _leafCols.length]); nL++; }
+        auditRoot(x, z, s * 1.12, gy); nB++;
+      }
+      while (nG < targetTufts && nG < TUFT_MAX) {
+        nextOuter(0.58, 4.4); const x = px, z = pz, gy = groundY(x, z), w = 0.22 + rnd() * 0.24, h = 0.28 + rnd() * 0.34, yaw = rnd() * 6.283;
+        setDecorInstance(tuftIM, nG, x, gy + 0.012, z, w, h, w, yaw, _tuftCols[nG % _tuftCols.length]); auditRoot(x, z, w * 0.58, gy); nG++;
+      }
+      while (nF < targetFlowers && nF < FLOWER_MAX) {
+        nextOuter(0.66, 4.0); const x = px, z = pz, gy = groundY(x, z), w = 0.2 + rnd() * 0.13, h = 0.32 + rnd() * 0.22, yaw = rnd() * 6.283;
+        setDecorInstance(flowerIM, nF, x, gy + 0.014, z, w, h, w, yaw, 0xffffff); auditRoot(x, z, w * 0.58, gy); nF++;
+      }
+      trunkIM.count = nT; leafIM.count = nL; pineIM.count = nP; tuftIM.count = nG; flowerIM.count = nF;
+      [trunkIM, leafIM, pineIM, tuftIM, flowerIM].forEach(function (m) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
+      _decorAudit.trees = nT; _decorAudit.leaves = nL; _decorAudit.conifers = nP; _decorAudit.bushes = nB; _decorAudit.tufts = nG; _decorAudit.flowers = nF;
+    }
     function rebuildMarkers(list) {
       for (let k = markerGroup.children.length - 1; k >= 0; k--) { const c = markerGroup.children[k]; markerGroup.remove(c); if (c.geometry) c.geometry.dispose(); }
       list.forEach(function (m) {
@@ -1175,6 +1297,28 @@
           const flag = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.06), flagMat); flag.position.set(c[0] + 0.45, 2.7, c[1]); markerGroup.add(flag);
         });
       });
+    }
+    // [親方FB 土源段取り] 浮き看板：掘る場所/盛る場所を文字で明示。カメラ常時正対のスプライト＝見た目専用で、クリア判定・土量・水・セーブに一切関与しない。
+    function makeSign(text, bg) {
+      const fs = 46, pad = 20, c = document.createElement('canvas'), g = c.getContext('2d');
+      g.font = 'bold ' + fs + "px 'Segoe UI',sans-serif";
+      const tw = Math.ceil(g.measureText(text).width);
+      c.width = tw + pad * 2; c.height = fs + pad * 2;                 // 幅変更でcontextがリセットされる→下で再設定
+      g.font = 'bold ' + fs + "px 'Segoe UI',sans-serif"; g.textBaseline = 'middle'; g.textAlign = 'center';
+      const w = c.width, h = c.height, r = 16;
+      g.fillStyle = bg || 'rgba(60,42,22,0.9)';                        // 角丸パネル
+      g.beginPath(); g.moveTo(r, 0); g.arcTo(w, 0, w, h, r); g.arcTo(w, h, 0, h, r); g.arcTo(0, h, 0, 0, r); g.arcTo(0, 0, w, 0, r); g.closePath(); g.fill();
+      g.lineWidth = 5; g.strokeStyle = 'rgba(255,255,255,0.92)'; g.stroke();
+      g.fillStyle = '#fff'; g.fillText(text, w / 2, h / 2 + 2);
+      const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+      sp.scale.set(w / h * 2.4, 2.4, 1);                              // 高さ約2.4mの看板（幅は文字量で自動）
+      return sp;
+    }
+    function rebuildSigns(list) {
+      for (let k = signGroup.children.length - 1; k >= 0; k--) { const s = signGroup.children[k]; signGroup.remove(s); if (s.material) { if (s.material.map) s.material.map.dispose(); s.material.dispose(); } }
+      if (!list) return;
+      list.forEach(function (o) { const sp = makeSign(o.t, o.bg); sp.position.set(o.x, (o.y == null ? 5.5 : o.y), o.z); sp.renderOrder = 10; signGroup.add(sp); });
     }
 
     // 重機
@@ -1440,6 +1584,8 @@
       let engOsc = null, engGain = null, engLP = null, engVibOsc = null, engVibGain = null;
       let fwdSrc = null, fwdGain = null, revSrc = null, revGain = null; // 走行音＝本物の録音（前進=戦車キャタピラ track-fwd / 後退=ブル作業音 track-rev）
       let digBus = null, digGain = null, lastDig = 0;
+      let bgmGain = null, bgmTimer = null, bgmStarted = false, bgmStep = 0, bgmNext = 0, bgmNoise = null;   // [BGM] ポップBGM（16分ステップ先読みスケジューラ・master経由＝mute/音量連動）
+      const BGM_VOL = 0.26, BGM_BPM = 112;
       function makeNoiseBuffer() {
         const len = (ctx.sampleRate * 0.5) | 0, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.6;
@@ -1464,6 +1610,67 @@
         loadDrive('track-fwd.mp3', function (b) { fwdSrc = ctx.createBufferSource(); fwdSrc.buffer = b; fwdSrc.loop = true; fwdSrc.connect(fwdGain); fwdSrc.start(); });
         loadDrive('track-rev.mp3', function (b) { revSrc = ctx.createBufferSource(); revSrc.buffer = b; revSrc.loop = true; revSrc.connect(revGain); revSrc.start(); });
         ready = true;
+        startBgm();   // [BGM] 初回操作でctx生成→BGM開始（muteならmaster=0で無音・グラフは動く）
+      }
+      // [BGM] ポップなループBGM：ドラム(キック/スネア/ハイハット)＋弾むベース＋裏拍コードスタブ＋8分アルペジオ＋小節頭フック。112BPM・進行 C–G–Am–F。16分ステップの先読みスケジューラで駆動し、全ノートは bgmGain→master 経由＝mute/音量に連動。
+      const _mf = function (m) { return 440 * Math.pow(2, (m - 69) / 12); };   // MIDI番号→周波数
+      const BGM_PROG = [   // 1小節ごと：bass=ルートMIDI / tri=コード3声MIDI
+        { bass: 36, tri: [60, 64, 67] },   // C
+        { bass: 43, tri: [59, 62, 67] },   // G
+        { bass: 45, tri: [57, 60, 64] },   // Am
+        { bass: 41, tri: [57, 60, 65] }    // F
+      ];
+      function bgmKick(t) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.12);
+        g.gain.setValueAtTime(0.8, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+        o.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + 0.18);
+      }
+      function bgmSnare(t) {
+        const n = ctx.createBufferSource(); n.buffer = bgmNoise;
+        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1400;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.45, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+        n.connect(hp); hp.connect(g); g.connect(bgmGain); n.start(t); n.stop(t + 0.14);
+      }
+      function bgmHat(t, v) {
+        const n = ctx.createBufferSource(); n.buffer = bgmNoise;
+        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+        const g = ctx.createGain(); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+        n.connect(hp); hp.connect(g); g.connect(bgmGain); n.start(t); n.stop(t + 0.05);
+      }
+      function bgmTone(midi, t, dur, vol, type) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type; o.frequency.value = _mf(midi);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + dur + 0.02);
+      }
+      function bgmBassNote(midi, t, dur) {
+        const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+        o.type = 'sawtooth'; o.frequency.value = _mf(midi); lp.type = 'lowpass'; lp.frequency.value = 520;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(lp); lp.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + dur + 0.02);
+      }
+      function bgmPlayStep(step, t) {
+        if (muted) return;   // mute中はノート生成を省く（スケジューラは進む＝解除で即復帰）。master gain=0 でも二重に無音。
+        const bar = (step >> 4) & 3, s = step & 15, P = BGM_PROG[bar], sd = (60 / BGM_BPM) / 4;
+        if (s === 0 || s === 8 || s === 11) bgmKick(t);                                  // キック（1・3拍＋裏の弾み）
+        if (s === 4 || s === 12) bgmSnare(t);                                             // スネア（2・4拍のバックビート）
+        if (s % 2 === 0) bgmHat(t, (s === 6 || s === 14) ? 0.13 : 0.07);                  // ハイハット（8分・裏で少し開く）
+        if (s % 2 === 0) bgmBassNote(P.bass + ((s % 8 === 6) ? 12 : 0), t, sd * 1.7);     // ベース（8分の弾み・"a"で1oct上げ）
+        if (s === 2 || s === 6 || s === 10 || s === 14) { for (let i = 0; i < P.tri.length; i++) bgmTone(P.tri[i], t, 0.14, 0.05, 'square'); }   // 裏拍コードスタブ
+        if (s % 2 === 0) bgmTone(P.tri[(s / 2) % 3] + 12, t, 0.22, 0.075, 'triangle');    // 8分アルペジオ（コード3声を昇る・1oct上）
+        if (s === 0) bgmTone(P.tri[2] + 12, t, 0.5, 0.09, 'triangle');                    // 小節頭のフック音（トップ音をやや長く）
+      }
+      function startBgm() {
+        if (!ctx || bgmStarted) return; bgmStarted = true;
+        bgmNoise = makeNoiseBuffer();
+        bgmGain = ctx.createGain(); bgmGain.gain.value = 0.0001; bgmGain.connect(master);
+        bgmGain.gain.setTargetAtTime(BGM_VOL, ctx.currentTime, 1.2);   // 立ち上がりフェードイン
+        bgmStep = 0; bgmNext = ctx.currentTime + 0.12;
+        bgmTimer = setInterval(function () {                            // 先読みスケジューラ（25ms毎・120ms先まで予約＝タイミング安定）
+          if (!ctx) return; const sd = (60 / BGM_BPM) / 4;
+          while (bgmNext < ctx.currentTime + 0.12) { bgmPlayStep(bgmStep, bgmNext); bgmNext += sd; bgmStep = (bgmStep + 1) & 63; }
+        }, 25);
       }
       function ensure() {
         if (started) { if (ctx && ctx.state === 'suspended') ctx.resume(); return; }
@@ -1501,7 +1708,7 @@
         win: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(523, t, 0.16, 0.22); beep(659, t + 0.14, 0.16, 0.22); beep(784, t + 0.28, 0.16, 0.22); beep(1047, t + 0.42, 0.34, 0.24); },
         full: function () { if (!ready || muted) return; const t = ctx.currentTime; beep(430, t, 0.05, 0.18, 'square'); beep(300, t + 0.05, 0.07, 0.16, 'square'); },   // [即効パック] 満杯の「カチッ」
         winStar: function (n) { if (!ready || muted) return; const t = ctx.currentTime; beep(720 + n * 190, t, 0.18, 0.2, 'triangle'); },   // [即効パック] 星が出るたびの上昇音
-        _diag: function () { return { ready: ready, ctx: ctx ? ctx.state : 'none', muted: muted, master: master ? +master.gain.value.toFixed(3) : null, fwdLoaded: !!fwdSrc, revLoaded: !!revSrc, fwdGain: fwdGain ? +fwdGain.gain.value.toFixed(3) : null, revGain: revGain ? +revGain.gain.value.toFixed(3) : null }; }
+        _diag: function () { return { ready: ready, ctx: ctx ? ctx.state : 'none', muted: muted, master: master ? +master.gain.value.toFixed(3) : null, fwdLoaded: !!fwdSrc, revLoaded: !!revSrc, fwdGain: fwdGain ? +fwdGain.gain.value.toFixed(3) : null, revGain: revGain ? +revGain.gain.value.toFixed(3) : null, bgm: bgmStarted, bgmGain: bgmGain ? +bgmGain.gain.value.toFixed(3) : null, bgmStep: bgmStep, bpm: BGM_BPM }; }
       };
     })();
 
@@ -2419,7 +2626,7 @@
       document.getElementById("b-main").style.display = (LV.type === 'level' || LV.type === 'grade' || LV.type === 'sort') ? 'none' : '';
       document.getElementById("total-badge").style.display = (LV.type === 'haul' || LV.type === 'grade' || LV.type === 'sort' || LV.noWater) ? 'none' : '';   // 造成/整地/仕分け/水なしレベルは水バッジを隠す[レビュー修正]
       document.getElementById("win").classList.remove("show");
-      rebuildMarkers(LV.markers); setHint(LV.hint, curLevel === 0);   // [即効パック] 最初のレベルはヒントを固定表示（触っても消えない・30秒）
+      rebuildMarkers(LV.markers); rebuildSigns(LV.signs); rebuildDecor(LV); setHint(LV.hint, curLevel === 0);   // [即効パック] 最初のレベルはヒントを固定表示（触っても消えない・30秒）／[土源段取り] 看板／[華やか] 木・茂みも再構築
       canClear = false; updateClearBtn();   // [親方FB] レベル切替でクリアボタンを一旦隠す（新レベルは未達成）
       if (!saved) { game.treasureCount = 0; game.treasureNext = 90 + Math.random() * 40; }   // [親方FB] 新しい面は埋蔵金カウンタをリセット（1面1〜2回）。セーブ復元時は途中経過を保つ
       syncGeometry(); syncWater(0); refreshHUD(); save();
@@ -3035,8 +3242,23 @@
       fuelOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? +fuelOf(f).toFixed(3) : null; }, setFuel: (u, v) => { const f = unitById(u == null ? game.driveU : u); if (f) f.fuel = v; refreshHUD(); }, fuelCapOf: (id) => fuelCap(machineById(id || game.machine)), fuelRateOf: (id, lv) => fuelRate(machineById(id || game.machine), lv || 0), unitEffOf: (u) => { const p = parked.find((x) => x.u === u) || { id: (unitById(u) || {}).id, u: u }; return p.id ? JSON.parse(JSON.stringify(unitEff(p))) : null; }, refuel: (u) => refuelUnit(u == null ? game.driveU : u), refuelCostOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? refuelCost(f) : null; }, FUEL_PRICE: FUEL_PRICE, FUEL_MOVE: FUEL_MOVE, FUEL_AUTO: FUEL_AUTO,   // [keiei P1] 燃料検証用
       effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
-      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; }
+      hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; },
+      signCount: () => signGroup.children.length, signPositions: () => signGroup.children.map((s) => ({ x: +s.position.x.toFixed(1), y: +s.position.y.toFixed(1), z: +s.position.z.toFixed(1), sx: +s.scale.x.toFixed(2), depthTest: s.material.depthTest })),   // [土源段取り] 看板検証用
+      markerCount: () => markerGroup.children.length,
+      treeCount: () => trunkIM.count, leafCount: () => leafIM.count, hasInstanceColor: () => !!leafIM.instanceColor,   // 既存の植生検証口は名前・意味を維持
+      coniferCount: () => pineIM.count, tuftCount: () => tuftIM.count, flowerCount: () => flowerIM.count,
+      rebuildDecorOnly: () => { rebuildDecor(LV); return true; },
+      decorAudit: () => { const a = Object.assign({}, _decorAudit), lc = leafIM.instanceColor && leafIM.instanceColor.array; a.leafColorLength = lc && lc.length || 0; a.firstLeafColor = lc && lc.length >= 3 ? [+lc[0].toFixed(4), +lc[1].toFixed(4), +lc[2].toFixed(4)] : null; a.leafMaterialColor = leafIM.material.color ? leafIM.material.color.getHexString() : null; a.safe = a.nonFinite === 0 && a.workIntrusions === 0 && a.driveIntrusions === 0 && a.groundGapMax < 0.001 && a.trees <= 72 && a.leaves <= DECOR_MAX && a.conifers <= PINE_MAX && a.tufts <= TUFT_MAX && a.flowers <= FLOWER_MAX; return a; },
+      renderStats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, points: renderer.info.render.points, lines: renderer.info.render.lines }),
+      runVegCheck: async () => { const rows = []; for (let n = 0; n < NLV; n++) { loadLevel(n); const soil0 = window.__t.soilTotal(), water0 = window.__t.totalWater(); rebuildDecor(LV); const soilDelta = window.__t.soilTotal() - soil0, waterDelta = window.__t.totalWater() - water0, audit = window.__t.decorAudit(); await new Promise(function (resolve) { setTimeout(resolve, 240); }); rows.push({ level: n + 1, type: LV.type, grid: GRID, nan: window.__t.hasNaN(), trees: trunkIM.count, leaves: leafIM.count, conifers: pineIM.count, tufts: tuftIM.count, flowers: flowerIM.count, instanceColor: !!leafIM.instanceColor, soilDelta: soilDelta, waterDelta: waterDelta, fps: +fpsEMA.toFixed(1), audit: audit }); } return rows; }
     };
+    // ?test&vegcheck の時だけ、25面の植生検証をゲーム自身で実行し、隔離されたブラウザからも読めるDOMへ結果を置く。
+    if (/[?&]vegcheck\b/.test(location.search)) {
+      const vegErrors = [];
+      window.addEventListener('error', function (e) { vegErrors.push(String(e.message || e.error || 'error')); });
+      window.addEventListener('unhandledrejection', function (e) { vegErrors.push(String(e.reason || 'rejection')); });
+      setTimeout(function () { window.__t.runVegCheck().then(function (rows) { const pre = document.createElement('pre'); pre.id = 'vegcheck-result'; pre.style.display = 'none'; pre.textContent = JSON.stringify({ rows: rows, errors: vegErrors, render: window.__t.renderStats() }); document.body.appendChild(pre); }).catch(function (e) { const pre = document.createElement('pre'); pre.id = 'vegcheck-result'; pre.style.display = 'none'; pre.textContent = JSON.stringify({ rows: [], errors: vegErrors.concat([String(e && e.stack || e)]) }); document.body.appendChild(pre); }); }, 0);
+    }
   })();
   </script>
 </body>
