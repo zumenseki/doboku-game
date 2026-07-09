@@ -1114,12 +1114,13 @@
         if (d > RENDER_EPS) {
           if (heights[idx] < SHALLOW_GROUND || d > PLAIN_MIN) show = true; // 窪み or 本物の池の深さ
           else { // 浅くても「高い縁に囲まれて溜まっている水」(低地に貯まる水)は描く＝水位上昇が見える／囲い無しの平地こぼれ筋は描かない
-            const ii = idx % V, jj = (idx / V) | 0, surf = heights[idx] + d; let rim = -1e9;
-            if (ii > 0 && heights[idx - 1] > rim) rim = heights[idx - 1];
-            if (ii < GRID && heights[idx + 1] > rim) rim = heights[idx + 1];
-            if (jj > 0 && heights[idx - V] > rim) rim = heights[idx - V];
-            if (jj < GRID && heights[idx + V] > rim) rim = heights[idx + V];
-            if (rim > surf + 0.1) show = true; // 隣に水面より高い縁=囲われて溜まっている
+            // [水際バグ修正 2026-07-08] 隣に本物の水(深さ>PLAIN_MIN)がある浅い縁セルも水面で覆う＝植生の芝の緑が水の穴として透ける現象を解消。孤立した薄い溢れ筋は nearDeep=false で従来通り非表示。水シミュ(waterD)は不変。
+            const ii = idx % V, jj = (idx / V) | 0, surf = heights[idx] + d; let rim = -1e9, nearDeep = false;
+            if (ii > 0)    { if (heights[idx - 1] > rim) rim = heights[idx - 1]; if (waterD[idx - 1] > PLAIN_MIN) nearDeep = true; }
+            if (ii < GRID) { if (heights[idx + 1] > rim) rim = heights[idx + 1]; if (waterD[idx + 1] > PLAIN_MIN) nearDeep = true; }
+            if (jj > 0)    { if (heights[idx - V] > rim) rim = heights[idx - V]; if (waterD[idx - V] > PLAIN_MIN) nearDeep = true; }
+            if (jj < GRID) { if (heights[idx + V] > rim) rim = heights[idx + V]; if (waterD[idx + V] > PLAIN_MIN) nearDeep = true; }
+            if (rim > surf + 0.1 || nearDeep) show = true; // 隣に高い縁で囲われている or 隣が本物の水=水際を覆う
           }
         }
         if (show) {
@@ -1519,6 +1520,12 @@
       const rg = new THREE.RingGeometry(1.5, 2.0, 40);
       const rm = new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
       const r = new THREE.Mesh(rg, rm); r.rotation.x = -Math.PI / 2; r.renderOrder = 2; scene.add(r); return r;
+    })();
+    // [トラック消失対策 2026-07-08] 操作中の乗り物の真上に常時見える目印ピン。depthTest:false で地形/水に隠れても必ず手前に描画＝丘や水の裏でも位置が分かり二度と見失わない。
+    const camPin = (function () {
+      const g = new THREE.ConeGeometry(0.5, 1.15, 6);
+      const m = new THREE.MeshBasicMaterial({ color: 0xffb300, transparent: true, opacity: 0.92, depthTest: false, depthWrite: false });
+      const c = new THREE.Mesh(g, m); c.rotation.x = Math.PI; c.renderOrder = 12; c.frustumCulled = false; scene.add(c); return c;
     })();
     let selRingT = 0;
     // ブレード前の「押した土の山」[本体移植 2026-06-25]：ブル系で持っている土(game.blade)に応じて前に盛り上がる茶色の山。見た目専用（体積は地面/blade側で管理＝二重計上しない）。
@@ -2373,6 +2380,7 @@
       const _rscale = (1 + 0.07 * _rpulse) * machineScale(curM());
       selRing.scale.set(_rscale, _rscale, _rscale);
       selRing.position.set(game.mx, sampleHeight(game.mx, game.mz) + 0.06, game.mz);
+      camPin.position.set(game.mx, sampleHeight(game.mx, game.mz) + 3.3 + 0.18 * Math.sin(selRingT * 4), game.mz); camPin.rotation.z = selRingT * 1.6;   // [トラック消失対策] 目印ピンを乗り物の真上へ追従＋ゆっくり回転で気づきやすく
       if (machineKind(curM()) === 'truck') { updateActiveTruck(dt); return; }   // 操作中がトラック＝トラック運転（走る＋押すでダンプ）
       const fUnit = activeUnit(), _noFuel = fUnit ? fuelEmpty(fUnit) : false;   // [keiei P1] 燃料切れ＝旋回/移動/作業とも動けない（給油で復帰）
       // 実際の重機式の操作：左右＝その場で旋回（向きを変える）／上＝前進・下＝後退（向いてる方向のまま）
@@ -2428,8 +2436,8 @@
     function updateCamera() {
       const aspect = window.innerWidth / Math.max(1, window.innerHeight), f = aspect < 1 ? Math.min(1.9, 1 / aspect) : 1, dist = camDist * f, horiz = dist * Math.cos(camPitch);
       let sx = 0, sy = 0; if (shake > 0.001) { sx = rnd2(shake); sy = rnd2(shake); }
-      const fcx = game.mx, fcz = game.mz;   // 操作中の乗り物(重機/トラック)を追う[親方FB]
-      camera.position.set(fcx + horiz * Math.sin(camYaw) + sx, dist * Math.sin(camPitch) + sy, fcz + horiz * Math.cos(camYaw)); camera.lookAt(fcx, 1, fcz);
+      const fcx = game.mx, fcz = game.mz, fcy = sampleHeight(game.mx, game.mz);   // 操作中の乗り物(重機/トラック)を追う[親方FB]。[トラック消失対策 2026-07-08] 高さ(fcy)も追従＝高い緑の丘/深い窪みで乗り物がカメラ枠から外れて見失うのを防ぐ（平地=fcy≒0で従来と同一）
+      camera.position.set(fcx + horiz * Math.sin(camYaw) + sx, fcy + dist * Math.sin(camPitch) + sy, fcz + horiz * Math.cos(camYaw)); camera.lookAt(fcx, fcy + 1, fcz);
     }
 
     // ===================== HUD・クリア判定・レベル進行 =====================
@@ -3242,6 +3250,22 @@
       fuelOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? +fuelOf(f).toFixed(3) : null; }, setFuel: (u, v) => { const f = unitById(u == null ? game.driveU : u); if (f) f.fuel = v; refreshHUD(); }, fuelCapOf: (id) => fuelCap(machineById(id || game.machine)), fuelRateOf: (id, lv) => fuelRate(machineById(id || game.machine), lv || 0), unitEffOf: (u) => { const p = parked.find((x) => x.u === u) || { id: (unitById(u) || {}).id, u: u }; return p.id ? JSON.parse(JSON.stringify(unitEff(p))) : null; }, refuel: (u) => refuelUnit(u == null ? game.driveU : u), refuelCostOf: (u) => { const f = unitById(u == null ? game.driveU : u); return f ? refuelCost(f) : null; }, FUEL_PRICE: FUEL_PRICE, FUEL_MOVE: FUEL_MOVE, FUEL_AUTO: FUEL_AUTO,   // [keiei P1] 燃料検証用
       effStats: (id) => JSON.parse(JSON.stringify(effectiveStats(machineById(id)))), checkAch: () => checkAchievements(), isMuted: () => SND.isMuted(), SND: SND, MAKERS: MAKERS,
       fluxStats: () => { let mx = 0; for (let k = 0; k < N; k++) { const f = Math.abs(fR[k] - fL[k]) + Math.abs(fB[k] - fT[k]); if (f > mx) mx = f; } return { maxFlux: mx }; },
+      waterRenderAudit: () => { // [水際バグ修正 検証用] syncWater の show 判定を再現し、描画される水セル数と「水際修正で新たに覆ったセル数(shoreAdded)」を返す
+        let shown = 0, shoreAdded = 0, wet = 0;
+        for (let idx = 0; idx < N; idx++) {
+          const d = waterD[idx]; if (d > WATER_EPS) wet++;
+          if (d <= RENDER_EPS) continue;
+          if (heights[idx] < SHALLOW_GROUND || d > PLAIN_MIN) { shown++; continue; }
+          const ii = idx % V, jj = (idx / V) | 0, surf = heights[idx] + d; let rim = -1e9, nearDeep = false;
+          if (ii > 0)    { if (heights[idx - 1] > rim) rim = heights[idx - 1]; if (waterD[idx - 1] > PLAIN_MIN) nearDeep = true; }
+          if (ii < GRID) { if (heights[idx + 1] > rim) rim = heights[idx + 1]; if (waterD[idx + 1] > PLAIN_MIN) nearDeep = true; }
+          if (jj > 0)    { if (heights[idx - V] > rim) rim = heights[idx - V]; if (waterD[idx - V] > PLAIN_MIN) nearDeep = true; }
+          if (jj < GRID) { if (heights[idx + V] > rim) rim = heights[idx + V]; if (waterD[idx + V] > PLAIN_MIN) nearDeep = true; }
+          const rimShow = rim > surf + 0.1;
+          if (rimShow || nearDeep) { shown++; if (nearDeep && !rimShow) shoreAdded++; }
+        }
+        return { shown: shown, shoreAdded: shoreAdded, wetCells: wet, N: N };
+      },
       hasNaN: () => { for (let k = 0; k < N; k++) if (!isFinite(heights[k]) || !isFinite(waterD[k]) || !isFinite(fL[k])) return true; return false; },
       signCount: () => signGroup.children.length, signPositions: () => signGroup.children.map((s) => ({ x: +s.position.x.toFixed(1), y: +s.position.y.toFixed(1), z: +s.position.z.toFixed(1), sx: +s.scale.x.toFixed(2), depthTest: s.material.depthTest })),   // [土源段取り] 看板検証用
       markerCount: () => markerGroup.children.length,
