@@ -16,7 +16,7 @@ h1,h2,h3,h4 { line-height:1.4; }
 .part-title .k { font-size:10pt; opacity:.85; letter-spacing:2pt; }
 .part-title h1 { font-size:24pt; margin-top:1mm; }
 .part-title p { font-size:10pt; opacity:.92; margin-top:2mm; }
-h2 { font-size:15pt; color:#0f172a; border-left:5pt solid #0284c7; padding-left:4mm; margin:9mm 0 4mm; page-break-after:avoid; }
+h2 { font-size:15pt; color:#0f172a; border-left:5pt solid #0284c7; padding-left:4mm; margin:6mm 0 3.5mm; page-break-after:avoid; }
 h3 { font-size:12pt; color:#075985; margin:6mm 0 2.5mm; page-break-after:avoid; }
 p { margin-bottom:2.5mm; }
 ul,ol { margin:0 0 3mm 6mm; }
@@ -29,10 +29,10 @@ li { margin-bottom:1.5mm; }
 .note { border-left:4pt solid #f59e0b; background:#fffbeb; padding:3mm 4mm; margin:3mm 0; font-size:9.5pt; border-radius:0 2mm 2mm 0; }
 .tip { border-left:4pt solid #10b981; background:#ecfdf5; padding:3mm 4mm; margin:3mm 0; font-size:9.5pt; border-radius:0 2mm 2mm 0; }
 .warn { border-left:4pt solid #ef4444; background:#fef2f2; padding:3mm 4mm; margin:3mm 0; font-size:9.5pt; border-radius:0 2mm 2mm 0; }
-figure { margin:4mm 0 5mm; page-break-inside:avoid; text-align:center; }
+figure { margin:3mm 0 4mm; page-break-inside:avoid; text-align:center; }
 figure img { max-width:100%; border:1pt solid #cbd5e1; border-radius:2mm; }
-figure img.phone { max-height:112mm; width:auto; }
-figure img.phone-tall { max-height:140mm; width:auto; }
+figure img.phone { max-height:88mm; width:auto; }
+figure img.phone-tall { max-height:122mm; width:auto; }
 figure img.wide { width:100%; }
 figure img.half { max-height:100mm; width:auto; }
 figcaption { font-size:9pt; color:#64748b; margin-top:2mm; }
