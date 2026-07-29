@@ -257,12 +257,22 @@ export function ReportForm({
           objectKey: string
         }
 
-        const putRes = await fetch(uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': PHOTO_CONTENT_TYPE },
-          body: photo.file,
-        })
-        if (!putRes.ok) throw new Error('写真のアップロードに失敗しました')
+        let putOk = false
+        try {
+          const putRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': PHOTO_CONTENT_TYPE },
+            body: photo.file,
+          })
+          putOk = putRes.ok
+        } catch {
+          // ネットワーク断・CORS等。fetchの生エラーを見せない
+          putOk = false
+        }
+        if (!putOk) {
+          setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, status: 'error' } : p)))
+          throw new Error('写真のアップロードに失敗しました')
+        }
 
         keys.push(objectKey)
         setPhotos((prev) =>
@@ -314,7 +324,14 @@ export function ReportForm({
     } catch (e) {
       // 送信失敗: 下書きを保存して再送導線を出す（§8）
       saveDraft()
-      setError(e instanceof Error ? e.message : '送信に失敗しました')
+      // fetch自体の失敗(ネットワーク断)は生メッセージを見せない
+      const message =
+        e instanceof TypeError
+          ? '送信できませんでした。電波の良い場所でお試しください'
+          : e instanceof Error
+            ? e.message
+            : '送信に失敗しました'
+      setError(message)
     } finally {
       setSubmitting(false)
     }
