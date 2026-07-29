@@ -2,6 +2,7 @@ import * as React from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Button, Input, Label, Card, CardBody, CardHeader, CardTitle, ErrorBox } from '../../nippo/ui'
 import { QrCode } from '../../nippo/qr'
+import { ImportExcel } from '../../nippo/import-excel'
 import { cn, jfetch, formatJstDateTime } from '../../nippo/utils'
 
 export const Route = createFileRoute('/admin/sites')({
@@ -102,6 +103,13 @@ function SitesPage() {
           </form>
 
           <ErrorBox>{error}</ErrorBox>
+
+          <div className="border-t border-slate-100 pt-3">
+            <ImportExcel kind="sites" onDone={() => setReloadKey((k) => k + 1)} />
+            <p className="mt-1 text-xs text-slate-500">
+              一括登録した現場のURL/QRは、一覧の各現場の詳細ページから確認できます。
+            </p>
+          </div>
 
           {created && (
             <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4">
