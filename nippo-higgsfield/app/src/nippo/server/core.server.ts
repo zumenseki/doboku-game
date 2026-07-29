@@ -100,6 +100,9 @@ export type SiteRow = {
   name: string
   address: string | null
   drawing_key: string | null
+  drawing_image_key: string | null
+  scale_m_per_unit: number | null
+  total_area_m2: number | null
   status: string
   opened_on: string | null
   closed_at: string | null
@@ -197,6 +200,19 @@ export function isPhotoKeyOf(objectKey: string, reportId: string): boolean {
 /** 管理画面から閲覧してよいR2キーか (パストラバーサル防止) */
 export function isReadableKey(key: string): boolean {
   return (
-    !key.includes('..') && (key.startsWith('reports/') || key.startsWith('sites/'))
+    !key.includes('..') &&
+    (key.startsWith('reports/') || key.startsWith('sites/') || key.startsWith('paintmasks/'))
   )
+}
+
+/** 色塗りマスクのR2キー (現場×日報ごとに1枚) */
+export function maskKeyFor(siteId: string, reportId: string): string {
+  return `paintmasks/${siteId}/${reportId}.png`
+}
+
+/** この現場の下請けが token 経由で閲覧してよいキーか (図面画像 + 同現場のマスク) */
+export function isTokenReadableKey(key: string, site: SiteRow): boolean {
+  if (key.includes('..')) return false
+  if (site.drawing_image_key && key === site.drawing_image_key) return true
+  return key.startsWith(`paintmasks/${site.id}/`)
 }

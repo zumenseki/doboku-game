@@ -140,17 +140,32 @@ export const Route = createFileRoute('/api/admin/reports')({
         const id = new URL(request.url).searchParams.get('id') ?? ''
         const db = core.requireDB()
 
-        const photos = await db
-          .prepare('SELECT object_key FROM report_photos WHERE report_id = ?')
-          .bind(id)
-          .all<{ object_key: string }>()
+        const [photos, paints] = await Promise.all([
+          db
+            .prepare('SELECT object_key FROM report_photos WHERE report_id = ?')
+            .bind(id)
+            .all<{ object_key: string }>(),
+          db
+            .prepare('SELECT polygon FROM paint_regions WHERE report_id = ?')
+            .bind(id)
+            .all<{ polygon: string }>(),
+        ])
 
         await db.batch([
           db.prepare('DELETE FROM report_photos WHERE report_id = ?').bind(id),
+          db.prepare('DELETE FROM paint_regions WHERE report_id = ?').bind(id),
           db.prepare('DELETE FROM reports WHERE id = ?').bind(id),
         ])
 
         const keys = (photos.results ?? []).map((p) => p.object_key)
+        for (const row of paints.results ?? []) {
+          try {
+            const meta = JSON.parse(row.polygon) as { objectKey?: string }
+            if (meta.objectKey) keys.push(meta.objectKey)
+          } catch {
+            /* 旧形式は無視 */
+          }
+        }
         if (keys.length > 0) {
           try {
             await core.requireR2().delete(keys)

@@ -48,7 +48,11 @@ function SitesPage() {
     const res = await jfetch<{ id: string; token: string }>('/api/admin/sites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, address: String(fd.get('address') ?? '') }),
+      body: JSON.stringify({
+        name,
+        address: String(fd.get('address') ?? ''),
+        totalAreaM2: String(fd.get('totalAreaM2') ?? '').trim(),
+      }),
     })
     setBusy(false)
     if (!res.ok) {
@@ -87,6 +91,10 @@ function SitesPage() {
             <div className="min-w-56 flex-1">
               <Label htmlFor="site-address">住所（任意）</Label>
               <Input id="site-address" name="address" maxLength={200} className="mt-1" />
+            </div>
+            <div className="w-44">
+              <Label htmlFor="site-area">総施工面積 m²（任意）</Label>
+              <Input id="site-area" name="totalAreaM2" type="number" min={0} step="0.1" className="mt-1" />
             </div>
             <Button type="submit" disabled={busy}>
               {busy ? '作成中…' : '作成してQRを表示'}

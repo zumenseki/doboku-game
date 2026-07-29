@@ -34,6 +34,14 @@ export const Route = createFileRoute('/api/rreport')({
           if (!result.ok) return core.json({ message: result.message }, result.status)
           const db = core.requireDB()
 
+          // 色塗りマスクは「この現場×この日報」のキーのみ受け付ける
+          if (
+            input.paintRegion &&
+            input.paintRegion.objectKey !== core.maskKeyFor(result.site.id, input.reportId.toLowerCase())
+          ) {
+            return core.json({ message: '色塗りデータの指定が不正です' }, 400)
+          }
+
           const existing = await db
             .prepare('SELECT id FROM reports WHERE id = ?')
             .bind(input.reportId)
@@ -73,6 +81,25 @@ export const Route = createFileRoute('/api/rreport')({
                 )
                 .bind(core.uuid(), input.reportId, key, now),
             ),
+            ...(input.paintRegion
+              ? [
+                  db
+                    .prepare(
+                      'INSERT INTO paint_regions (id, report_id, page, polygon, area_m2) VALUES (?,?,1,?,?)',
+                    )
+                    .bind(
+                      core.uuid(),
+                      input.reportId,
+                      JSON.stringify({
+                        kind: 'mask',
+                        objectKey: input.paintRegion.objectKey,
+                        width: input.paintRegion.width,
+                        height: input.paintRegion.height,
+                      }),
+                      input.paintRegion.areaM2,
+                    ),
+                ]
+              : []),
           ]
           // D1のbatchはトランザクションとして実行される
           await db.batch(statements)

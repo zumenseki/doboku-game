@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-// GET   /api/admin/site?id= → { site, reportCount }
-// PATCH /api/admin/site {id, action: 'update'|'close'|'reopen'|'reissue', ...}
+// GET   /api/admin/site?id= → { site, reportCount, paints }
+// PATCH /api/admin/site {id, action: 'update'|'close'|'reopen'|'reissue'|'scale', ...}
 export const Route = createFileRoute('/api/admin/site')({
   server: {
     handlers: {
@@ -15,11 +15,40 @@ export const Route = createFileRoute('/api/admin/site')({
         const site = await db.prepare('SELECT * FROM sites WHERE id = ?').bind(id).first()
         if (!site) return core.json({ message: '現場が見つかりません' }, 404)
 
-        const count = await db
-          .prepare('SELECT COUNT(*) AS n FROM reports WHERE site_id = ?')
-          .bind(id)
-          .first<{ n: number }>()
-        return core.json({ site, reportCount: count?.n ?? 0 })
+        const [count, paints] = await Promise.all([
+          db.prepare('SELECT COUNT(*) AS n FROM reports WHERE site_id = ?').bind(id).first<{ n: number }>(),
+          db
+            .prepare(
+              `SELECT pr.id, pr.polygon, pr.area_m2, r.work_date, COALESCE(b.name,'(不明)') AS sub_name
+               FROM paint_regions pr
+               JOIN reports r ON r.id = pr.report_id
+               LEFT JOIN subs b ON b.id = r.sub_id
+               WHERE r.site_id = ?
+               ORDER BY r.work_date, r.created_at LIMIT 500`,
+            )
+            .bind(id)
+            .all<{ id: string; polygon: string; area_m2: number; work_date: string; sub_name: string }>(),
+        ])
+
+        const paintRows = (paints.results ?? []).flatMap((p) => {
+          try {
+            const meta = JSON.parse(p.polygon) as { objectKey?: string }
+            if (!meta.objectKey) return []
+            return [
+              {
+                id: p.id,
+                objectKey: meta.objectKey,
+                areaM2: p.area_m2,
+                workDate: p.work_date,
+                subName: p.sub_name,
+              },
+            ]
+          } catch {
+            return []
+          }
+        })
+
+        return core.json({ site, reportCount: count?.n ?? 0, paints: paintRows })
       },
       PATCH: async ({ request }) => {
         const core = await import('../../../nippo/server/core.server')
@@ -34,17 +63,29 @@ export const Route = createFileRoute('/api/admin/site')({
         const db = core.requireDB()
 
         if (action === 'update') {
+          const areaRaw = body.totalAreaM2
           const parsed = siteSchema.safeParse({
             name: String(body.name ?? ''),
             address: String(body.address ?? '') || undefined,
+            totalAreaM2:
+              areaRaw === null || areaRaw === undefined || areaRaw === '' ? null : Number(areaRaw),
           })
           if (!parsed.success) {
             return core.json({ message: parsed.error.issues[0]?.message ?? '入力内容を確認してください' }, 400)
           }
           await db
-            .prepare('UPDATE sites SET name = ?, address = ? WHERE id = ?')
-            .bind(parsed.data.name, parsed.data.address ?? null, id)
+            .prepare('UPDATE sites SET name = ?, address = ?, total_area_m2 = ? WHERE id = ?')
+            .bind(parsed.data.name, parsed.data.address ?? null, parsed.data.totalAreaM2 ?? null, id)
             .run()
+          return core.json({ ok: true })
+        }
+
+        if (action === 'scale') {
+          const scale = Number(body.scaleMPerUnit)
+          if (!Number.isFinite(scale) || scale <= 0 || scale > 100000) {
+            return core.json({ message: '縮尺の値が不正です' }, 400)
+          }
+          await db.prepare('UPDATE sites SET scale_m_per_unit = ? WHERE id = ?').bind(scale, id).run()
           return core.json({ ok: true })
         }
 

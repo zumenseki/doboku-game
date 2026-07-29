@@ -2,8 +2,9 @@ import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Button, Input, Textarea, ConfirmDialog, Modal } from '../../nippo/ui'
 import { compressPhoto, formatBytes } from '../../nippo/photo'
+import { PaintScreen, type PaintResult } from '../../nippo/paint'
 import { MAX_PHOTOS_PER_REPORT } from '../../nippo/validation'
-import { cn, jfetch, todayJst, formatDateWithWeekday } from '../../nippo/utils'
+import { cn, jfetch, todayJst, formatDateWithWeekday, formatNumber } from '../../nippo/utils'
 
 export const Route = createFileRoute('/r/$token')({
   component: SiteReportPage,
@@ -13,7 +14,12 @@ const SUB_STORAGE_KEY = 'nippo_sub_id'
 const INSTALL_DISMISS_KEY = 'nippo_install_dismissed'
 
 type SubOption = { id: string; name: string }
-type SiteData = { site: { name: string }; subs: SubOption[]; workTypes: string[] }
+type SiteData = {
+  site: { name: string }
+  subs: SubOption[]
+  workTypes: string[]
+  paint: { drawingKey: string; scaleMPerUnit: number; maskKeys: string[] } | null
+}
 
 type PhotoItem = {
   id: string
@@ -122,6 +128,8 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
   const [note, setNote] = React.useState('')
   const [photos, setPhotos] = React.useState<PhotoItem[]>([])
   const [reportId, setReportId] = React.useState('')
+  const [paintOpen, setPaintOpen] = React.useState(false)
+  const [paintResult, setPaintResult] = React.useState<PaintResult | null>(null)
   const [confirm, setConfirm] = React.useState<null | 'area' | 'duplicate'>(null)
   const [duplicateCount, setDuplicateCount] = React.useState(0)
   const [submitting, setSubmitting] = React.useState(false)
@@ -302,6 +310,25 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
         )
       }
 
+      // 色塗りマスクのアップロード (任意)
+      let paintRegion: { objectKey: string; areaM2: number; width: number; height: number } | undefined
+      if (paintResult) {
+        const form = new FormData()
+        form.append('token', token)
+        form.append('reportId', reportId)
+        form.append('file', new File([paintResult.blob], 'mask.png', { type: 'image/png' }))
+        const up = await jfetch<{ objectKey: string }>('/api/rmask', { method: 'POST', body: form })
+        if (!up.ok) {
+          throw new Error(up.status === 0 ? '色塗りデータの送信に失敗しました' : up.message)
+        }
+        paintRegion = {
+          objectKey: up.data.objectKey,
+          areaM2: paintResult.areaM2,
+          width: paintResult.width,
+          height: paintResult.height,
+        }
+      }
+
       const payload = {
         token,
         reportId,
@@ -312,6 +339,7 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
         areaM2: area.trim() === '' ? undefined : Number(area),
         note: note.trim() === '' ? undefined : note.trim(),
         objectKeys: keys,
+        paintRegion,
       }
       const res = await jfetch<{ id: string }>('/api/rreport', {
         method: 'POST',
@@ -354,6 +382,7 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
     setNote('')
     photos.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl))
     setPhotos([])
+    setPaintResult(null)
     setError('')
     window.scrollTo({ top: 0 })
   }
@@ -508,6 +537,36 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
             value={area}
             onChange={(e) => setArea(e.target.value)}
           />
+          {data.paint && (
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setPaintOpen(true)}
+                className={cn(
+                  'flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left text-sm',
+                  paintResult
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                    : 'border-sky-300 bg-sky-50 text-sky-900',
+                )}
+              >
+                <span className="font-medium">
+                  {paintResult
+                    ? `🖌 塗り済み: 約 ${formatNumber(paintResult.areaM2, 1)} m²（タップで塗り直す）`
+                    : '🖌 図面を塗って面積を測る'}
+                </span>
+                <span className="text-slate-400">›</span>
+              </button>
+              {paintResult && (
+                <button
+                  type="button"
+                  onClick={() => setPaintResult(null)}
+                  className="mt-1 text-xs text-slate-500 underline"
+                >
+                  塗りを取り消す
+                </button>
+              )}
+            </div>
+          )}
         </Field>
 
         <Field label="写真" hint="任意">
@@ -639,6 +698,22 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
         }}
         onCancel={() => setConfirm(null)}
       />
+      {paintOpen && data.paint && (
+        <PaintScreen
+          drawingUrl={`/api/rfile?token=${encodeURIComponent(token)}&key=${encodeURIComponent(data.paint.drawingKey)}`}
+          prevMaskUrls={data.paint.maskKeys.map(
+            (key) => `/api/rfile?token=${encodeURIComponent(token)}&key=${encodeURIComponent(key)}`,
+          )}
+          scaleMPerUnit={data.paint.scaleMPerUnit}
+          onConfirm={(result) => {
+            setPaintResult(result)
+            setArea(String(result.areaM2))
+            setPaintOpen(false)
+          }}
+          onClose={() => setPaintOpen(false)}
+        />
+      )}
+
       <ConfirmDialog
         open={confirm === 'duplicate'}
         title="同じ日の日報があります"

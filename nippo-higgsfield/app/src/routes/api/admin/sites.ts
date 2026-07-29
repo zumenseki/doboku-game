@@ -25,9 +25,12 @@ export const Route = createFileRoute('/api/admin/sites')({
         if (denied) return denied
 
         const body = (await core.readJson(request)) as Record<string, unknown> | null
+        const areaRaw = body?.totalAreaM2
         const parsed = siteSchema.safeParse({
           name: String(body?.name ?? ''),
           address: String(body?.address ?? '') || undefined,
+          totalAreaM2:
+            areaRaw === null || areaRaw === undefined || areaRaw === '' ? null : Number(areaRaw),
         })
         if (!parsed.success) {
           return core.json({ message: parsed.error.issues[0]?.message ?? '入力内容を確認してください' }, 400)
@@ -39,9 +42,17 @@ export const Route = createFileRoute('/api/admin/sites')({
         await core
           .requireDB()
           .prepare(
-            "INSERT INTO sites (id, token, name, address, status, opened_on, created_at) VALUES (?,?,?,?,'active',?,?)",
+            "INSERT INTO sites (id, token, name, address, total_area_m2, status, opened_on, created_at) VALUES (?,?,?,?,?,'active',?,?)",
           )
-          .bind(id, token, parsed.data.name, parsed.data.address ?? null, today, core.nowIso())
+          .bind(
+            id,
+            token,
+            parsed.data.name,
+            parsed.data.address ?? null,
+            parsed.data.totalAreaM2 ?? null,
+            today,
+            core.nowIso(),
+          )
           .run()
 
         return core.json({ id, token })
