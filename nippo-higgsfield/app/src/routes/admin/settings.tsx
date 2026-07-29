@@ -48,6 +48,23 @@ function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>操作マニュアル</CardTitle>
+        </CardHeader>
+        <CardBody className="space-y-3">
+          <p className="text-sm leading-relaxed text-slate-600">
+            管理者編・下請け業者編に分けた、画面写真つきの使い方マニュアル（PDF）です。
+            印刷して現場や事務所に置いておけます。
+          </p>
+          <a href="/manual.pdf" target="_blank" rel="noopener noreferrer">
+            <Button size="sm" variant="outline">
+              📘 使い方マニュアル（PDF）を開く
+            </Button>
+          </a>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>古い写真の一括削除</CardTitle>
         </CardHeader>
         <CardBody className="space-y-3">

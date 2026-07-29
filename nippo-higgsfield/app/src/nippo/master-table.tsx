@@ -74,7 +74,7 @@ export function MasterTableView({ table, label }: { table: 'subs' | 'work_types'
               <label className="block text-sm font-medium text-slate-700">名称</label>
               <Input name="name" required maxLength={60} className="mt-1" />
             </div>
-            <div className="w-32">
+            <div className="w-36">
               <label className="block text-sm font-medium text-slate-700">表示順</label>
               <Input name="displayOrder" type="number" defaultValue={0} min={0} max={9999} className="mt-1" />
             </div>
@@ -82,6 +82,12 @@ export function MasterTableView({ table, label }: { table: 'subs' | 'work_types'
               追加
             </Button>
           </form>
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
+            <strong className="text-slate-700">表示順</strong>は、日報の入力画面で
+            {label}が並ぶ順番です。<strong className="text-slate-700">数字の小さいものが上（先）</strong>
+            に出ます。同じ数字なら名前順。よく使う{label}を10・20・30…にしておくと、
+            後から間に追加しやすくなります。こだわらない場合は0のままで構いません。
+          </p>
         </CardBody>
       </Card>
 
@@ -98,7 +104,9 @@ export function MasterTableView({ table, label }: { table: 'subs' | 'work_types'
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
                 <th className="px-4 py-2 font-medium">名称</th>
-                <th className="w-24 px-4 py-2 font-medium">表示順</th>
+                <th className="w-32 px-4 py-2 font-medium" title="日報の入力画面で並ぶ順番。小さい数字ほど上に出ます">
+                  表示順 <span className="font-normal text-slate-400">(小さい順)</span>
+                </th>
                 <th className="w-24 px-4 py-2 font-medium">状態</th>
                 <th className="w-56 px-4 py-2 font-medium">操作</th>
               </tr>
