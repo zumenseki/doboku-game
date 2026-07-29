@@ -1,0 +1,55 @@
+@page { size: A4; margin: 16mm 15mm 18mm; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:"IPAPGothic","IPAGothic",sans-serif; color:#1e293b; font-size:10.5pt; line-height:1.75; }
+h1,h2,h3,h4 { line-height:1.4; }
+.cover { height:247mm; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;
+  background:linear-gradient(150deg,#f0f9ff,#e0f2fe 60%,#bae6fd); border-radius:6mm; }
+.cover .badge { background:#0284c7; color:#fff; padding:3mm 9mm; border-radius:99px; font-size:12pt; font-weight:bold; letter-spacing:1pt; }
+.cover h1 { font-size:38pt; font-weight:bold; color:#0f172a; margin-top:8mm; letter-spacing:2pt; }
+.cover .sub { font-size:15pt; color:#334155; margin-top:4mm; }
+.cover .url { margin-top:14mm; background:#fff; border:1.5pt solid #7dd3fc; border-radius:3mm; padding:5mm 10mm; font-size:12pt; color:#075985; }
+.cover .parts { margin-top:12mm; display:flex; gap:6mm; }
+.cover .part { background:#ffffffcc; border-radius:3mm; padding:5mm 8mm; font-size:11pt; color:#0f172a; border:1pt solid #bae6fd; }
+.cover .foot { margin-top:16mm; font-size:9pt; color:#64748b; }
+.page-break { page-break-before:always; }
+.part-title { background:#0284c7; color:#fff; padding:6mm 8mm; border-radius:3mm; margin-bottom:7mm; }
+.part-title .k { font-size:10pt; opacity:.85; letter-spacing:2pt; }
+.part-title h1 { font-size:24pt; margin-top:1mm; }
+.part-title p { font-size:10pt; opacity:.92; margin-top:2mm; }
+h2 { font-size:15pt; color:#0f172a; border-left:5pt solid #0284c7; padding-left:4mm; margin:9mm 0 4mm; page-break-after:avoid; }
+h3 { font-size:12pt; color:#075985; margin:6mm 0 2.5mm; page-break-after:avoid; }
+p { margin-bottom:2.5mm; }
+ul,ol { margin:0 0 3mm 6mm; }
+li { margin-bottom:1.5mm; }
+.lead { background:#f1f5f9; border-radius:2mm; padding:4mm 5mm; margin-bottom:5mm; font-size:10pt; }
+.steps { counter-reset:s; list-style:none; margin-left:0; }
+.steps > li { counter-increment:s; position:relative; padding-left:11mm; margin-bottom:4mm; page-break-inside:avoid; }
+.steps > li::before { content:counter(s); position:absolute; left:0; top:0.3mm; width:7.5mm; height:7.5mm; background:#0284c7;
+  color:#fff; border-radius:50%; text-align:center; line-height:7.5mm; font-size:10pt; font-weight:bold; }
+.note { border-left:4pt solid #f59e0b; background:#fffbeb; padding:3mm 4mm; margin:3mm 0; font-size:9.5pt; border-radius:0 2mm 2mm 0; }
+.tip { border-left:4pt solid #10b981; background:#ecfdf5; padding:3mm 4mm; margin:3mm 0; font-size:9.5pt; border-radius:0 2mm 2mm 0; }
+.warn { border-left:4pt solid #ef4444; background:#fef2f2; padding:3mm 4mm; margin:3mm 0; font-size:9.5pt; border-radius:0 2mm 2mm 0; }
+figure { margin:4mm 0 5mm; page-break-inside:avoid; text-align:center; }
+figure img { max-width:100%; border:1pt solid #cbd5e1; border-radius:2mm; }
+figure img.phone { max-height:112mm; width:auto; }
+figure img.phone-tall { max-height:140mm; width:auto; }
+figure img.wide { width:100%; }
+figure img.half { max-height:100mm; width:auto; }
+figcaption { font-size:9pt; color:#64748b; margin-top:2mm; }
+table { width:100%; border-collapse:collapse; font-size:9.5pt; margin:3mm 0 5mm; page-break-inside:avoid; }
+th,td { border:0.8pt solid #cbd5e1; padding:2mm 3mm; text-align:left; vertical-align:top; }
+th { background:#f1f5f9; font-weight:bold; }
+td.c { text-align:center; }
+.toc ol { list-style:none; margin-left:0; }
+.toc > ol > li { font-weight:bold; margin-bottom:2mm; font-size:11pt; }
+.toc ol ol { margin:1mm 0 2mm 6mm; }
+.toc ol ol li { font-weight:normal; font-size:10pt; color:#475569; }
+.faq { page-break-inside:avoid; margin-bottom:4mm; }
+.faq .q { font-weight:bold; color:#0f172a; }
+.faq .q::before { content:"Q. "; color:#0284c7; }
+.faq .a::before { content:"A. "; color:#10b981; font-weight:bold; }
+.flow { display:flex; align-items:center; gap:2mm; flex-wrap:nowrap; margin:4mm 0 5mm; }
+.flow .b { background:#e0f2fe; border:1pt solid #7dd3fc; border-radius:2mm; padding:3mm 3mm; font-size:9pt; text-align:center; flex:1; }
+.flow .ar { color:#0284c7; font-weight:bold; }
+.shots2 { display:flex; gap:4mm; justify-content:center; align-items:flex-start; }
+.shots2 figure { flex:1; margin:0; }
