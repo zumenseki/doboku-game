@@ -31,7 +31,7 @@ li { margin-bottom:1.5mm; }
 .warn { border-left:4pt solid #ef4444; background:#fef2f2; padding:3mm 4mm; margin:3mm 0; font-size:9.5pt; border-radius:0 2mm 2mm 0; }
 figure { margin:3mm 0 4mm; page-break-inside:avoid; text-align:center; }
 figure img { max-width:100%; border:1pt solid #cbd5e1; border-radius:2mm; }
-figure img.phone { max-height:88mm; width:auto; }
+figure img.phone { max-height:76mm; width:auto; }
 figure img.phone-tall { max-height:122mm; width:auto; }
 figure img.wide { width:100%; }
 figure img.half { max-height:100mm; width:auto; }
