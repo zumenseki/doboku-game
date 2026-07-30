@@ -13,7 +13,7 @@ SITE_ID=2ac64e29-f61a-4b05-8ae7-90c894527a64
 SUB_TOKEN=z_Cf-pnZyPHTpT_cVpB2y
 
 cd /home/user
-rm -rf xfer site manual manual.pdf preview && mkdir xfer
+rm -rf xfer site manual manual*.pdf preview && mkdir xfer
 curl -sL "https://codeload.github.com/zumenseki/doboku-game/tar.gz/refs/heads/$BRANCH" | tar xz -C xfer
 cp -r xfer/doboku-game-*/nippo-higgsfield/manual /home/user/manual
 mkdir -p /home/user/manual/shots
@@ -83,40 +83,46 @@ for f in *.png; do
   convert "$f" -quality 78 "${f%.png}.jpg" && rm "$f"
 done
 cd /home/user
-sed -i 's/\.png"/.jpg"/g' /home/user/manual/index.html
+sed -i 's/\.png"/.jpg"/g' /home/user/manual/admin.html /home/user/manual/sub.html
 
 cat > /home/user/pdf.mjs <<'EOF'
 import { chromium } from 'playwright'
 const browser = await chromium.launch()
-const page = await browser.newPage()
-await page.goto('file:///home/user/manual/index.html', { waitUntil:'networkidle' })
-await page.waitForTimeout(1500)
-await page.pdf({
-  path: '/home/user/manual.pdf',
-  format: 'A4',
-  printBackground: true,
-  displayHeaderFooter: true,
-  headerTemplate: '<div></div>',
-  footerTemplate: '<div style="width:100%;font-size:8pt;color:#94a3b8;font-family:sans-serif;padding:0 15mm;display:flex;justify-content:space-between;"><span>現場日報 操作マニュアル</span><span class="pageNumber"></span></div>',
-  margin: { top:'16mm', bottom:'18mm', left:'15mm', right:'15mm' },
-})
+const foot = (title) => '<div style="width:100%;font-size:8pt;color:#94a3b8;font-family:sans-serif;padding:0 15mm;display:flex;justify-content:space-between;"><span>' + title + '</span><span class="pageNumber"></span></div>'
+const books = [
+  { src: 'admin.html', out: '/home/user/manual-admin.pdf', title: '現場日報 管理者マニュアル' },
+  { src: 'sub.html',   out: '/home/user/manual-sub.pdf',   title: '現場日報 下請け業者マニュアル' },
+]
+for (const b of books) {
+  const page = await browser.newPage()
+  await page.goto('file:///home/user/manual/' + b.src, { waitUntil:'networkidle' })
+  await page.waitForTimeout(1500)
+  await page.pdf({
+    path: b.out, format: 'A4', printBackground: true, displayHeaderFooter: true,
+    headerTemplate: '<div></div>', footerTemplate: foot(b.title),
+    margin: { top:'16mm', bottom:'18mm', left:'15mm', right:'15mm' },
+  })
+  await page.close()
+  console.log('PDF_OK', b.out)
+}
 await browser.close()
-console.log('PDF_OK')
 EOF
 node /home/user/pdf.mjs
-ls -la /home/user/manual.pdf
+ls -la /home/user/manual-admin.pdf /home/user/manual-sub.pdf
 
 # 確認用の縮小画像
 mkdir -p /home/user/preview
-pdftoppm -jpeg -r 30 /home/user/manual.pdf /home/user/preview/p 2>/dev/null || \
-  convert -density 40 /home/user/manual.pdf -quality 55 -resize 240x /home/user/preview/p-%02d.jpg
-ls /home/user/preview | head -30
+pdftoppm -jpeg -r 30 /home/user/manual-admin.pdf /home/user/preview/admin
+pdftoppm -jpeg -r 30 /home/user/manual-sub.pdf /home/user/preview/sub
+ls /home/user/preview | wc -l
 
 # サイトへ配置
 git -c http.extraHeader="Authorization: token $TOKEN" clone --depth 1 "$REPO" site
-cp /home/user/manual.pdf site/app/public/manual.pdf
+cp /home/user/manual-admin.pdf site/app/public/manual-admin.pdf
+cp /home/user/manual-sub.pdf site/app/public/manual-sub.pdf
+rm -f site/app/public/manual.pdf
 cd site
 git config user.email "agent@higgsfield.ai" && git config user.name "Higgsfield Agent"
-git add -A && git commit -m "操作マニュアル(PDF)を同梱" | tail -1
+git add -A && git commit -m "操作マニュアルを管理者編・下請け業者編の2冊に分割" | tail -1
 git -c http.extraHeader="Authorization: token $TOKEN" push origin main 2>&1 | tail -1
 echo BUILD_DONE

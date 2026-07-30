@@ -52,14 +52,21 @@ function SettingsPage() {
         </CardHeader>
         <CardBody className="space-y-3">
           <p className="text-sm leading-relaxed text-slate-600">
-            管理者編・下請け業者編に分けた、画面写真つきの使い方マニュアル（PDF）です。
-            印刷して現場や事務所に置いておけます。
+            画面写真つきの使い方マニュアル（PDF）です。印刷して事務所や現場に置いておけます。
+            業者さんには「下請け業者編」だけをお渡しください。
           </p>
-          <a href="/manual.pdf" target="_blank" rel="noopener noreferrer">
-            <Button size="sm" variant="outline">
-              📘 使い方マニュアル（PDF）を開く
-            </Button>
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <a href="/manual-admin.pdf" target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="outline">
+                📘 管理者編（この画面の使い方）
+              </Button>
+            </a>
+            <a href="/manual-sub.pdf" target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="outline">
+                📗 下請け業者編（配布用）
+              </Button>
+            </a>
+          </div>
         </CardBody>
       </Card>
 

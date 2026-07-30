@@ -53,3 +53,9 @@ td.c { text-align:center; }
 .flow .ar { color:#0284c7; font-weight:bold; }
 .shots2 { display:flex; gap:4mm; justify-content:center; align-items:flex-start; }
 .shots2 figure { flex:1; margin:0; }
+
+/* 下請け業者編の表紙は色を変えて取り違えを防ぐ */
+.cover.cover-sub { background:linear-gradient(150deg,#f0fdf4,#dcfce7 60%,#bbf7d0); }
+.cover.cover-sub .badge { background:#059669; }
+.cover.cover-sub .url { border-color:#6ee7b7; color:#065f46; }
+.cover.cover-sub .part { border-color:#bbf7d0; }
