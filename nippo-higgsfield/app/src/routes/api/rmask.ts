@@ -34,10 +34,10 @@ export const Route = createFileRoute('/api/rmask')({
         }
 
         try {
-          const result = await core.resolveSiteByToken(token)
+          const result = await core.resolveAssignmentByToken(token)
           if (!result.ok) return core.json({ message: result.message }, result.status)
 
-          const objectKey = core.maskKeyFor(result.site.id, reportId)
+          const objectKey = core.maskKeyFor(result.assignment.site.id, reportId)
           await core.requireR2().put(objectKey, await file.arrayBuffer(), {
             httpMetadata: { contentType: 'image/png' },
           })

@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-// GET /api/rsite?token= → { site: { name }, subs: [...], workTypes: [...] }
+// GET /api/rsite?token= → { site: { name }, sub: { name }, workTypes, paint }
+// token は「現場×業者」を指すので、業者は選択不要（URLで確定する）。
 // token不明: 404 / 受付終了: 410
 export const Route = createFileRoute('/api/rsite')({
   server: {
@@ -14,25 +15,22 @@ export const Route = createFileRoute('/api/rsite')({
         }
 
         try {
-          const result = await core.resolveSiteByToken(token)
+          const result = await core.resolveAssignmentByToken(token)
           if (!result.ok) return core.json({ message: result.message }, result.status)
+          const { site, subName } = result.assignment
 
           const db = core.requireDB()
-          const [subs, workTypes, masks] = await Promise.all([
-            db
-              .prepare('SELECT id, name FROM subs WHERE is_active = 1 ORDER BY display_order, name')
-              .all<{ id: string; name: string }>(),
+          const [workTypes, masks] = await Promise.all([
             db
               .prepare('SELECT name FROM work_types WHERE is_active = 1 ORDER BY display_order, name')
               .all<{ name: string }>(),
-            // 既存の色塗りマスク (塗り済み範囲の表示用)
             db
               .prepare(
                 `SELECT pr.polygon FROM paint_regions pr
                  JOIN reports r ON r.id = pr.report_id
                  WHERE r.site_id = ? LIMIT 200`,
               )
-              .bind(result.site.id)
+              .bind(site.id)
               .all<{ polygon: string }>(),
           ])
 
@@ -46,12 +44,10 @@ export const Route = createFileRoute('/api/rsite')({
             }
           }
 
-          const site = result.site
           return core.json({
             site: { name: site.name },
-            subs: subs.results ?? [],
+            sub: { name: subName },
             workTypes: (workTypes.results ?? []).map((w) => w.name),
-            // 色塗り機能: 図面画像と縮尺が両方あるときのみ有効
             paint:
               site.drawing_image_key && site.scale_m_per_unit
                 ? {

@@ -14,10 +14,10 @@ export const Route = createFileRoute('/api/rfile')({
           return core.json({ message: 'アクセスが多すぎます' }, 429)
         }
 
-        const result = await core.resolveSiteByToken(token)
+        const result = await core.resolveAssignmentByToken(token)
         if (!result.ok) return core.json({ message: result.message }, result.status)
 
-        if (!core.isTokenReadableKey(key, result.site)) {
+        if (!core.isTokenReadableKey(key, result.assignment.site)) {
           return core.json({ message: 'キーが不正です' }, 400)
         }
 

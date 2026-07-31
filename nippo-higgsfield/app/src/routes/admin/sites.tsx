@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Button, Input, Label, Card, CardBody, CardHeader, CardTitle, ErrorBox } from '../../nippo/ui'
-import { QrCode } from '../../nippo/qr'
 import { ImportExcel } from '../../nippo/import-excel'
 import { cn, jfetch, formatJstDateTime } from '../../nippo/utils'
 
@@ -25,7 +24,7 @@ function SitesPage() {
   const [rows, setRows] = React.useState<SiteRow[] | null>(null)
   const [error, setError] = React.useState('')
   const [busy, setBusy] = React.useState(false)
-  const [created, setCreated] = React.useState<{ id: string; token: string; name: string } | null>(null)
+  const [created, setCreated] = React.useState<{ id: string; name: string } | null>(null)
   const [reloadKey, setReloadKey] = React.useState(0)
   const formRef = React.useRef<HTMLFormElement>(null)
 
@@ -60,13 +59,10 @@ function SitesPage() {
       setError(res.message)
       return
     }
-    setCreated({ id: res.data.id, token: res.data.token, name })
+    setCreated({ id: res.data.id, name })
     formRef.current?.reset()
     setReloadKey((k) => k + 1)
   }
-
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const createdUrl = created ? `${origin}/r/${created.token}` : ''
 
   return (
     <div className="space-y-6">
@@ -98,7 +94,7 @@ function SitesPage() {
               <Input id="site-area" name="totalAreaM2" type="number" min={0} step="0.1" className="mt-1" />
             </div>
             <Button type="submit" disabled={busy}>
-              {busy ? '作成中…' : '作成してQRを表示'}
+              {busy ? '作成中…' : '作成する'}
             </Button>
           </form>
 
@@ -114,30 +110,15 @@ function SitesPage() {
           {created && (
             <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4">
               <p className="text-sm font-semibold text-emerald-900">
-                「{created.name}」を作成しました。下のURL/QRを業者に配布してください。
+                「{created.name}」を作成しました。
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-4">
-                <div className="rounded-lg bg-white p-2">
-                  <QrCode value={createdUrl} size={160} />
-                </div>
-                <div className="min-w-64 flex-1 space-y-2">
-                  <code className="block break-all rounded bg-white px-2 py-1.5 text-xs text-slate-800">
-                    {createdUrl}
-                  </code>
-                  <div className="flex flex-wrap gap-2">
-                    <CopyButton text={createdUrl} />
-                    <Link to="/admin/print/$id" params={{ id: created.id }} target="_blank">
-                      <Button size="sm" variant="outline">
-                        A6印刷ビュー
-                      </Button>
-                    </Link>
-                    <Link to="/admin/site/$id" params={{ id: created.id }}>
-                      <Button size="sm" variant="ghost">
-                        現場の詳細へ
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
+              <p className="mt-1 text-sm text-emerald-900">
+                次に<b>業者を割り当てる</b>と、業者ごとの日報URL・QRが発行されます。
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link to="/admin/site/$id" params={{ id: created.id }}>
+                  <Button size="sm">業者を割り当てる（現場の詳細へ）</Button>
+                </Link>
               </div>
             </div>
           )}
@@ -219,26 +200,5 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
     >
       {label}
     </button>
-  )
-}
-
-export function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = React.useState(false)
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text)
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1500)
-        } catch {
-          window.prompt('コピーしてください', text)
-        }
-      }}
-    >
-      {copied ? 'コピーしました' : 'URLをコピー'}
-    </Button>
   )
 }

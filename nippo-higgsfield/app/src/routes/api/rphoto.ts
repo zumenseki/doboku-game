@@ -37,7 +37,7 @@ export const Route = createFileRoute('/api/rphoto')({
         }
 
         try {
-          const result = await core.resolveSiteByToken(token)
+          const result = await core.resolveAssignmentByToken(token)
           if (!result.ok) return core.json({ message: result.message }, result.status)
 
           const ext = file.type === 'image/webp' ? 'webp' : 'jpg'

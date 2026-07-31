@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Button, Input, Textarea, ConfirmDialog, Modal } from '../../nippo/ui'
+import { Button, Input, Textarea, ConfirmDialog } from '../../nippo/ui'
 import { compressPhoto, formatBytes } from '../../nippo/photo'
 import { PaintScreen, type PaintResult } from '../../nippo/paint'
 import { MAX_PHOTOS_PER_REPORT } from '../../nippo/validation'
@@ -10,13 +10,11 @@ export const Route = createFileRoute('/r/$token')({
   component: SiteReportPage,
 })
 
-const SUB_STORAGE_KEY = 'nippo_sub_id'
 const INSTALL_DISMISS_KEY = 'nippo_install_dismissed'
 
-type SubOption = { id: string; name: string }
 type SiteData = {
   site: { name: string }
-  subs: SubOption[]
+  sub: { name: string }
   workTypes: string[]
   paint: { drawingKey: string; scaleMPerUnit: number; maskKeys: string[] } | null
 }
@@ -32,7 +30,6 @@ type PhotoItem = {
 
 type Draft = {
   workDate: string
-  subId: string
   workers: number
   workType: string
   isOther: boolean
@@ -45,7 +42,6 @@ type Draft = {
 
 type Submitted = {
   workDate: string
-  subName: string
   workers: number
   workType: string
   area: string
@@ -116,10 +112,9 @@ function SiteReportPage() {
 
 function ReportForm({ token, data }: { token: string; data: SiteData }) {
   const draftKey = `nippo_draft_${token}`
-  const { subs, workTypes } = data
+  const { workTypes } = data
 
   const [workDate, setWorkDate] = React.useState(todayJst)
-  const [subId, setSubId] = React.useState('')
   const [workers, setWorkers] = React.useState(1)
   const [workType, setWorkType] = React.useState('')
   const [isOther, setIsOther] = React.useState(false)
@@ -137,19 +132,14 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
   const [hasDraft, setHasDraft] = React.useState(false)
   const [submitted, setSubmitted] = React.useState<Submitted | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const [pickerOpen, setPickerOpen] = React.useState(false)
-  const [pickerQuery, setPickerQuery] = React.useState('')
 
   React.useEffect(() => {
     setReportId(crypto.randomUUID())
     try {
-      const savedSub = localStorage.getItem(SUB_STORAGE_KEY)
-      if (savedSub) setSubId(savedSub)
       const raw = localStorage.getItem(draftKey)
       if (raw) {
         const d = JSON.parse(raw) as Draft
         setWorkDate(d.workDate ?? todayJst())
-        if (d.subId) setSubId(d.subId)
         setWorkers(d.workers ?? 1)
         setWorkType(d.workType ?? '')
         setIsOther(Boolean(d.isOther))
@@ -176,16 +166,11 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
   }, [])
 
   const effectiveWorkType = isOther ? otherText.trim() : workType
-  const selectedSub = subs.find((s) => s.id === subId)
-  const filteredSubs = pickerQuery.trim()
-    ? subs.filter((s) => s.name.toLowerCase().includes(pickerQuery.trim().toLowerCase()))
-    : subs
 
   function saveDraft() {
     try {
       const draft: Draft = {
         workDate,
-        subId,
         workers,
         workType,
         isOther,
@@ -246,7 +231,6 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
   }
 
   function validate(): string | null {
-    if (!subId) return '業者を選択してください'
     if (!effectiveWorkType) return '作業内容を選択してください'
     if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) return '日付を入力してください'
     if (workers < 1 || workers > 99) return '人数は1〜99人で入力してください'
@@ -271,7 +255,7 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
     }
     if (!opts.dupOk) {
       const res = await jfetch<{ exists?: boolean; count?: number }>(
-        `/api/rduplicate?token=${encodeURIComponent(token)}&subId=${encodeURIComponent(subId)}&workDate=${encodeURIComponent(workDate)}`,
+        `/api/rduplicate?token=${encodeURIComponent(token)}&workDate=${encodeURIComponent(workDate)}`,
       )
       if (res.ok && res.data.exists) {
         setDuplicateCount(res.data.count ?? 1)
@@ -333,7 +317,6 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
         token,
         reportId,
         workDate,
-        subId,
         workers,
         workType: effectiveWorkType,
         areaM2: area.trim() === '' ? undefined : Number(area),
@@ -348,15 +331,9 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
       })
       if (!res.ok) throw new Error(res.message)
 
-      try {
-        localStorage.setItem(SUB_STORAGE_KEY, subId)
-      } catch {
-        /* noop */
-      }
       clearDraft()
       setSubmitted({
         workDate,
-        subName: selectedSub?.name ?? '',
         workers,
         workType: effectiveWorkType,
         area: area.trim(),
@@ -396,7 +373,7 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
           <p className="mt-1 text-sm text-slate-600">{data.site.name}</p>
           <dl className="mt-5 divide-y divide-slate-100 rounded-lg border border-slate-200 text-left text-sm">
             <SummaryRow label="日付" value={formatDateWithWeekday(submitted.workDate)} />
-            <SummaryRow label="業者" value={submitted.subName} />
+            <SummaryRow label="業者" value={data.sub.name} />
             <SummaryRow label="人数" value={`${submitted.workers} 人`} />
             <SummaryRow label="作業内容" value={submitted.workType} />
             <SummaryRow label="施工面積" value={submitted.area ? `${submitted.area} m²` : '—'} />
@@ -418,6 +395,10 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
       <header className="sticky top-0 z-10 border-b border-sky-700 bg-sky-600 px-4 py-3 text-white shadow-sm">
         <p className="text-[11px] leading-none text-sky-100">現場</p>
         <h1 className="mt-1 truncate text-lg font-bold leading-tight">{data.site.name}</h1>
+        <p className="mt-1.5 flex items-center gap-1.5 text-[13px] leading-none text-sky-50">
+          <span className="rounded bg-sky-700/70 px-1.5 py-0.5 text-[11px]">業者</span>
+          <span className="truncate font-semibold">{data.sub.name}</span>
+        </p>
       </header>
 
       <div className="space-y-5 p-4">
@@ -429,23 +410,6 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
 
         <Field label="日付">
           <Input type="date" value={workDate} onChange={(e) => setWorkDate(e.target.value)} />
-        </Field>
-
-        <Field label="業者">
-          <button
-            type="button"
-            onClick={() => {
-              setPickerQuery('')
-              setPickerOpen(true)
-            }}
-            className={cn(
-              'flex h-12 w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-left text-base',
-              selectedSub ? 'text-slate-900' : 'text-slate-400',
-            )}
-          >
-            <span className="truncate">{selectedSub ? selectedSub.name : '業者を選択'}</span>
-            <span className="ml-2 shrink-0 text-slate-400">▼</span>
-          </button>
         </Field>
 
         <Field label="人数">
@@ -652,39 +616,6 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
           </Button>
         </div>
       </div>
-
-      {/* 業者ピッカー (検索付きボトムシート) */}
-      <Modal open={pickerOpen} onClose={() => setPickerOpen(false)} title="業者を選択">
-        <Input
-          autoFocus
-          placeholder="業者名で検索"
-          value={pickerQuery}
-          onChange={(e) => setPickerQuery(e.target.value)}
-          className="mb-3"
-        />
-        <ul className="max-h-[50dvh] overflow-y-auto rounded-lg border border-slate-200">
-          {filteredSubs.length === 0 && (
-            <li className="px-3 py-4 text-center text-sm text-slate-500">該当する業者がありません</li>
-          )}
-          {filteredSubs.map((s) => (
-            <li key={s.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  setSubId(s.id)
-                  setPickerOpen(false)
-                }}
-                className={cn(
-                  'w-full border-b border-slate-100 px-3 py-3 text-left text-base last:border-b-0',
-                  s.id === subId ? 'bg-sky-50 font-semibold text-sky-800' : 'hover:bg-slate-50',
-                )}
-              >
-                {s.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Modal>
 
       <ConfirmDialog
         open={confirm === 'area'}

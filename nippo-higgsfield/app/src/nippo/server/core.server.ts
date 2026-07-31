@@ -111,23 +111,65 @@ export type SiteRow = {
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{21}$/
 
+/** 現場×業者の割り当て（1つの日報URLが指すもの） */
+export type Assignment = {
+  id: string
+  site: SiteRow
+  subId: string
+  subName: string
+}
+
 export type TokenResult =
-  | { ok: true; site: SiteRow }
+  | { ok: true; assignment: Assignment }
   | { ok: false; status: 404 | 410; message: string }
 
-export async function resolveSiteByToken(token: string): Promise<TokenResult> {
+type JoinedRow = SiteRow & {
+  assignment_id: string
+  assign_sub_id: string
+  sub_name: string
+  sub_active: number
+}
+
+/**
+ * token → 「どの現場の、どの業者か」を解決する。
+ * 業者は URL で確定するため、入力画面で業者を選ぶ必要がない。
+ */
+export async function resolveAssignmentByToken(token: string): Promise<TokenResult> {
   if (!TOKEN_RE.test(token)) {
     return { ok: false, status: 404, message: 'この日報URLは無効です' }
   }
-  const site = await requireDB()
-    .prepare('SELECT * FROM sites WHERE token = ?')
+
+  const row = await requireDB()
+    .prepare(
+      `SELECT s.*, ss.id AS assignment_id, ss.sub_id AS assign_sub_id,
+              b.name AS sub_name, b.is_active AS sub_active
+       FROM site_subs ss
+       JOIN sites s ON s.id = ss.site_id
+       JOIN subs b  ON b.id = ss.sub_id
+       WHERE ss.token = ?`,
+    )
     .bind(token)
-    .first<SiteRow>()
-  if (!site) return { ok: false, status: 404, message: 'この日報URLは無効です' }
-  if (site.status === 'closed') {
+    .first<JoinedRow>()
+
+  if (!row) return { ok: false, status: 404, message: 'この日報URLは無効です' }
+  if (row.status === 'closed') {
     return { ok: false, status: 410, message: 'この現場の日報受付は終了しました' }
   }
-  return { ok: true, site }
+  if (row.sub_active !== 1) {
+    return { ok: false, status: 410, message: 'この日報URLは現在ご利用いただけません' }
+  }
+
+  const { assignment_id, assign_sub_id, sub_name, sub_active, ...site } = row
+  void sub_active
+  return {
+    ok: true,
+    assignment: {
+      id: assignment_id,
+      site: site as SiteRow,
+      subId: assign_sub_id,
+      subName: sub_name,
+    },
+  }
 }
 
 // ---------------- 管理者セッション (HMAC署名Cookie) ----------------

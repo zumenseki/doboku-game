@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-// POST /api/rreport (JSON) — 日報 + 写真キーの登録。
+// POST /api/rreport (JSON) — 日報 + 写真キー + 色塗りの登録。
+// 業者は token（現場×業者）から確定するので、body に業者は含めない。
 // 同一tokenへのPOSTは毎分10回に制限。同一reportIdの再送は冪等に成功扱い。
 export const Route = createFileRoute('/api/rreport')({
   server: {
@@ -30,14 +31,15 @@ export const Route = createFileRoute('/api/rreport')({
         }
 
         try {
-          const result = await core.resolveSiteByToken(input.token)
+          const result = await core.resolveAssignmentByToken(input.token)
           if (!result.ok) return core.json({ message: result.message }, result.status)
+          const { site, subId } = result.assignment
           const db = core.requireDB()
 
           // 色塗りマスクは「この現場×この日報」のキーのみ受け付ける
           if (
             input.paintRegion &&
-            input.paintRegion.objectKey !== core.maskKeyFor(result.site.id, input.reportId.toLowerCase())
+            input.paintRegion.objectKey !== core.maskKeyFor(site.id, input.reportId.toLowerCase())
           ) {
             return core.json({ message: '色塗りデータの指定が不正です' }, 400)
           }
@@ -51,12 +53,6 @@ export const Route = createFileRoute('/api/rreport')({
             return core.json({ id: input.reportId, alreadySubmitted: true })
           }
 
-          const sub = await db
-            .prepare('SELECT id FROM subs WHERE id = ? AND is_active = 1')
-            .bind(input.subId)
-            .first()
-          if (!sub) return core.json({ message: '業者の選択が不正です' }, 400)
-
           const now = core.nowIso()
           const statements = [
             db
@@ -65,8 +61,8 @@ export const Route = createFileRoute('/api/rreport')({
               )
               .bind(
                 input.reportId,
-                result.site.id,
-                input.subId,
+                site.id,
+                subId,
                 input.workDate,
                 input.workers,
                 input.workType,

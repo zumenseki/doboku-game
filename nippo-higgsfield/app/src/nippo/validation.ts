@@ -26,7 +26,6 @@ export const reportSchema = z.object({
   token: z.string().min(1),
   reportId: uuid,
   workDate: isoDate,
-  subId: z.string().min(1).max(64),
   workers: z.number().int().min(1, '人数は1人以上で入力してください').max(99, '人数は99人までです'),
   workType: z.string().trim().min(1, '作業内容を選択してください').max(100, '作業内容は100文字までです'),
   areaM2: z.number().min(0, '施工面積は0以上で入力してください').max(9_999_999).optional(),

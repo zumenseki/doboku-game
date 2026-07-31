@@ -7,17 +7,20 @@ export const Route = createFileRoute('/admin/')({
   component: DashboardPage,
 })
 
+type Assignment = { id: string; site_id: string; sub_id: string; sub_name: string }
+type Report = {
+  id: string
+  site_id: string
+  sub_id: string
+  workers: number
+  area_m2: number | null
+  work_type: string
+  created_at: string
+}
 type DashboardData = {
   sites: { id: string; name: string }[]
-  reports: {
-    id: string
-    site_id: string
-    workers: number
-    area_m2: number | null
-    work_type: string
-    created_at: string
-    sub_name: string
-  }[]
+  assignments: Assignment[]
+  reports: Report[]
 }
 
 function DashboardPage() {
@@ -40,19 +43,33 @@ function DashboardPage() {
 
   const sites = data?.sites ?? []
   const reports = data?.reports ?? []
-  const bySite = new Map<string, DashboardData['reports']>()
+  const assignments = data?.assignments ?? []
+
+  // 現場ごとに「割り当て業者 × その日の提出有無」を組み立てる
+  const reportKey = (siteId: string, subId: string) => `${siteId}|${subId}`
+  const byPair = new Map<string, Report[]>()
   for (const r of reports) {
-    const list = bySite.get(r.site_id) ?? []
+    const k = reportKey(r.site_id, r.sub_id)
+    const list = byPair.get(k) ?? []
     list.push(r)
-    bySite.set(r.site_id, list)
+    byPair.set(k, list)
   }
-  const submittedSites = sites.filter((s) => (bySite.get(s.id)?.length ?? 0) > 0)
+  const assignBySite = new Map<string, Assignment[]>()
+  for (const a of assignments) {
+    const list = assignBySite.get(a.site_id) ?? []
+    list.push(a)
+    assignBySite.set(a.site_id, list)
+  }
+
   const totalWorkers = reports.reduce((a, r) => a + r.workers, 0)
   const totalArea = reports.reduce((a, r) => a + (r.area_m2 ?? 0), 0)
+  const submittedPairs = assignments.filter((a) => (byPair.get(reportKey(a.site_id, a.sub_id))?.length ?? 0) > 0)
+
+  // 未提出の多い現場を上に
   const ordered = [...sites].sort((a, b) => {
-    const aHas = (bySite.get(a.id)?.length ?? 0) > 0 ? 1 : 0
-    const bHas = (bySite.get(b.id)?.length ?? 0) > 0 ? 1 : 0
-    return aHas - bHas || a.name.localeCompare(b.name, 'ja')
+    const pending = (sid: string) =>
+      (assignBySite.get(sid) ?? []).filter((x) => (byPair.get(reportKey(sid, x.sub_id))?.length ?? 0) === 0).length
+    return pending(b.id) - pending(a.id) || a.name.localeCompare(b.name, 'ja')
   })
 
   return (
@@ -80,9 +97,9 @@ function DashboardPage() {
         <Stat label="延べ人数" value={`${formatNumber(totalWorkers)} 人`} />
         <Stat label="施工面積" value={`${formatNumber(totalArea, 1)} m²`} />
         <Stat
-          label="提出のあった現場"
-          value={`${submittedSites.length} / ${sites.length}`}
-          accent={submittedSites.length < sites.length}
+          label="提出済みの業者"
+          value={`${submittedPairs.length} / ${assignments.length}`}
+          accent={submittedPairs.length < assignments.length}
         />
       </div>
 
@@ -100,7 +117,8 @@ function DashboardPage() {
             </p>
           )}
           {ordered.map((site) => {
-            const list = bySite.get(site.id) ?? []
+            const list = assignBySite.get(site.id) ?? []
+            const done = list.filter((a) => (byPair.get(reportKey(site.id, a.sub_id))?.length ?? 0) > 0)
             return (
               <div key={site.id} className="rounded-lg border border-slate-200 p-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -112,27 +130,52 @@ function DashboardPage() {
                     {site.name}
                   </Link>
                   {list.length === 0 ? (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">未提出</span>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
+                      業者未割当
+                    </span>
                   ) : (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
-                      {list.length}件 / {formatNumber(list.reduce((a, r) => a + r.workers, 0))}人
+                    <span
+                      className={
+                        done.length === list.length
+                          ? 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800'
+                          : 'rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900'
+                      }
+                    >
+                      {done.length} / {list.length} 社 提出
                     </span>
                   )}
                 </div>
-                {list.length > 0 && (
+
+                {list.length === 0 ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    この現場にはまだ業者が割り当てられていません（日報URLが未発行です）
+                  </p>
+                ) : (
                   <ul className="mt-2 flex flex-wrap gap-2">
-                    {list.map((r) => (
-                      <li
-                        key={r.id}
-                        className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700"
-                        title={`提出 ${formatJstDateTime(r.created_at)}`}
-                      >
-                        <span className="font-medium text-slate-900">{r.sub_name}</span>
-                        <span className="ml-1 text-slate-500">
-                          {r.workers}人 / {r.work_type}
-                        </span>
-                      </li>
-                    ))}
+                    {list.map((a) => {
+                      const rs = byPair.get(reportKey(site.id, a.sub_id)) ?? []
+                      const submitted = rs.length > 0
+                      return (
+                        <li
+                          key={a.id}
+                          className={
+                            submitted
+                              ? 'rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-slate-700'
+                              : 'rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900'
+                          }
+                          title={submitted ? `提出 ${formatJstDateTime(rs[0].created_at)}` : '未提出'}
+                        >
+                          <span className="font-medium text-slate-900">{a.sub_name}</span>
+                          {submitted ? (
+                            <span className="ml-1 text-slate-600">
+                              {rs.reduce((n, r) => n + r.workers, 0)}人 / {rs.map((r) => r.work_type).join('・')}
+                            </span>
+                          ) : (
+                            <span className="ml-1 font-semibold">未提出</span>
+                          )}
+                        </li>
+                      )
+                    })}
                   </ul>
                 )}
               </div>

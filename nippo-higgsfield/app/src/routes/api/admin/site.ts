@@ -15,7 +15,7 @@ export const Route = createFileRoute('/api/admin/site')({
         const site = await db.prepare('SELECT * FROM sites WHERE id = ?').bind(id).first()
         if (!site) return core.json({ message: '現場が見つかりません' }, 404)
 
-        const [count, paints] = await Promise.all([
+        const [count, paints, assignments] = await Promise.all([
           db.prepare('SELECT COUNT(*) AS n FROM reports WHERE site_id = ?').bind(id).first<{ n: number }>(),
           db
             .prepare(
@@ -28,6 +28,18 @@ export const Route = createFileRoute('/api/admin/site')({
             )
             .bind(id)
             .all<{ id: string; polygon: string; area_m2: number; work_date: string; sub_name: string }>(),
+          // この現場に割り当てられた業者（＝発行済みの日報URL）
+          db
+            .prepare(
+              `SELECT ss.id, ss.token, b.id AS sub_id, b.name AS sub_name, b.is_active AS sub_active,
+                      (SELECT COUNT(*) FROM reports r WHERE r.site_id = ss.site_id AND r.sub_id = ss.sub_id) AS report_count,
+                      (SELECT MAX(r.work_date) FROM reports r WHERE r.site_id = ss.site_id AND r.sub_id = ss.sub_id) AS last_date
+               FROM site_subs ss JOIN subs b ON b.id = ss.sub_id
+               WHERE ss.site_id = ?
+               ORDER BY b.display_order, b.name`,
+            )
+            .bind(id)
+            .all(),
         ])
 
         const paintRows = (paints.results ?? []).flatMap((p) => {
@@ -48,7 +60,7 @@ export const Route = createFileRoute('/api/admin/site')({
           }
         })
 
-        return core.json({ site, reportCount: count?.n ?? 0, paints: paintRows })
+        return core.json({ site, reportCount: count?.n ?? 0, paints: paintRows, assignments: assignments.results ?? [] })
       },
       PATCH: async ({ request }) => {
         const core = await import('../../../nippo/server/core.server')

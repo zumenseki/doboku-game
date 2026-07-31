@@ -13,8 +13,7 @@ import {
   ErrorBox,
   SuccessBox,
 } from '../../nippo/ui'
-import { QrCode } from '../../nippo/qr'
-import { CopyButton } from './sites'
+import { AssignmentPanel, type AssignmentRow } from '../../nippo/assignments'
 import { convertDrawing } from '../../nippo/drawing-convert'
 import { MAX_DRAWING_BYTES } from '../../nippo/validation'
 import { jfetch, formatJstDateTime, formatNumber } from '../../nippo/utils'
@@ -26,6 +25,7 @@ export const Route = createFileRoute('/admin/site/$id')({
 type PaintRow = { id: string; objectKey: string; areaM2: number; workDate: string; subName: string }
 
 type SiteDetail = {
+  assignments: AssignmentRow[]
   site: {
     id: string
     token: string
@@ -49,7 +49,7 @@ function SiteDetailPage() {
   const [error, setError] = React.useState('')
   const [message, setMessage] = React.useState('')
   const [busy, setBusy] = React.useState(false)
-  const [confirm, setConfirm] = React.useState<null | 'close' | 'reopen' | 'reissue'>(null)
+  const [confirm, setConfirm] = React.useState<null | 'close' | 'reopen'>(null)
   const [uploading, setUploading] = React.useState(false)
   const [scaleOpen, setScaleOpen] = React.useState(false)
   const [reloadKey, setReloadKey] = React.useState(0)
@@ -122,8 +122,6 @@ function SiteDetailPage() {
   }
 
   const site = data.site
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const url = `${origin}/r/${site.token}`
   const drawingImageUrl = site.drawing_image_key
     ? `/api/admin/file?key=${encodeURIComponent(site.drawing_image_key)}`
     : null
@@ -146,37 +144,22 @@ function SiteDetailPage() {
       <ErrorBox>{error}</ErrorBox>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>日報入力URL / QR</CardTitle>
+            <CardTitle>業者ごとの日報URL / QR</CardTitle>
           </CardHeader>
-          <CardBody className="space-y-3">
+          <CardBody>
             {site.status === 'closed' && (
-              <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">
-                この現場は終了済みです。URLを開いても入力できません。
+              <p className="mb-3 rounded bg-amber-50 p-2 text-xs text-amber-900">
+                この現場は終了済みです。発行済みのURLを開いても入力できません。
               </p>
             )}
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="rounded-lg border border-slate-200 bg-white p-2">
-                <QrCode value={url} size={160} />
-              </div>
-              <div className="min-w-56 flex-1 space-y-2">
-                <code className="block break-all rounded bg-slate-50 px-2 py-1.5 text-xs text-slate-800">
-                  {url}
-                </code>
-                <div className="flex flex-wrap gap-2">
-                  <CopyButton text={url} />
-                  <Link to="/admin/print/$id" params={{ id: site.id }} target="_blank">
-                    <Button size="sm" variant="outline">
-                      A6印刷ビュー
-                    </Button>
-                  </Link>
-                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm('reissue')}>
-                    トークン再発行
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <AssignmentPanel
+              siteId={site.id}
+              siteName={site.name}
+              rows={data.assignments ?? []}
+              onChanged={() => setReloadKey((k) => k + 1)}
+            />
           </CardBody>
         </Card>
 
@@ -358,18 +341,6 @@ function SiteDetailPage() {
         onConfirm={() => {
           setConfirm(null)
           void patch({ action: 'reopen' }, '受付を再開しました')
-        }}
-        onCancel={() => setConfirm(null)}
-      />
-      <ConfirmDialog
-        open={confirm === 'reissue'}
-        title="トークンを再発行しますか?"
-        message="新しいURLが発行され、配布済みの旧URL・旧QRは使えなくなります。"
-        confirmLabel="再発行する"
-        destructive
-        onConfirm={() => {
-          setConfirm(null)
-          void patch({ action: 'reissue' }, 'トークンを再発行しました。新しいQRを配布してください')
         }}
         onCancel={() => setConfirm(null)}
       />

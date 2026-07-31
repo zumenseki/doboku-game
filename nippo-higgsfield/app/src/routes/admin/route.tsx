@@ -12,6 +12,7 @@ const NAV = [
   { href: '/admin/reports', label: '日報一覧' },
   { href: '/admin/summary', label: '集計' },
   { href: '/admin/sites', label: '現場管理' },
+  { href: '/admin/assignments', label: '日報URL一覧' },
   { href: '/admin/subs', label: '業者マスタ' },
   { href: '/admin/work-types', label: '工種マスタ' },
   { href: '/admin/settings', label: '設定' },
