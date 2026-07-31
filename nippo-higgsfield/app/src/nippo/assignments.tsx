@@ -309,3 +309,142 @@ export function CopyBtn({ text }: { text: string }) {
     </Button>
   )
 }
+
+/** 1業者を複数の現場にまとめて割り当てるモーダル（業者マスタから使う） */
+export function SubSitesModal({
+  sub,
+  onClose,
+  onChanged,
+}: {
+  sub: { id: string; name: string }
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const [sites, setSites] = React.useState<{ id: string; name: string }[]>([])
+  const [assigned, setAssigned] = React.useState<Set<string>>(new Set())
+  const [checked, setChecked] = React.useState<Set<string>>(new Set())
+  const [query, setQuery] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState('')
+  const [loaded, setLoaded] = React.useState(false)
+
+  const load = React.useCallback(async () => {
+    const [siteRes, asgRes] = await Promise.all([
+      jfetch<{ rows: { id: string; name: string }[] }>('/api/admin/sites?status=active'),
+      jfetch<{ rows: { site_id: string; sub_id: string }[] }>('/api/admin/assignments?status=active'),
+    ])
+    if (siteRes.ok) setSites(siteRes.data.rows)
+    else setError(siteRes.message)
+    if (asgRes.ok) {
+      setAssigned(new Set(asgRes.data.rows.filter((r) => r.sub_id === sub.id).map((r) => r.site_id)))
+    }
+    setLoaded(true)
+  }, [sub.id])
+
+  React.useEffect(() => {
+    void load()
+  }, [load])
+
+  async function submit() {
+    if (checked.size === 0) return
+    setBusy(true)
+    setError('')
+    const res = await jfetch<{ created: number }>('/api/admin/assignments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subId: sub.id, siteIds: [...checked] }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      setError(res.message)
+      return
+    }
+    setChecked(new Set())
+    await load()
+    onChanged()
+  }
+
+  const filtered = query.trim()
+    ? sites.filter((s) => s.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : sites
+  const notAssigned = filtered.filter((s) => !assigned.has(s.id))
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${sub.name} を現場に割り当てる`}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            閉じる
+          </Button>
+          <Button disabled={busy || checked.size === 0} onClick={() => void submit()}>
+            {busy ? '追加中…' : `${checked.size}現場に割り当てる`}
+          </Button>
+        </>
+      }
+    >
+      <p className="mb-2 text-xs text-slate-500">
+        1社を複数の現場に割り当てられます。現場ごとに別々のURL・QRが発行されます。
+        （現在 <b className="text-slate-700">{assigned.size}</b> 現場に割当済み）
+      </p>
+      <ErrorBox>{error}</ErrorBox>
+      <Input
+        autoFocus
+        placeholder="現場名で検索"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className="my-2"
+      />
+      <div className="mb-2 flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={notAssigned.length === 0}
+          onClick={() => setChecked(new Set(notAssigned.map((s) => s.id)))}
+        >
+          表示中をすべて選択
+        </Button>
+        <Button size="sm" variant="ghost" disabled={checked.size === 0} onClick={() => setChecked(new Set())}>
+          選択を解除
+        </Button>
+      </div>
+      <ul className="max-h-[45dvh] overflow-y-auto rounded-lg border border-slate-200">
+        {loaded && filtered.length === 0 && (
+          <li className="px-3 py-4 text-center text-sm text-slate-500">該当する稼働中の現場がありません</li>
+        )}
+        {filtered.map((s) => {
+          const already = assigned.has(s.id)
+          return (
+            <li key={s.id} className="border-b border-slate-100 last:border-b-0">
+              <label
+                className={cn(
+                  'flex items-center gap-2 px-3 py-2.5',
+                  already ? 'text-slate-400' : 'cursor-pointer hover:bg-slate-50',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  disabled={already}
+                  checked={checked.has(s.id)}
+                  onChange={(e) =>
+                    setChecked((prev) => {
+                      const next = new Set(prev)
+                      if (e.target.checked) next.add(s.id)
+                      else next.delete(s.id)
+                      return next
+                    })
+                  }
+                />
+                <span>{s.name}</span>
+                {already && <span className="ml-auto text-xs">割当済み</span>}
+              </label>
+            </li>
+          )
+        })}
+      </ul>
+    </Modal>
+  )
+}

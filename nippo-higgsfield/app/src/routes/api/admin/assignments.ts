@@ -54,36 +54,58 @@ export const Route = createFileRoute('/api/admin/assignments')({
         const denied = await core.requireAdmin(request)
         if (denied) return denied
 
-        const body = (await core.readJson(request)) as { siteId?: string; subIds?: string[] } | null
+        const body = (await core.readJson(request)) as
+          | { siteId?: string; subIds?: string[]; subId?: string; siteIds?: string[] }
+          | null
+
+        // 2方向をサポート:
+        //   現場に業者をまとめて割り当てる  { siteId, subIds[] }
+        //   業者を複数の現場に割り当てる    { subId, siteIds[] }
         const siteId = String(body?.siteId ?? '')
-        const subIds = Array.isArray(body?.subIds) ? body!.subIds!.map(String).slice(0, 200) : []
-        if (!siteId || subIds.length === 0) {
+        const subId = String(body?.subId ?? '')
+        const subIds = Array.isArray(body?.subIds) ? body!.subIds!.map(String).slice(0, 500) : []
+        const siteIds = Array.isArray(body?.siteIds) ? body!.siteIds!.map(String).slice(0, 500) : []
+
+        const db = core.requireDB()
+        let pairs: { siteId: string; subId: string }[] = []
+        let requested = 0
+
+        if (siteId && subIds.length > 0) {
+          const site = await db.prepare('SELECT id FROM sites WHERE id = ?').bind(siteId).first()
+          if (!site) return core.json({ message: '現場が見つかりません' }, 404)
+          const existing = await db
+            .prepare('SELECT sub_id FROM site_subs WHERE site_id = ?')
+            .bind(siteId)
+            .all<{ sub_id: string }>()
+          const already = new Set((existing.results ?? []).map((r) => r.sub_id))
+          requested = subIds.length
+          pairs = subIds.filter((id) => !already.has(id)).map((id) => ({ siteId, subId: id }))
+        } else if (subId && siteIds.length > 0) {
+          const sub = await db.prepare('SELECT id FROM subs WHERE id = ?').bind(subId).first()
+          if (!sub) return core.json({ message: '業者が見つかりません' }, 404)
+          const existing = await db
+            .prepare('SELECT site_id FROM site_subs WHERE sub_id = ?')
+            .bind(subId)
+            .all<{ site_id: string }>()
+          const already = new Set((existing.results ?? []).map((r) => r.site_id))
+          requested = siteIds.length
+          pairs = siteIds.filter((id) => !already.has(id)).map((id) => ({ siteId: id, subId }))
+        } else {
           return core.json({ message: '現場と業者を指定してください' }, 400)
         }
 
-        const db = core.requireDB()
-        const site = await db.prepare('SELECT id FROM sites WHERE id = ?').bind(siteId).first()
-        if (!site) return core.json({ message: '現場が見つかりません' }, 404)
-
-        const existing = await db
-          .prepare('SELECT sub_id FROM site_subs WHERE site_id = ?')
-          .bind(siteId)
-          .all<{ sub_id: string }>()
-        const already = new Set((existing.results ?? []).map((r) => r.sub_id))
-
-        const toAdd = subIds.filter((id) => !already.has(id))
-        if (toAdd.length === 0) return core.json({ created: 0, skipped: subIds.length })
+        if (pairs.length === 0) return core.json({ created: 0, skipped: requested })
 
         const now = core.nowIso()
-        const statements = toAdd.map((subId) =>
+        const statements = pairs.map((pair) =>
           db
             .prepare('INSERT INTO site_subs (id, site_id, sub_id, token, created_at) VALUES (?,?,?,?,?)')
-            .bind(core.uuid(), siteId, subId, core.randomToken(21), now),
+            .bind(core.uuid(), pair.siteId, pair.subId, core.randomToken(21), now),
         )
         for (let i = 0; i < statements.length; i += 50) {
           await db.batch(statements.slice(i, i + 50))
         }
-        return core.json({ created: toAdd.length, skipped: subIds.length - toAdd.length })
+        return core.json({ created: pairs.length, skipped: requested - pairs.length })
       },
 
       PATCH: async ({ request }) => {

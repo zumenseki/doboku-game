@@ -24,6 +24,7 @@ type Row = {
 
 /** 現場×業者の割り当て（発行済み日報URL）の全体一覧 */
 function AssignmentsPage() {
+  const [groupBy, setGroupBy] = React.useState<'site' | 'sub'>('site')
   const [status, setStatus] = React.useState<'active' | 'closed' | 'all'>('active')
   const [siteId, setSiteId] = React.useState('')
   const [rows, setRows] = React.useState<Row[] | null>(null)
@@ -55,11 +56,12 @@ function AssignmentsPage() {
   }, [])
 
   const list = rows ?? []
-  const bySite = new Map<string, Row[]>()
+  const grouped = new Map<string, Row[]>()
   for (const r of list) {
-    const arr = bySite.get(r.site_id) ?? []
+    const key = groupBy === 'site' ? r.site_id : r.sub_id
+    const arr = grouped.get(key) ?? []
     arr.push(r)
-    bySite.set(r.site_id, arr)
+    grouped.set(key, arr)
   }
 
   function exportCsv() {
@@ -109,6 +111,18 @@ function AssignmentsPage() {
               ))}
             </Select>
           </div>
+          <div>
+            <Label htmlFor="gb">まとめ方</Label>
+            <Select
+              id="gb"
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value as 'site' | 'sub')}
+              className="mt-1 w-44"
+            >
+              <option value="site">現場ごと</option>
+              <option value="sub">業者ごと</option>
+            </Select>
+          </div>
           <Button variant="outline" onClick={exportCsv} disabled={list.length === 0}>
             CSV出力
           </Button>
@@ -134,36 +148,46 @@ function AssignmentsPage() {
         </Card>
       )}
 
-      {[...bySite.entries()].map(([sid, group]) => (
-        <Card key={sid}>
+      {[...grouped.entries()].map(([key, group]) => (
+        <Card key={key}>
           <CardHeader className="flex flex-wrap items-center gap-2">
             <CardTitle className="mr-auto">
-              <Link to="/admin/site/$id" params={{ id: sid }} className="text-sky-700 hover:underline">
-                {group[0].site_name}
-              </Link>
-              <span className="ml-2 text-sm font-normal text-slate-500">{group.length}社</span>
-            </CardTitle>
-            <span
-              className={cn(
-                'rounded-full px-2 py-0.5 text-xs',
-                group[0].site_status === 'active'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-slate-200 text-slate-700',
+              {groupBy === 'site' ? (
+                <Link to="/admin/site/$id" params={{ id: group[0].site_id }} className="text-sky-700 hover:underline">
+                  {group[0].site_name}
+                </Link>
+              ) : (
+                <span className="text-slate-900">{group[0].sub_name}</span>
               )}
-            >
-              {group[0].site_status === 'active' ? '稼働中' : '終了'}
-            </span>
-            <Link to="/admin/print/$id" params={{ id: sid }} target="_blank">
-              <Button size="sm" variant="outline">
-                QRまとめ印刷
-              </Button>
-            </Link>
+              <span className="ml-2 text-sm font-normal text-slate-500">
+                {groupBy === 'site' ? `${group.length}社` : `${group.length}現場`}
+              </span>
+            </CardTitle>
+            {groupBy === 'site' && (
+              <>
+                <span
+                  className={cn(
+                    'rounded-full px-2 py-0.5 text-xs',
+                    group[0].site_status === 'active'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-slate-200 text-slate-700',
+                  )}
+                >
+                  {group[0].site_status === 'active' ? '稼働中' : '終了'}
+                </span>
+                <Link to="/admin/print/$id" params={{ id: group[0].site_id }} target="_blank">
+                  <Button size="sm" variant="outline">
+                    QRまとめ印刷
+                  </Button>
+                </Link>
+              </>
+            )}
           </CardHeader>
           <CardBody className="overflow-x-auto p-0">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-600">
                 <tr>
-                  <th className="px-3 py-2 font-medium">業者</th>
+                  <th className="px-3 py-2 font-medium">{groupBy === 'site' ? '業者' : '現場'}</th>
                   <th className="px-3 py-2 font-medium">日報URL</th>
                   <th className="w-24 px-3 py-2 text-right font-medium">提出件数</th>
                   <th className="w-32 px-3 py-2 font-medium">最終提出日</th>
@@ -174,11 +198,19 @@ function AssignmentsPage() {
                 {group.map((r) => (
                   <tr key={r.id} className="border-t border-slate-100">
                     <td className="px-3 py-2 font-medium text-slate-900">
-                      {r.sub_name}
-                      {r.sub_active !== 1 && (
-                        <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">
-                          無効
-                        </span>
+                      {groupBy === 'site' ? (
+                        <>
+                          {r.sub_name}
+                          {r.sub_active !== 1 && (
+                            <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">
+                              無効
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <Link to="/admin/site/$id" params={{ id: r.site_id }} className="text-sky-700 hover:underline">
+                          {r.site_name}
+                        </Link>
                       )}
                     </td>
                     <td className="px-3 py-2">

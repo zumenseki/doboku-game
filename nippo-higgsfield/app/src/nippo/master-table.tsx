@@ -9,7 +9,18 @@ export type MasterRow = {
   is_active: number
 }
 
-export function MasterTableView({ table, label }: { table: 'subs' | 'work_types'; label: string }) {
+export function MasterTableView({
+  table,
+  label,
+  rowExtra,
+  reloadSignal,
+}: {
+  table: 'subs' | 'work_types'
+  label: string
+  /** 行の「操作」欄に足すボタン（業者→現場の割り当てなど） */
+  rowExtra?: (row: MasterRow) => React.ReactNode
+  reloadSignal?: number
+}) {
   const [rows, setRows] = React.useState<MasterRow[] | null>(null)
   const [error, setError] = React.useState('')
   const [busy, setBusy] = React.useState(false)
@@ -29,7 +40,7 @@ export function MasterTableView({ table, label }: { table: 'subs' | 'work_types'
     return () => {
       cancelled = true
     }
-  }, [table, reloadKey])
+  }, [table, reloadKey, reloadSignal])
 
   async function post(body: Record<string, unknown>): Promise<boolean> {
     setBusy(true)
@@ -179,6 +190,7 @@ export function MasterTableView({ table, label }: { table: 'subs' | 'work_types'
                         <Button size="sm" variant="outline" onClick={() => setEditingId(row.id)}>
                           編集
                         </Button>
+                        {rowExtra?.(row)}
                         <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(row)}>
                           削除
                         </Button>
