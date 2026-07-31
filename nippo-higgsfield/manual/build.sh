@@ -17,8 +17,10 @@ rm -rf xfer site manual manual*.pdf preview && mkdir xfer
 curl -sL "https://codeload.github.com/zumenseki/doboku-game/tar.gz/refs/heads/$BRANCH" | tar xz -C xfer
 cp -r xfer/doboku-game-*/nippo-higgsfield/manual /home/user/manual
 mkdir -p /home/user/manual/shots
-npm i playwright >/dev/null 2>&1
-npx playwright install chromium --only-shell >/dev/null 2>&1
+# サンドボックスにプリインストール済みの Playwright / Chromium を使う（再ダウンロードしない）
+mkdir -p /home/user/node_modules
+ln -sfn /usr/local/lib/node_modules/playwright /home/user/node_modules/playwright
+ln -sfn /usr/local/lib/node_modules/playwright-core /home/user/node_modules/playwright-core
 
 cat > /home/user/shots.mjs <<EOF
 import { chromium } from 'playwright'
