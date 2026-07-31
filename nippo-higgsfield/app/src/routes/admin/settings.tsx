@@ -72,6 +72,28 @@ function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>システム一式のダウンロード</CardTitle>
+        </CardHeader>
+        <CardBody className="space-y-3">
+          <p className="text-sm leading-relaxed text-slate-600">
+            ソースコード・データベース定義・マニュアル一式をまとめたZIPです。
+            バックアップや引き継ぎ、他の環境で立ち上げ直すときにお使いください。
+            <br />
+            <span className="text-slate-500">
+              ※ 他のパソコンからこの管理画面を使うだけなら、ダウンロードは不要です。
+              ブラウザでこのURLを開いてパスワードを入れるだけで使えます。
+            </span>
+          </p>
+          <a href="/genba-nippo-package.zip">
+            <Button size="sm" variant="outline">
+              💾 システム一式（ZIP）をダウンロード
+            </Button>
+          </a>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>古い写真の一括削除</CardTitle>
         </CardHeader>
         <CardBody className="space-y-3">
