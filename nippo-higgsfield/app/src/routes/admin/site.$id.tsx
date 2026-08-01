@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
   Button,
   Input,
@@ -14,6 +14,7 @@ import {
   SuccessBox,
 } from '../../nippo/ui'
 import { AssignmentPanel, type AssignmentRow } from '../../nippo/assignments'
+import { DeleteSiteModal } from '../../nippo/site-delete'
 import { convertDrawing } from '../../nippo/drawing-convert'
 import { MAX_DRAWING_BYTES } from '../../nippo/validation'
 import { jfetch, formatJstDateTime, formatNumber } from '../../nippo/utils'
@@ -40,11 +41,13 @@ type SiteDetail = {
     closed_at: string | null
   }
   reportCount: number
+  photoCount: number
   paints: PaintRow[]
 }
 
 function SiteDetailPage() {
   const { id } = Route.useParams()
+  const navigate = useNavigate()
   const [data, setData] = React.useState<SiteDetail | null>(null)
   const [error, setError] = React.useState('')
   const [message, setMessage] = React.useState('')
@@ -52,6 +55,7 @@ function SiteDetailPage() {
   const [confirm, setConfirm] = React.useState<null | 'close' | 'reopen'>(null)
   const [uploading, setUploading] = React.useState(false)
   const [scaleOpen, setScaleOpen] = React.useState(false)
+  const [deleteOpen, setDeleteOpen] = React.useState(false)
   const [reloadKey, setReloadKey] = React.useState(0)
   const fileRef = React.useRef<HTMLInputElement>(null)
 
@@ -307,7 +311,42 @@ function SiteDetailPage() {
             )}
           </CardBody>
         </Card>
+
+        <Card className="border-red-200 lg:col-span-2">
+          <CardHeader className="border-red-100 bg-red-50/60">
+            <CardTitle className="text-red-900">現場を削除する</CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <p className="text-sm text-slate-700">
+              現場を<b>完全に削除</b>します。この現場の
+              <b>日報 {formatNumber(data.reportCount)} 件</b>・
+              <b>写真 {formatNumber(data.photoCount)} 枚</b>・
+              <b>発行済みの日報URL {data.assignments.length} 件</b>・図面・色塗りの記録が
+              <b className="text-red-700">すべて消えます。元に戻せません。</b>
+            </p>
+            <p className="text-sm text-slate-600">
+              工事が終わっただけなら、削除ではなく「
+              <b>現場を終了する</b>」をお使いください。終了なら日報は残したまま、URLだけ使えなくなります。
+            </p>
+            <div>
+              <Button variant="destructive" size="sm" disabled={busy} onClick={() => setDeleteOpen(true)}>
+                この現場を削除する
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
       </div>
+
+      {deleteOpen && (
+        <DeleteSiteModal
+          site={site}
+          onClose={() => setDeleteOpen(false)}
+          onDeleted={() => {
+            setDeleteOpen(false)
+            void navigate({ to: '/admin/sites' })
+          }}
+        />
+      )}
 
       {scaleOpen && drawingImageUrl && (
         <ScaleModal

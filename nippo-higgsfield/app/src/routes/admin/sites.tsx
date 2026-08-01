@@ -1,7 +1,8 @@
 import * as React from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Button, Input, Label, Card, CardBody, CardHeader, CardTitle, ErrorBox } from '../../nippo/ui'
+import { Button, Input, Label, Card, CardBody, CardHeader, CardTitle, ErrorBox, SuccessBox } from '../../nippo/ui'
 import { ImportExcel } from '../../nippo/import-excel'
+import { DeleteSiteModal } from '../../nippo/site-delete'
 import { cn, jfetch, formatJstDateTime } from '../../nippo/utils'
 
 export const Route = createFileRoute('/admin/sites')({
@@ -25,6 +26,8 @@ function SitesPage() {
   const [error, setError] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [created, setCreated] = React.useState<{ id: string; name: string } | null>(null)
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
+  const [deleted, setDeleted] = React.useState('')
   const [reloadKey, setReloadKey] = React.useState(0)
   const formRef = React.useRef<HTMLFormElement>(null)
 
@@ -125,6 +128,8 @@ function SitesPage() {
         </CardBody>
       </Card>
 
+      <SuccessBox>{deleted && `「${deleted}」を削除しました`}</SuccessBox>
+
       <Card>
         <CardHeader className="flex items-center gap-2">
           <CardTitle className="mr-auto">現場一覧</CardTitle>
@@ -171,13 +176,21 @@ function SitesPage() {
                         : '—'}
                   </td>
                   <td className="px-4 py-2">
-                    <Link
-                      to="/admin/site/$id"
-                      params={{ id: site.id }}
-                      className="text-sm text-sky-700 hover:underline"
-                    >
-                      詳細
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      <Link
+                        to="/admin/site/$id"
+                        params={{ id: site.id }}
+                        className="text-sm text-sky-700 hover:underline"
+                      >
+                        詳細
+                      </Link>
+                      <button
+                        onClick={() => setDeleteTarget({ id: site.id, name: site.name })}
+                        className="text-sm text-red-700 hover:underline"
+                      >
+                        削除
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -185,6 +198,18 @@ function SitesPage() {
           </table>
         </CardBody>
       </Card>
+
+      {deleteTarget && (
+        <DeleteSiteModal
+          site={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={(name) => {
+            setDeleteTarget(null)
+            setDeleted(name)
+            setReloadKey((k) => k + 1)
+          }}
+        />
+      )}
     </div>
   )
 }
