@@ -59,7 +59,11 @@ await p.addInitScript(() => { localStorage.setItem('nippo_install_dismissed','1'
 await p.goto(\`\${B}/r/\${TOKEN}\`, { waitUntil:'networkidle' }); await p.waitForTimeout(1400)
 await p.screenshot({ path:\`\${out}/m1-form.png\` })
 await p.getByRole('button',{name:'1人増やす'}).click(); await p.getByRole('button',{name:'1人増やす'}).click()
-await p.getByRole('button',{name:'掘削',exact:true}).click(); await p.waitForTimeout(300)
+// 工種は現場ごとに変わるので、登録されている先頭の作業内容を選ぶ
+const site = await (await p.request.get(\`\${B}/api/rsite?token=\${TOKEN}\`)).json()
+const WT = site.workTypes?.[0]
+if (!WT) throw new Error('作業内容（工種）が1件も登録されていません')
+await p.getByRole('button',{name:WT,exact:true}).first().click(); await p.waitForTimeout(300)
 await p.evaluate(()=>window.scrollTo(0,300)); await p.waitForTimeout(400)
 await p.screenshot({ path:\`\${out}/m3-worktype.png\` })
 await p.getByText('図面を塗って面積を測る').click()
