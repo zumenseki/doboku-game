@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { createFileRoute, Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { Button, Input, Label, ErrorBox } from '../../nippo/ui'
-import { jfetch } from '../../nippo/utils'
+import { cn, jfetch } from '../../nippo/utils'
 
 export const Route = createFileRoute('/admin')({
   component: AdminLayout,
@@ -17,6 +17,17 @@ const NAV = [
   { href: '/admin/work-types', label: '工種マスタ' },
   { href: '/admin/settings', label: '設定' },
 ] as const
+
+/**
+ * 今どのタブを見ているかを判定する。
+ * 現場詳細(/admin/site/xxx)のような下位ページでも、親のタブ(現場管理)を選択中として扱う。
+ */
+function isActiveTab(pathname: string, href: string): boolean {
+  const path = pathname.replace(/\/+$/, '') || '/admin'
+  if (href === '/admin') return path === '/admin'
+  if (href === '/admin/sites') return path.startsWith('/admin/sites') || path.startsWith('/admin/site/')
+  return path === href || path.startsWith(`${href}/`)
+}
 
 function AdminLayout() {
   const [authed, setAuthed] = React.useState<boolean | null>(null)
@@ -59,18 +70,25 @@ function AdminLayout() {
           <Link to="/admin" className="text-base font-bold text-slate-900">
             作業日報 管理
           </Link>
-          <nav className="flex flex-1 flex-wrap gap-x-3 gap-y-1 text-sm">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                to={item.href}
-                className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                activeOptions={{ exact: item.href === '/admin' }}
-                activeProps={{ className: 'rounded px-2 py-1 font-semibold text-sky-700' }}
-              >
-                {item.label}
-              </Link>
-            ))}
+          <nav aria-label="管理メニュー" className="flex flex-1 flex-wrap gap-x-1.5 gap-y-1 text-sm">
+            {NAV.map((item) => {
+              const active = isActiveTab(pathname, item.href)
+              return (
+                <Link
+                  key={item.href}
+                  to={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 transition-colors',
+                    active
+                      ? 'bg-sky-600 font-bold text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                  )}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
           </nav>
           <button onClick={logout} className="text-sm text-slate-500 hover:text-slate-900">
             ログアウト
