@@ -28,12 +28,12 @@ type PhotoItem = {
   objectKey?: string
 }
 
+/** 選んだ作業内容1件ぶん。その他はフリー入力なので workType が空のことがある */
+type WorkItem = { id: string; workType: string; workers: number; isOther?: boolean }
+
 type Draft = {
   workDate: string
-  workers: number
-  workType: string
-  isOther: boolean
-  otherText: string
+  items: WorkItem[]
   area: string
   note: string
   reportId: string
@@ -42,12 +42,14 @@ type Draft = {
 
 type Submitted = {
   workDate: string
+  items: { workType: string; workers: number }[]
   workers: number
-  workType: string
   area: string
   note: string
   photoCount: number
 }
+
+const newItemId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
 function SiteReportPage() {
   const { token } = Route.useParams()
@@ -115,10 +117,7 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
   const { workTypes } = data
 
   const [workDate, setWorkDate] = React.useState(todayJst)
-  const [workers, setWorkers] = React.useState(1)
-  const [workType, setWorkType] = React.useState('')
-  const [isOther, setIsOther] = React.useState(false)
-  const [otherText, setOtherText] = React.useState('')
+  const [items, setItems] = React.useState<WorkItem[]>([])
   const [area, setArea] = React.useState('')
   const [note, setNote] = React.useState('')
   const [photos, setPhotos] = React.useState<PhotoItem[]>([])
@@ -140,10 +139,7 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
       if (raw) {
         const d = JSON.parse(raw) as Draft
         setWorkDate(d.workDate ?? todayJst())
-        setWorkers(d.workers ?? 1)
-        setWorkType(d.workType ?? '')
-        setIsOther(Boolean(d.isOther))
-        setOtherText(d.otherText ?? '')
+        setItems(Array.isArray(d.items) ? d.items : [])
         setArea(d.area ?? '')
         setNote(d.note ?? '')
         if (d.reportId) setReportId(d.reportId)
@@ -165,16 +161,39 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const effectiveWorkType = isOther ? otherText.trim() : workType
+  const totalWorkers = items.reduce((sum, i) => sum + i.workers, 0)
+  const filledItems = items.filter((i) => i.workType.trim() !== '')
+
+  /** 作業内容のボタンをタップしたとき。選択済みならはずす */
+  function toggleWorkType(name: string) {
+    setItems((prev) =>
+      prev.some((i) => i.workType === name && !i.isOther)
+        ? prev.filter((i) => !(i.workType === name && !i.isOther))
+        : [...prev, { id: newItemId(), workType: name, workers: 1 }],
+    )
+  }
+
+  function toggleOther() {
+    setItems((prev) =>
+      prev.some((i) => i.isOther)
+        ? prev.filter((i) => !i.isOther)
+        : [...prev, { id: newItemId(), workType: '', workers: 1, isOther: true }],
+    )
+  }
+
+  function updateItem(id: string, patch: Partial<WorkItem>) {
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)))
+  }
+
+  function removeItem(id: string) {
+    setItems((prev) => prev.filter((i) => i.id !== id))
+  }
 
   function saveDraft() {
     try {
       const draft: Draft = {
         workDate,
-        workers,
-        workType,
-        isOther,
-        otherText,
+        items,
         area,
         note,
         reportId,
@@ -197,17 +216,17 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
   }
 
   async function handleAddPhotos(files: File[]) {
-    const items: PhotoItem[] = files.map((f) => ({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    const added: PhotoItem[] = files.map((f) => ({
+      id: newItemId(),
       previewUrl: URL.createObjectURL(f),
       file: null,
       bytes: f.size,
       status: 'compressing',
     }))
-    setPhotos((prev) => [...prev, ...items].slice(0, MAX_PHOTOS_PER_REPORT))
+    setPhotos((prev) => [...prev, ...added].slice(0, MAX_PHOTOS_PER_REPORT))
 
     await Promise.all(
-      items.map(async (item, i) => {
+      added.map(async (item, i) => {
         try {
           const compressed = await compressPhoto(files[i])
           setPhotos((prev) =>
@@ -231,9 +250,12 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
   }
 
   function validate(): string | null {
-    if (!effectiveWorkType) return '作業内容を選択してください'
+    if (items.length === 0) return '作業内容を1つ以上選んでください'
+    if (items.some((i) => i.workType.trim() === '')) return '「その他」の作業内容を入力してください'
+    const names = filledItems.map((i) => i.workType.trim())
+    if (new Set(names).size !== names.length) return '同じ作業内容が重複しています'
     if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) return '日付を入力してください'
-    if (workers < 1 || workers > 99) return '人数は1〜99人で入力してください'
+    if (items.some((i) => i.workers < 1 || i.workers > 99)) return '人数は1〜99人で入力してください'
     if (area.trim() !== '') {
       const n = Number(area)
       if (!Number.isFinite(n) || n < 0) return '施工面積は0以上の数値で入力してください'
@@ -313,12 +335,12 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
         }
       }
 
+      const workItems = items.map((i) => ({ workType: i.workType.trim(), workers: i.workers }))
       const payload = {
         token,
         reportId,
         workDate,
-        workers,
-        workType: effectiveWorkType,
+        workItems,
         areaM2: area.trim() === '' ? undefined : Number(area),
         note: note.trim() === '' ? undefined : note.trim(),
         objectKeys: keys,
@@ -334,8 +356,8 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
       clearDraft()
       setSubmitted({
         workDate,
-        workers,
-        workType: effectiveWorkType,
+        items: workItems,
+        workers: totalWorkers,
         area: area.trim(),
         note: note.trim(),
         photoCount: keys.length,
@@ -351,10 +373,7 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
   function startNext() {
     setSubmitted(null)
     setReportId(crypto.randomUUID())
-    setWorkers(1)
-    setWorkType('')
-    setIsOther(false)
-    setOtherText('')
+    setItems([])
     setArea('')
     setNote('')
     photos.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl))
@@ -374,8 +393,11 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
           <dl className="mt-5 divide-y divide-slate-100 rounded-lg border border-slate-200 text-left text-sm">
             <SummaryRow label="日付" value={formatDateWithWeekday(submitted.workDate)} />
             <SummaryRow label="業者" value={data.sub.name} />
-            <SummaryRow label="人数" value={`${submitted.workers} 人`} />
-            <SummaryRow label="作業内容" value={submitted.workType} />
+            <SummaryRow
+              label="作業内容"
+              value={submitted.items.map((i) => `${i.workType} ${i.workers}人`).join('\n')}
+            />
+            <SummaryRow label="合計人数" value={`${submitted.workers} 人`} />
             <SummaryRow label="施工面積" value={submitted.area ? `${submitted.area} m²` : '—'} />
             <SummaryRow label="写真" value={`${submitted.photoCount} 枚`} />
             {submitted.note && <SummaryRow label="備考" value={submitted.note} />}
@@ -412,67 +434,35 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
           <Input type="date" value={workDate} onChange={(e) => setWorkDate(e.target.value)} />
         </Field>
 
-        <Field label="人数">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-14 w-14 text-2xl"
-              aria-label="1人減らす"
-              onClick={() => setWorkers((n) => Math.max(1, n - 1))}
-            >
-              −
-            </Button>
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={99}
-              value={workers}
-              onChange={(e) => {
-                const n = Number(e.target.value)
-                setWorkers(Number.isFinite(n) ? Math.min(99, Math.max(1, Math.trunc(n))) : 1)
-              }}
-              className="h-14 flex-1 text-center text-2xl font-bold"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-14 w-14 text-2xl"
-              aria-label="1人増やす"
-              onClick={() => setWorkers((n) => Math.min(99, n + 1))}
-            >
-              ＋
-            </Button>
-          </div>
-        </Field>
-
-        <Field label="作業内容">
+        <Field label="作業内容" hint="いくつでも選べます">
           <div className="flex flex-wrap gap-2">
-            {workTypes.map((wt) => (
-              <button
-                key={wt}
-                type="button"
-                onClick={() => {
-                  setWorkType(wt)
-                  setIsOther(false)
-                }}
-                className={cn(
-                  'rounded-full border px-4 py-2.5 text-sm',
-                  !isOther && workType === wt
-                    ? 'border-sky-600 bg-sky-600 font-semibold text-white'
-                    : 'border-slate-300 bg-white text-slate-700',
-                )}
-              >
-                {wt}
-              </button>
-            ))}
+            {workTypes.map((wt) => {
+              const on = items.some((i) => i.workType === wt && !i.isOther)
+              return (
+                <button
+                  key={wt}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleWorkType(wt)}
+                  className={cn(
+                    'rounded-full border px-4 py-2.5 text-sm',
+                    on
+                      ? 'border-sky-600 bg-sky-600 font-semibold text-white'
+                      : 'border-slate-300 bg-white text-slate-700',
+                  )}
+                >
+                  {on && <span className="mr-1">✓</span>}
+                  {wt}
+                </button>
+              )
+            })}
             <button
               type="button"
-              onClick={() => setIsOther(true)}
+              aria-pressed={items.some((i) => i.isOther)}
+              onClick={toggleOther}
               className={cn(
                 'rounded-full border px-4 py-2.5 text-sm',
-                isOther
+                items.some((i) => i.isOther)
                   ? 'border-sky-600 bg-sky-600 font-semibold text-white'
                   : 'border-slate-300 bg-white text-slate-700',
               )}
@@ -480,14 +470,86 @@ function ReportForm({ token, data }: { token: string; data: SiteData }) {
               その他
             </button>
           </div>
-          {isOther && (
-            <Input
-              className="mt-2"
-              placeholder="作業内容を入力"
-              maxLength={100}
-              value={otherText}
-              onChange={(e) => setOtherText(e.target.value)}
-            />
+
+          {items.length === 0 ? (
+            <p className="mt-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-sm text-slate-500">
+              上から作業内容を選ぶと、作業ごとに人数を入力できます
+            </p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {items.map((item) => (
+                <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    {item.isOther ? (
+                      <Input
+                        className="h-10 flex-1"
+                        placeholder="作業内容を入力"
+                        maxLength={100}
+                        value={item.workType}
+                        onChange={(e) => updateItem(item.id, { workType: e.target.value })}
+                      />
+                    ) : (
+                      <span className="flex-1 truncate text-[15px] font-semibold text-slate-800">
+                        {item.workType}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeItem(item.id)}
+                      aria-label={`${item.workType || 'その他'}をはずす`}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-slate-400 hover:bg-slate-100"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-12 w-12 text-xl"
+                      aria-label={`${item.workType || 'その他'}を1人減らす`}
+                      onClick={() => updateItem(item.id, { workers: Math.max(1, item.workers - 1) })}
+                    >
+                      −
+                    </Button>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={99}
+                      aria-label={`${item.workType || 'その他'}の人数`}
+                      value={item.workers}
+                      onChange={(e) => {
+                        const n = Number(e.target.value)
+                        updateItem(item.id, {
+                          workers: Number.isFinite(n) ? Math.min(99, Math.max(1, Math.trunc(n))) : 1,
+                        })
+                      }}
+                      className="h-12 flex-1 text-center text-xl font-bold"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-12 w-12 text-xl"
+                      aria-label={`${item.workType || 'その他'}を1人増やす`}
+                      onClick={() => updateItem(item.id, { workers: Math.min(99, item.workers + 1) })}
+                    >
+                      ＋
+                    </Button>
+                    <span className="w-6 shrink-0 text-sm text-slate-500">人</span>
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex items-baseline justify-between rounded-lg bg-sky-50 px-4 py-3">
+                <span className="text-sm font-semibold text-sky-900">合計人数</span>
+                <span className="text-sky-900">
+                  <b className="text-2xl font-bold tabular-nums">{totalWorkers}</b>
+                  <span className="ml-1 text-sm">人</span>
+                  <span className="ml-2 text-xs text-sky-700">（作業 {items.length} 件）</span>
+                </span>
+              </div>
+            </div>
           )}
         </Field>
 
@@ -677,7 +739,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-3 px-3 py-2">
       <dt className="w-20 shrink-0 text-slate-500">{label}</dt>
-      <dd className="flex-1 break-words font-medium text-slate-900">{value}</dd>
+      <dd className="flex-1 whitespace-pre-line break-words font-medium text-slate-900">{value}</dd>
     </div>
   )
 }

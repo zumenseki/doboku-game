@@ -8,7 +8,9 @@ export const Route = createFileRoute('/api/rreport')({
     handlers: {
       POST: async ({ request }) => {
         const core = await import('../../nippo/server/core.server')
-        const { reportSchema } = await import('../../nippo/validation')
+        const { reportSchema, summarizeWorkTypes, totalWorkers } = await import(
+          '../../nippo/validation'
+        )
 
         const body = await core.readJson(request)
         if (body === null) return core.json({ message: 'リクエストが不正です' }, 400)
@@ -54,6 +56,7 @@ export const Route = createFileRoute('/api/rreport')({
           }
 
           const now = core.nowIso()
+          // reports側は合計人数とまとめ文字列。作業ごとの内訳は report_work_items に持つ
           const statements = [
             db
               .prepare(
@@ -64,12 +67,19 @@ export const Route = createFileRoute('/api/rreport')({
                 site.id,
                 subId,
                 input.workDate,
-                input.workers,
-                input.workType,
+                totalWorkers(input.workItems),
+                summarizeWorkTypes(input.workItems),
                 input.areaM2 ?? null,
                 input.note && input.note.length > 0 ? input.note : null,
                 now,
               ),
+            ...input.workItems.map((item, i) =>
+              db
+                .prepare(
+                  'INSERT INTO report_work_items (id, report_id, work_type, workers, sort_order) VALUES (?,?,?,?,?)',
+                )
+                .bind(core.uuid(), input.reportId, item.workType, item.workers, i),
+            ),
             ...input.objectKeys.map((key) =>
               db
                 .prepare(

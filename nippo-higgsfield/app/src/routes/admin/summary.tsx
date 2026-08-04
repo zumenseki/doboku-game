@@ -44,12 +44,19 @@ function SummaryPage() {
   const rows = tab === 'site' ? data?.bySite : tab === 'sub' ? data?.bySub : data?.byWorkType
   const meta = TABS.find((t) => t.key === tab)!
   const totals = data?.totals ?? { reports: 0, workers: 0, area: 0 }
+  // 施工面積は日報ごとの値なので、1日報に複数入る工種には割り振れない
+  const showArea = tab !== 'workType'
 
   function exportCsv() {
-    const csv = toCsv(
-      [meta.column, '日報件数', '延べ人数', '施工面積(m2)'],
-      (rows ?? []).map((r) => [r.name, r.reports, r.workers, r.area === 0 ? '' : r.area]),
-    )
+    const csv = showArea
+      ? toCsv(
+          [meta.column, '日報件数', '延べ人数', '施工面積(m2)'],
+          (rows ?? []).map((r) => [r.name, r.reports, r.workers, r.area === 0 ? '' : r.area]),
+        )
+      : toCsv(
+          [meta.column, '日報件数', '延べ人数'],
+          (rows ?? []).map((r) => [r.name, r.reports, r.workers]),
+        )
     downloadCsv(`集計_${month}_${meta.label}.csv`, csv)
   }
 
@@ -108,13 +115,13 @@ function SummaryPage() {
                 <th className="px-4 py-2 font-medium">{meta.column}</th>
                 <th className="w-32 px-4 py-2 text-right font-medium">日報件数</th>
                 <th className="w-32 px-4 py-2 text-right font-medium">延べ人数</th>
-                <th className="w-36 px-4 py-2 text-right font-medium">施工面積(m²)</th>
+                {showArea && <th className="w-36 px-4 py-2 text-right font-medium">施工面積(m²)</th>}
               </tr>
             </thead>
             <tbody>
               {data && (rows ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={showArea ? 4 : 3} className="px-4 py-8 text-center text-slate-500">
                     この月の日報はありません
                   </td>
                 </tr>
@@ -124,9 +131,11 @@ function SummaryPage() {
                   <td className="px-4 py-2 font-medium text-slate-900">{row.name}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.reports)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.workers)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">
-                    {row.area === 0 ? '—' : formatNumber(row.area, 1)}
-                  </td>
+                  {showArea && (
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {row.area === 0 ? '—' : formatNumber(row.area, 1)}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -136,13 +145,24 @@ function SummaryPage() {
                   <td className="px-4 py-2">合計</td>
                   <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totals.reports)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totals.workers)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totals.area, 1)}</td>
+                  {showArea && (
+                    <td className="px-4 py-2 text-right tabular-nums">{formatNumber(totals.area, 1)}</td>
+                  )}
                 </tr>
               </tfoot>
             )}
           </table>
         </CardBody>
       </Card>
+
+      {tab === 'workType' && (
+        <p className="text-xs leading-relaxed text-slate-500">
+          1件の日報に複数の作業内容が入る場合、<b>日報件数はそれぞれの行で数えられます</b>
+          （そのため各行の合計は上の「合計」より多くなることがあります）。
+          <b>延べ人数は作業ごとに入力された人数</b>なので、合計は月の延べ人数と一致します。
+          施工面積は日報ごとの値で作業内容ごとには分けられないため、この表では表示していません。
+        </p>
+      )}
     </div>
   )
 }

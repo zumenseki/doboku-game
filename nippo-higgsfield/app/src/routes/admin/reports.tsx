@@ -31,6 +31,8 @@ export const Route = createFileRoute('/admin/reports')({
 
 type Option = { id: string; name: string }
 
+type WorkItem = { workType: string; workers: number }
+
 type ReportRow = {
   id: string
   site_id: string
@@ -38,6 +40,7 @@ type ReportRow = {
   work_date: string
   workers: number
   work_type: string
+  workItems: WorkItem[]
   area_m2: number | null
   note: string | null
   created_at: string
@@ -80,6 +83,17 @@ function ReportsPage() {
   const [data, setData] = React.useState<ReportsData | null>(null)
   const [error, setError] = React.useState('')
   const [editing, setEditing] = React.useState<ReportRow | null>(null)
+  // 編集ダイアログの作業内容。開くたびに対象の日報の内訳を入れ直す
+  const [editItems, setEditItems] = React.useState<WorkItem[]>([])
+
+  function startEdit(row: ReportRow) {
+    setEditItems(
+      row.workItems?.length
+        ? row.workItems.map((i) => ({ ...i }))
+        : [{ workType: row.work_type, workers: row.workers }],
+    )
+    setEditing(row)
+  }
   const [deleteTarget, setDeleteTarget] = React.useState<ReportRow | null>(null)
   const [photoUrls, setPhotoUrls] = React.useState<string[] | null>(null)
   const [busy, setBusy] = React.useState(false)
@@ -133,6 +147,8 @@ function ReportsPage() {
         r.sub_name ?? '',
         r.workers,
         r.work_type,
+        // 作業ごとの人数を1セルにまとめる（例: 積込み 2人 / 搬入 3人）
+        (r.workItems ?? []).map((i) => `${i.workType} ${i.workers}人`).join(' / '),
         r.area_m2 ?? '',
         r.note ?? '',
         formatJstDateTime(r.created_at),
@@ -163,8 +179,7 @@ function ReportsPage() {
         id: editing.id,
         workDate: String(fd.get('workDate') ?? ''),
         subId: String(fd.get('subId') ?? ''),
-        workers: Number(fd.get('workers') ?? 0),
-        workType: String(fd.get('workType') ?? ''),
+        workItems: editItems.map((i) => ({ workType: i.workType.trim(), workers: i.workers })),
         areaM2: areaRaw === '' ? null : Number(areaRaw),
         note: String(fd.get('note') ?? ''),
       }),
@@ -295,8 +310,21 @@ function ReportsPage() {
                   <td className="whitespace-nowrap px-3 py-2">{r.work_date}</td>
                   <td className="px-3 py-2">{r.site_name ?? ''}</td>
                   <td className="px-3 py-2">{r.sub_name ?? ''}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.workers}</td>
-                  <td className="px-3 py-2">{r.work_type}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{r.workers}</td>
+                  <td className="px-3 py-2">
+                    {(r.workItems ?? []).length > 1 ? (
+                      <ul className="space-y-0.5">
+                        {r.workItems.map((i) => (
+                          <li key={i.workType} className="whitespace-nowrap">
+                            {i.workType}
+                            <span className="ml-1 text-slate-500">{i.workers}人</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      (r.workItems?.[0]?.workType ?? r.work_type)
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatNumber(r.area_m2, 1)}</td>
                   <td className="px-3 py-2">
                     {r.photo_count > 0 ? (
@@ -313,7 +341,7 @@ function ReportsPage() {
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">
-                      <Button size="sm" variant="outline" onClick={() => setEditing(r)}>
+                      <Button size="sm" variant="outline" onClick={() => startEdit(r)}>
                         編集
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(r)}>
@@ -370,49 +398,90 @@ function ReportsPage() {
                 ))}
               </Select>
             </div>
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <Label htmlFor="e-workers">人数</Label>
-                <Input
-                  id="e-workers"
-                  name="workers"
-                  type="number"
-                  min={1}
-                  max={99}
-                  defaultValue={editing.workers}
-                  required
-                  className="mt-1"
-                />
-              </div>
-              <div className="flex-1">
-                <Label htmlFor="e-area">面積(m²)</Label>
-                <Input
-                  id="e-area"
-                  name="areaM2"
-                  type="number"
-                  min={0}
-                  step="0.1"
-                  defaultValue={editing.area_m2 ?? ''}
-                  className="mt-1"
-                />
-              </div>
-            </div>
             <div>
-              <Label htmlFor="e-worktype">作業内容</Label>
-              <Input
-                id="e-worktype"
-                name="workType"
-                list="work-type-list"
-                defaultValue={editing.work_type}
-                required
-                maxLength={100}
-                className="mt-1"
-              />
+              <Label>作業内容と人数</Label>
+              <div className="mt-1 space-y-2">
+                {editItems.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      list="work-type-list"
+                      value={item.workType}
+                      required
+                      maxLength={100}
+                      placeholder="作業内容"
+                      aria-label={`作業内容 ${idx + 1}`}
+                      onChange={(e) =>
+                        setEditItems((prev) =>
+                          prev.map((p, i) => (i === idx ? { ...p, workType: e.target.value } : p)),
+                        )
+                      }
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={item.workers}
+                      required
+                      aria-label={`${item.workType || `作業${idx + 1}`}の人数`}
+                      onChange={(e) =>
+                        setEditItems((prev) =>
+                          prev.map((p, i) =>
+                            i === idx
+                              ? { ...p, workers: Math.min(99, Math.max(1, Math.trunc(Number(e.target.value) || 1))) }
+                              : p,
+                          ),
+                        )
+                      }
+                      className="w-20 text-center"
+                    />
+                    <span className="text-sm text-slate-500">人</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={editItems.length <= 1}
+                      onClick={() => setEditItems((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      削除
+                    </Button>
+                  </div>
+                ))}
+              </div>
               <datalist id="work-type-list">
                 {(data?.workTypes ?? []).map((w) => (
                   <option key={w} value={w} />
                 ))}
               </datalist>
+              <div className="mt-2 flex items-center gap-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditItems((prev) => [...prev, { workType: '', workers: 1 }])}
+                >
+                  ＋ 作業内容を追加
+                </Button>
+                <span className="text-sm text-slate-600">
+                  合計{' '}
+                  <b className="text-base text-slate-900">
+                    {editItems.reduce((a, i) => a + i.workers, 0)}
+                  </b>{' '}
+                  人
+                </span>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="e-area">面積(m²)</Label>
+              <Input
+                id="e-area"
+                name="areaM2"
+                type="number"
+                min={0}
+                step="0.1"
+                defaultValue={editing.area_m2 ?? ''}
+                className="mt-1"
+              />
             </div>
             <div>
               <Label htmlFor="e-note">備考</Label>

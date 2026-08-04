@@ -27,10 +27,27 @@ export const Route = createFileRoute('/api/admin/summary')({
             .bind(from, to)
             .all<{ name: string | null; reports: number; workers: number; area: number }>()
 
+        // 工種別だけは内訳テーブルから集計する（1日報に複数の作業が入るため）。
+        // 面積は日報単位の値で工種ごとには割れないので返さない。
+        const byWorkTypeQuery = db
+          .prepare(
+            `SELECT i.work_type AS name,
+                    COUNT(DISTINCT r.id) AS reports,
+                    SUM(i.workers) AS workers,
+                    0 AS area
+             FROM report_work_items i
+             JOIN reports r ON r.id = i.report_id
+             WHERE r.work_date >= ? AND r.work_date <= ?
+             GROUP BY i.work_type
+             ORDER BY workers DESC, name`,
+          )
+          .bind(from, to)
+          .all<{ name: string | null; reports: number; workers: number; area: number }>()
+
         const [bySite, bySub, byWorkType, totals] = await Promise.all([
           agg("COALESCE(s.name, '(不明)')", 'LEFT JOIN sites s ON s.id = r.site_id'),
           agg("COALESCE(b.name, '(不明)')", 'LEFT JOIN subs b ON b.id = r.sub_id'),
-          agg('r.work_type', ''),
+          byWorkTypeQuery,
           db
             .prepare(
               'SELECT COUNT(*) AS reports, COALESCE(SUM(workers),0) AS workers, COALESCE(SUM(COALESCE(area_m2,0)),0) AS area FROM reports WHERE work_date >= ? AND work_date <= ?',

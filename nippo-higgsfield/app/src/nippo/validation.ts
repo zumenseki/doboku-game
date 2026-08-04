@@ -21,13 +21,40 @@ export const paintRegionSchema = z.object({
 })
 export type PaintRegionInput = z.infer<typeof paintRegionSchema>
 
+/** 1日報に入れられる作業内容の数 */
+export const MAX_WORK_ITEMS = 20
+
+/** 作業内容1件ぶん（作業の種類 + その作業に入った人数） */
+export const workItemSchema = z.object({
+  workType: z
+    .string()
+    .trim()
+    .min(1, '作業内容を選択してください')
+    .max(100, '作業内容は100文字までです'),
+  workers: z
+    .number()
+    .int()
+    .min(1, '人数は1人以上で入力してください')
+    .max(99, '人数は99人までです'),
+})
+export type WorkItemInput = z.infer<typeof workItemSchema>
+
+/** 同じ作業内容が2回出てこないか確かめる */
+const uniqueWorkTypes = (items: WorkItemInput[]) =>
+  new Set(items.map((i) => i.workType)).size === items.length
+
+const workItemsField = z
+  .array(workItemSchema)
+  .min(1, '作業内容を1つ以上選択してください')
+  .max(MAX_WORK_ITEMS, `作業内容は${MAX_WORK_ITEMS}件までです`)
+  .refine(uniqueWorkTypes, '同じ作業内容が重複しています')
+
 /** POST /api/rreport */
 export const reportSchema = z.object({
   token: z.string().min(1),
   reportId: uuid,
   workDate: isoDate,
-  workers: z.number().int().min(1, '人数は1人以上で入力してください').max(99, '人数は99人までです'),
-  workType: z.string().trim().min(1, '作業内容を選択してください').max(100, '作業内容は100文字までです'),
+  workItems: workItemsField,
   areaM2: z.number().min(0, '施工面積は0以上で入力してください').max(9_999_999).optional(),
   note: z.string().trim().max(1000, '備考は1000文字までです').optional(),
   objectKeys: z.array(z.string().min(1)).max(MAX_PHOTOS_PER_REPORT).default([]),
@@ -58,8 +85,17 @@ export const siteSchema = z.object({
 export const reportEditSchema = z.object({
   workDate: isoDate,
   subId: z.string().min(1).max(64),
-  workers: z.number().int().min(1).max(99),
-  workType: z.string().trim().min(1).max(100),
+  workItems: workItemsField,
   areaM2: z.number().min(0).max(9_999_999).nullable(),
   note: z.string().trim().max(1000).nullable(),
 })
+
+/** 内訳から、一覧やCSVに出す「作業内容」のまとめ文字列を作る */
+export function summarizeWorkTypes(items: { workType: string }[]): string {
+  return items.map((i) => i.workType).join('・')
+}
+
+/** 内訳から合計人数を出す */
+export function totalWorkers(items: { workers: number }[]): number {
+  return items.reduce((sum, i) => sum + i.workers, 0)
+}
