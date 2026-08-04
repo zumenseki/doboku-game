@@ -104,9 +104,25 @@ function SiteDetailPage() {
       form.append('siteId', id)
       form.append('image', new File([converted.png], 'drawing.png', { type: 'image/png' }))
       if (file.type === 'application/pdf') form.append('pdf', file)
-      const res = await jfetch('/api/admin/drawing', { method: 'POST', body: form })
+      const res = await jfetch<{
+        replaced: boolean
+        scaleCleared: boolean
+        existingPaints: number
+      }>('/api/admin/drawing', { method: 'POST', body: form })
       if (!res.ok) throw new Error(res.message)
-      setMessage('図面を登録しました。次に「縮尺を設定」してください')
+
+      const parts = [res.data.replaced ? '図面を差し替えました。' : '図面を登録しました。']
+      if (res.data.scaleCleared) {
+        parts.push('図面が変わったため縮尺はリセットしました。「縮尺を設定」からやり直してください。')
+      } else {
+        parts.push('次に「縮尺を設定」してください。')
+      }
+      if (res.data.replaced && res.data.existingPaints > 0) {
+        parts.push(
+          `なお、これまでの色塗り${res.data.existingPaints}件は前の図面に対して塗られたものです。新しい図面と位置が合わないことがあります。`,
+        )
+      }
+      setMessage(parts.join(''))
       setReloadKey((k) => k + 1)
     } catch (e) {
       setError(e instanceof Error ? e.message : '図面の登録に失敗しました')

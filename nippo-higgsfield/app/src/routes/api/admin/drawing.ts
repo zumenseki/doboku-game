@@ -30,7 +30,8 @@ export const Route = createFileRoute('/api/admin/drawing')({
         return new Response(object.body as unknown as BodyInit, {
           headers: {
             'Content-Type': kind === 'pdf' ? 'application/pdf' : 'image/png',
-            'Cache-Control': 'private, max-age=300',
+            // このURLは現場IDだけで決まるので、差し替え後に古いファイルを掴まないようキャッシュしない
+            'Cache-Control': 'no-store',
             'Content-Disposition': 'inline',
           },
         })
@@ -63,36 +64,84 @@ export const Route = createFileRoute('/api/admin/drawing')({
         }
 
         const db = core.requireDB()
-        const site = await db.prepare('SELECT id FROM sites WHERE id = ?').bind(siteId).first()
+        const site = await db
+          .prepare('SELECT id, drawing_key, drawing_image_key, scale_m_per_unit FROM sites WHERE id = ?')
+          .bind(siteId)
+          .first<{
+            id: string
+            drawing_key: string | null
+            drawing_image_key: string | null
+            scale_m_per_unit: number | null
+          }>()
         if (!site) return core.json({ message: '現場が見つかりません' }, 404)
 
+        const replaced = Boolean(site.drawing_image_key)
+
+        // 差し替えのたびに新しいキーにする。同じキーを上書きすると、
+        // ブラウザやCDNが古い画像をキャッシュしていて差し替えが反映されない。
         const r2 = core.requireR2()
-        const imageKey = `sites/${siteId}/drawing.png`
+        const stamp = core.randomToken(10)
+        const imageKey = `sites/${siteId}/drawing-${stamp}.png`
         await r2.put(imageKey, await image.arrayBuffer(), {
           httpMetadata: { contentType: 'image/png' },
         })
 
         let pdfKey: string | null = null
         if (pdf instanceof File) {
-          pdfKey = `sites/${siteId}/drawing.pdf`
+          pdfKey = `sites/${siteId}/drawing-${stamp}.pdf`
           await r2.put(pdfKey, await pdf.arrayBuffer(), {
             httpMetadata: { contentType: 'application/pdf' },
           })
         }
 
+        // 図面が変わると、前の図面で決めた縮尺は当てにならない（寸法が変われば面積がずれる）。
+        // 設定し直してもらうため、差し替え時は縮尺を消す。
         if (pdfKey) {
           await db
-            .prepare('UPDATE sites SET drawing_image_key = ?, drawing_key = ? WHERE id = ?')
+            .prepare(
+              'UPDATE sites SET drawing_image_key = ?, drawing_key = ?, scale_m_per_unit = NULL WHERE id = ?',
+            )
             .bind(imageKey, pdfKey, siteId)
             .run()
         } else {
+          // PDF原本を伴わない差し替えでは、古いPDFが残っていても中身が食い違うので外す
           await db
-            .prepare('UPDATE sites SET drawing_image_key = ? WHERE id = ?')
+            .prepare(
+              'UPDATE sites SET drawing_image_key = ?, drawing_key = NULL, scale_m_per_unit = NULL WHERE id = ?',
+            )
             .bind(imageKey, siteId)
             .run()
         }
 
-        return core.json({ ok: true, imageKey, pdfKey })
+        // 古い図面ファイルはもう参照されないので消す（失敗しても差し替え自体は成立している）
+        const stale = [site.drawing_image_key, site.drawing_key].filter(
+          (k): k is string => Boolean(k) && k !== imageKey && k !== pdfKey,
+        )
+        if (stale.length > 0) {
+          try {
+            await r2.delete(stale)
+          } catch {
+            /* 残っても次の一括削除で回収できる */
+          }
+        }
+
+        // 前の図面に対して塗られたマスクは位置がずれる可能性があるので件数を返す
+        const paints = await db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM paint_regions pr
+             JOIN reports r ON r.id = pr.report_id WHERE r.site_id = ?`,
+          )
+          .bind(siteId)
+          .first<{ n: number }>()
+
+        return core.json({
+          ok: true,
+          imageKey,
+          pdfKey,
+          replaced,
+          scaleCleared: replaced && site.scale_m_per_unit !== null,
+          existingPaints: paints?.n ?? 0,
+        })
       },
     },
   },
