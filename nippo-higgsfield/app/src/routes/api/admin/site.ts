@@ -115,6 +115,33 @@ export const Route = createFileRoute('/api/admin/site')({
           return core.json({ ok: true })
         }
 
+        if (action === 'removeDrawing') {
+          const site = await db
+            .prepare('SELECT drawing_key, drawing_image_key FROM sites WHERE id = ?')
+            .bind(id)
+            .first<{ drawing_key: string | null; drawing_image_key: string | null }>()
+          if (!site) return core.json({ message: '現場が見つかりません' }, 404)
+
+          await db
+            .prepare(
+              'UPDATE sites SET drawing_image_key = NULL, drawing_key = NULL, scale_m_per_unit = NULL WHERE id = ?',
+            )
+            .bind(id)
+            .run()
+
+          const keys = [site.drawing_image_key, site.drawing_key].filter(
+            (k): k is string => Boolean(k),
+          )
+          if (keys.length > 0) {
+            try {
+              await core.requireR2().delete(keys)
+            } catch {
+              /* 残っても実害はない */
+            }
+          }
+          return core.json({ ok: true })
+        }
+
         if (action === 'close') {
           await db
             .prepare("UPDATE sites SET status = 'closed', closed_at = ? WHERE id = ?")

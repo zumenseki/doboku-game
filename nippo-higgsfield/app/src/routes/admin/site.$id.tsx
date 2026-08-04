@@ -52,7 +52,7 @@ function SiteDetailPage() {
   const [error, setError] = React.useState('')
   const [message, setMessage] = React.useState('')
   const [busy, setBusy] = React.useState(false)
-  const [confirm, setConfirm] = React.useState<null | 'close' | 'reopen'>(null)
+  const [confirm, setConfirm] = React.useState<null | 'close' | 'reopen' | 'removeDrawing'>(null)
   const [uploading, setUploading] = React.useState(false)
   const [scaleOpen, setScaleOpen] = React.useState(false)
   const [deleteOpen, setDeleteOpen] = React.useState(false)
@@ -303,6 +303,11 @@ function SiteDetailPage() {
                   </Button>
                 </a>
               )}
+              {site.drawing_image_key && (
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm('removeDrawing')}>
+                  図面を削除
+                </Button>
+              )}
               <span className="text-xs text-slate-500">PDFまたは画像 / 10MBまで</span>
             </div>
 
@@ -385,6 +390,18 @@ function SiteDetailPage() {
         onConfirm={() => {
           setConfirm(null)
           void patch({ action: 'close' }, '現場を終了しました')
+        }}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm === 'removeDrawing'}
+        title="図面を削除しますか?"
+        message="登録されている図面（とPDF原本・縮尺）を消します。日報や色塗りの面積の記録は残ります。"
+        confirmLabel="削除する"
+        destructive
+        onConfirm={() => {
+          setConfirm(null)
+          void patch({ action: 'removeDrawing' }, '図面を削除しました')
         }}
         onCancel={() => setConfirm(null)}
       />
