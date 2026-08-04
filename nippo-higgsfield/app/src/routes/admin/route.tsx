@@ -77,6 +77,9 @@ function AdminLayout() {
                 <Link
                   key={item.href}
                   to={item.href}
+                  // ルータ既定のあいまい一致だと /admin が全ページで選択扱いになるため、
+                  // 判定は isActiveTab に一本化する
+                  activeOptions={{ exact: true }}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
                     'rounded-lg px-3 py-1.5 transition-colors',
